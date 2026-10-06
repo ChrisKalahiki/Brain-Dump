@@ -1,0 +1,5 @@
+interface:
+  display_name: "Dump"
+  short_description: "Write this Session as a Dump to the Vault's Inbox"
+policy:
+  allow_implicit_invocation: false
