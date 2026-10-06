@@ -46,13 +46,14 @@ Also write a **slug**: a 2–6 word title for the Dump, e.g. `wayfinder charting
 Run the helper from the Session's working directory, passing the tool you are running in (`ClaudeCode` or `Codex`). In Codex, the helper writes outside the workspace, so run it with escalated permissions from the first attempt: the user approves the write once per Dump.
 
 ```bash
-brain-dump write-dump --tool ClaudeCode --slug "<slug>" <<'DUMP'
+brain-dump write-dump --tool <ClaudeCode|Codex> --slug "<slug>" <<'DUMP'
 <body>
 DUMP
 ```
 
 - **Exit 0**: it prints the Dump's path. Tell the user the path and how many Items it holds.
 - **`invalid Dump body: …`**: the message names the broken rule. Fix the body to match step 2 and run the command again.
+- **Escalation declined in Codex**: run the same command once more without escalation. The sandbox stops the write, so it lands in the next branch with the complete Dump printed.
 - **Any other failure** (Vault not found, not an Obsidian Vault, write denied): the helper prints the reason on stderr and the complete Dump on stdout. Tell the user the reason, then show that complete Dump in a fenced `markdown` block so nothing is lost. The helper is the only writer; the Dump stays in the Session until the user retries.
 
 Done when the user has either the written path or the complete Dump in front of them.
