@@ -31,6 +31,7 @@ fi
 link "$repo/src/cli.ts" "$HOME/.local/bin/brain-dump"
 link "$repo/skills/dump" "$HOME/.claude/skills/dump"
 link "$repo/skills/dump" "$HOME/.agents/skills/dump"
+link "$repo/skills/file" "$HOME/.claude/skills/file"
 
 cat <<EOF
 
