@@ -12,8 +12,7 @@ describe("brain-dump vault", () => {
     const result = run(sandbox, ["vault"]);
 
     // #then
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout.trim()).toBe(sandbox.vault);
+    expect([result.exitCode, result.stdout]).toEqual([0, `${sandbox.vault}\n`]);
   });
 
   test("uses the Vault path from the per-machine config when set", () => {
@@ -69,5 +68,16 @@ describe("brain-dump vault", () => {
 
     // #then
     expect(existsSync(join(sandbox.vault, "Inbox"))).toBe(true);
+  });
+
+  test("rejects an unknown command", () => {
+    // #given
+    const sandbox = makeSandbox();
+
+    // #when
+    const result = run(sandbox, ["frobnicate"]);
+
+    // #then
+    expect([result.exitCode, result.stderr]).toEqual([2, "brain-dump: unknown command frobnicate\n"]);
   });
 });

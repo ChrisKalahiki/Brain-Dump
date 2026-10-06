@@ -12,7 +12,7 @@ export type Item = {
 export type DumpBody = Map<SectionName, Item[]>;
 
 const ITEM = /^- \[ \] (.+)$/;
-const WHY = /^(?:\t| {2,})- Why: (.+)$/;
+const RATIONALE_LINE = /^(?:\t| {2,})- Why: (.+)$/;
 
 export function parseDumpBody(text: string): DumpBody {
   const body: DumpBody = new Map();
@@ -22,9 +22,10 @@ export function parseDumpBody(text: string): DumpBody {
     if (line.trim() === "") continue;
     const heading = /^## (.+)$/.exec(line);
     if (heading) {
-      const name = SECTIONS.find((section) => section === heading[1]);
+      const name = SECTIONS.find((candidate) => candidate === heading[1]);
       if (name === undefined) invalid(`unexpected section "${line}"`);
-      if (SECTIONS.indexOf(name) <= Math.max(-1, ...[...body.keys()].map((seen) => SECTIONS.indexOf(seen)))) {
+      const previous = section === undefined ? -1 : SECTIONS.indexOf(section);
+      if (SECTIONS.indexOf(name) <= previous) {
         invalid(`sections must appear once each, in the order ${SECTIONS.join(", ")}`);
       }
       section = name;
@@ -37,10 +38,10 @@ export function parseDumpBody(text: string): DumpBody {
       items.push({ text: item[1], rationale: undefined });
       continue;
     }
-    const why = WHY.exec(line);
+    const rationale = RATIONALE_LINE.exec(line);
     const last = items?.at(-1);
-    if (why?.[1] && section === "Decisions" && last && last.rationale === undefined) {
-      last.rationale = why[1];
+    if (rationale?.[1] && section === "Decisions" && last && last.rationale === undefined) {
+      last.rationale = rationale[1];
       continue;
     }
     invalid(`line ${index + 1} is not an Item: "${line}"`);

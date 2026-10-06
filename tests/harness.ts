@@ -51,3 +51,9 @@ export function makeRepo(sandbox: Sandbox, name: string, branch: string): string
   Bun.spawnSync(["git", "init", "--quiet", "--initial-branch", branch], { cwd: repo });
   return repo;
 }
+
+export const DUMP_AT = "2026-10-05T19:40";
+
+export function writeDumpArgs(slug = "s", tool = "ClaudeCode"): string[] {
+  return ["write-dump", "--tool", tool, "--slug", slug, "--at", DUMP_AT];
+}

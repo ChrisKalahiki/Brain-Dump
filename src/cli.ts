@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 import { parseArgs, type ParseArgsConfig } from "node:util";
 import { writeDump } from "./dump.ts";
-import { BrainDumpError } from "./errors.ts";
-import { detectOrigin, isToolTag } from "./origin.ts";
+import { BrainDumpError, DumpNotWrittenError, UsageError } from "./errors.ts";
+import { detectOrigin, isToolTag, TOOL_TAGS } from "./origin.ts";
 import { locateVault } from "./vault.ts";
 
 async function main(argv: string[]): Promise<number> {
@@ -26,14 +26,13 @@ async function runWriteDump(args: string[]): Promise<string> {
     at: { type: "string" },
   });
   if (values.tool === undefined || !isToolTag(values.tool)) {
-    throw new UsageError(`--tool must be one of ClaudeCode, Codex`);
+    throw new UsageError(`--tool must be one of ${TOOL_TAGS.join(", ")}`);
   }
   if (values.slug === undefined) throw new UsageError("--slug is required");
   const at = values.at === undefined ? new Date() : new Date(values.at);
   if (Number.isNaN(at.getTime())) throw new UsageError(`--at "${values.at}" is not a date and time`);
-  const vault = locateVault();
   const origin = detectOrigin(values.tool, process.cwd(), at);
-  return writeDump(vault, origin, values.slug, await Bun.stdin.text());
+  return writeDump(origin, values.slug, await Bun.stdin.text());
 }
 
 function parseOptions<T extends ParseArgsConfig["options"]>(args: string[], options: T) {
@@ -44,12 +43,11 @@ function parseOptions<T extends ParseArgsConfig["options"]>(args: string[], opti
   }
 }
 
-class UsageError extends BrainDumpError {}
-
 try {
   process.exit(await main(process.argv.slice(2)));
 } catch (error) {
   if (!(error instanceof BrainDumpError)) throw error;
+  if (error instanceof DumpNotWrittenError) process.stdout.write(error.dump);
   process.stderr.write(`brain-dump: ${error.message}\n`);
   process.exit(error instanceof UsageError ? 2 : 1);
 }

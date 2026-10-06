@@ -8,7 +8,12 @@ link() {
   local target="$1" link_path="$2"
   mkdir -p "$(dirname "$link_path")"
   if [[ -L "$link_path" ]]; then
-    ln -sfn "$target" "$link_path"
+    local current
+    current="$(readlink "$link_path")"
+    if [[ "$current" != "$target" ]]; then
+      echo "brain-dump install: $link_path already points to $current; leaving it alone" >&2
+      return 1
+    fi
   elif [[ -e "$link_path" ]]; then
     echo "brain-dump install: $link_path exists and is not a symlink; leaving it alone" >&2
     return 1

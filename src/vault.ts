@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { BrainDumpError } from "./errors.ts";
+import { BrainDumpError, describeFsError } from "./errors.ts";
 
 const DEFAULT_VAULT = join("Documents", "The Vault");
 
@@ -19,7 +19,11 @@ export function locateVault(): Vault {
     throw new BrainDumpError(`${root} is not an Obsidian Vault (no .obsidian/)`);
   }
   const inbox = join(root, "Inbox");
-  mkdirSync(inbox, { recursive: true });
+  try {
+    mkdirSync(inbox, { recursive: true });
+  } catch (error) {
+    throw new BrainDumpError(`cannot create ${inbox}: ${describeFsError(error)}`);
+  }
   return { root, inbox };
 }
 

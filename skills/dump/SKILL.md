@@ -53,6 +53,6 @@ DUMP
 
 - **Exit 0**: it prints the Dump's path. Tell the user the path and how many Items it holds.
 - **`invalid Dump body: …`**: the message names the broken rule. Fix the body to match step 2 and run the command again.
-- **Any other failure** (Vault not found, not an Obsidian Vault, write denied): tell the user the reason, then print the complete Dump body in a fenced `markdown` block so nothing is lost. The helper is the only writer; the Dump stays in the Session until the user retries.
+- **Any other failure** (Vault not found, not an Obsidian Vault, write denied): the helper prints the reason on stderr and the complete Dump on stdout. Tell the user the reason, then show that complete Dump in a fenced `markdown` block so nothing is lost. The helper is the only writer; the Dump stays in the Session until the user retries.
 
-Done when the user has either the written path or the complete Dump body in front of them.
+Done when the user has either the written path or the complete Dump in front of them.

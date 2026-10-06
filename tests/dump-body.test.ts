@@ -1,15 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { makeRepo, makeSandbox, run } from "./harness.ts";
+import { makeRepo, makeSandbox, run, writeDumpArgs } from "./harness.ts";
 
 function writeDumpWithBody(body: string) {
   const sandbox = makeSandbox();
   const repo = makeRepo(sandbox, "Brain-Dump", "main");
-  const result = run(sandbox, ["write-dump", "--tool", "ClaudeCode", "--slug", "s", "--at", "2026-10-05T19:40"], {
-    stdin: body,
-    cwd: repo,
-  });
+  const result = run(sandbox, writeDumpArgs(), { stdin: body, cwd: repo });
   const inbox = join(sandbox.vault, "Inbox");
   return { result, written: existsSync(inbox) ? readdirSync(inbox) : [] };
 }
@@ -130,6 +127,19 @@ describe("brain-dump write-dump body rules", () => {
     // #then
     expect(readFileSync(result.stdout.trim(), "utf8")).toEndWith(
       "## Decisions\n- [ ] Use Bun.\n\t- Why: it runs TypeScript directly.\n",
+    );
+  });
+
+  test("rejects a section that appears twice", () => {
+    // #given
+    const body = "## Learnings\n- [ ] One.\n\n## Learnings\n- [ ] Two.\n";
+
+    // #when
+    const { result } = writeDumpWithBody(body);
+
+    // #then
+    expect(result.stderr).toBe(
+      "brain-dump: invalid Dump body: sections must appear once each, in the order Learnings, Decisions, Todos\n",
     );
   });
 });

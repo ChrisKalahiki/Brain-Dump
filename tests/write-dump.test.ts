@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { makeRepo, makeSandbox, run } from "./harness.ts";
+import { makeRepo, makeSandbox, run, writeConfig, writeDumpArgs } from "./harness.ts";
 
 const BODY = `## Learnings
 - [ ] Codex reads skills from ~/.agents/skills.
@@ -23,7 +23,7 @@ describe("brain-dump write-dump", () => {
     // #when
     const result = run(
       sandbox,
-      ["write-dump", "--tool", "ClaudeCode", "--slug", "wayfinder charting", "--at", "2026-10-05T19:40"],
+      writeDumpArgs("wayfinder charting"),
       { stdin: BODY, cwd: repo },
     );
 
@@ -66,7 +66,7 @@ ${BODY}`,
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    const args = ["write-dump", "--tool", "ClaudeCode", "--slug", "same", "--at", "2026-10-05T19:40"];
+    const args = writeDumpArgs("same");
 
     // #when
     const paths = [1, 2, 3].map(() => run(sandbox, args, { stdin: BODY, cwd: repo }).stdout.trim());
@@ -86,7 +86,7 @@ ${BODY}`,
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
 
     // #when
-    run(sandbox, ["write-dump", "--tool", "ClaudeCode", "--slug", 'auth: OAuth/PKCE [draft] #2 "why?"', "--at", "2026-10-05T19:40"], {
+    run(sandbox, writeDumpArgs('auth: OAuth/PKCE [draft] #2 "why?"'), {
       stdin: BODY,
       cwd: repo,
     });
@@ -115,5 +115,83 @@ ${BODY}`,
 
     // #then
     expect([result.exitCode, result.stderr]).toEqual([2, "brain-dump: --tool must be one of ClaudeCode, Codex\n"]);
+  });
+
+  test("leaves out the branch in a repo with a detached HEAD", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const repo = makeRepo(sandbox, "Brain-Dump", "main");
+    const git = (...args: string[]) => Bun.spawnSync(["git", "-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo });
+    git("commit", "--quiet", "--allow-empty", "-m", "init");
+    git("checkout", "--quiet", "--detach");
+
+    // #when
+    const result = run(sandbox, writeDumpArgs(), { stdin: BODY, cwd: repo });
+
+    // #then
+    expect(readFileSync(result.stdout.trim(), "utf8").split("\n")[6]).toBe(
+      "Session: Claude Code · `~/Projects/Brain-Dump` · 2026-10-05 19:40 · [[Brain-Dump]]",
+    );
+  });
+
+  test("when the Vault is missing, fails with the reason and prints the complete Dump", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const repo = makeRepo(sandbox, "Brain-Dump", "main");
+    writeConfig(sandbox, "vault = ~/Nowhere\n");
+
+    // #when
+    const result = run(sandbox, writeDumpArgs("wayfinder charting"), { stdin: BODY, cwd: repo });
+
+    // #then
+    expect([result.exitCode, result.stderr, result.stdout]).toEqual([
+      1,
+      `brain-dump: Vault not found at ${join(sandbox.home, "Nowhere")}\n`,
+      `---
+tags:
+  - dump
+  - AIGenerated
+  - ClaudeCode
+---
+Session: Claude Code · \`~/Projects/Brain-Dump\` @ \`main\` · 2026-10-05 19:40 · [[Brain-Dump]]
+
+${BODY}`,
+    ]);
+  });
+
+  test("when the Inbox cannot be written, fails with the reason instead of crashing", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const inbox = join(sandbox.vault, "Inbox");
+    mkdirSync(inbox);
+    chmodSync(inbox, 0o555);
+
+    // #when
+    const result = run(sandbox, writeDumpArgs(), { stdin: BODY });
+
+    // #then
+    expect([result.exitCode, result.stderr.split("\n")[0]]).toEqual([1, `brain-dump: cannot write the Dump into ${inbox}: permission denied`]);
+  });
+
+  test("rejects a missing --slug", () => {
+    // #given
+    const sandbox = makeSandbox();
+
+    // #when
+    const result = run(sandbox, ["write-dump", "--tool", "ClaudeCode"], { stdin: BODY });
+
+    // #then
+    expect([result.exitCode, result.stderr]).toEqual([2, "brain-dump: --slug is required\n"]);
+  });
+
+  test("rejects a slug with no usable characters", () => {
+    // #given
+    const sandbox = makeSandbox();
+
+    // #when
+    const result = run(sandbox, writeDumpArgs("#?:"), { stdin: BODY });
+
+    // #then
+    expect([result.exitCode, result.stderr]).toEqual([2, 'brain-dump: --slug "#?:" has no usable characters\n']);
   });
 });
