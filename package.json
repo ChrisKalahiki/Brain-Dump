@@ -1,0 +1,17 @@
+{
+  "name": "brain-dump",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "brain-dump": "src/cli.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "test:file": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "typescript": "^7.0.2"
+  }
+}
