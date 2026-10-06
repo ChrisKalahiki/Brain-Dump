@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { DUMP_AT, makeSandbox, run } from "./harness.ts";
+import { DUMP_AT, makeSandbox, originLine, run } from "./harness.ts";
 
 const BODY = `## Learnings
 - [ ] Claude web share links return an empty shell (https://claude.ai/share/abc).
@@ -11,8 +11,7 @@ describe("brain-dump write-dump for a chat Session", () => {
   test("writes a chat Dump named after the tool, with the chat URL and named project", () => {
     // #given
     const sandbox = makeSandbox();
-    const args = ["write-dump", "--tool", "ClaudeWeb", "--slug", "share links", "--at", DUMP_AT];
-    args.push("--chat-url", "https://claude.ai/chat/123", "--project", "Brain-Dump");
+    const args = ["write-dump", "--tool", "ClaudeWeb", "--slug", "share links", "--at", DUMP_AT, "--chat-url", "https://claude.ai/chat/123", "--project", "Brain-Dump"];
 
     // #when
     const result = run(sandbox, args, { stdin: BODY });
@@ -41,7 +40,7 @@ ${BODY}`,
     const result = run(sandbox, ["write-dump", "--tool", "Gemini", "--slug", "papers", "--at", DUMP_AT], { stdin: BODY });
 
     // #then
-    expect(readFileSync(result.stdout.trim(), "utf8").split("\n")[6]).toBe("Session: Gemini · 2026-10-05 19:40");
+    expect(originLine(result.stdout.trim())).toBe("Session: Gemini · 2026-10-05 19:40");
   });
 
   test("rejects chat-only options for a dev Session tool", () => {
@@ -68,5 +67,52 @@ ${BODY}`,
 
     // #then
     expect([result.exitCode, result.stderr]).toEqual([1, 'brain-dump: invalid Dump body: line 1 is not an Item: "---"\n']);
+  });
+
+  test("shows the chat URL without a project link when no project is named", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const args = ["write-dump", "--tool", "ChatGPT", "--slug", "s", "--at", DUMP_AT, "--chat-url", "https://chatgpt.com/c/9"];
+
+    // #when
+    const result = run(sandbox, args, { stdin: BODY });
+
+    // #then
+    expect(originLine(result.stdout.trim())).toBe("Session: ChatGPT · https://chatgpt.com/c/9 · 2026-10-05 19:40");
+  });
+
+  test("shows the project link without a chat URL when only a project is named", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const args = ["write-dump", "--tool", "ClaudeWeb", "--slug", "s", "--at", DUMP_AT, "--project", "Brain-Dump"];
+
+    // #when
+    const result = run(sandbox, args, { stdin: BODY });
+
+    // #then
+    expect(originLine(result.stdout.trim())).toBe("Session: Claude web · 2026-10-05 19:40 · [[Brain-Dump]]");
+  });
+
+  test("rejects --project for a dev Session tool", () => {
+    // #given
+    const sandbox = makeSandbox();
+
+    // #when
+    const result = run(sandbox, ["write-dump", "--tool", "ClaudeCode", "--slug", "s", "--project", "X"], { stdin: BODY });
+
+    // #then
+    expect(result.exitCode).toBe(2);
+  });
+
+  test("accepts a pasted body with Windows line endings", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const pasted = "## Decisions\r\n- [ ] Use Bun.\r\n\t- Why: it runs TypeScript directly.\r\n";
+
+    // #when
+    const result = run(sandbox, ["write-dump", "--tool", "ClaudeWeb", "--slug", "s", "--at", DUMP_AT], { stdin: pasted });
+
+    // #then
+    expect(readFileSync(result.stdout.trim(), "utf8")).toEndWith("## Decisions\n- [ ] Use Bun.\n\t- Why: it runs TypeScript directly.\n");
   });
 });

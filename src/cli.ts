@@ -33,8 +33,8 @@ async function runWriteDump(args: string[]): Promise<string> {
   if (values.slug === undefined) throw new UsageError("--slug is required");
   const at = values.at === undefined ? new Date() : new Date(values.at);
   if (Number.isNaN(at.getTime())) throw new UsageError(`--at "${values.at}" is not a date and time`);
-  const chatOnly = values["chat-url"] !== undefined || values.project !== undefined;
-  if (chatOnly && !isChatTool(values.tool)) {
+  const hasChatOptions = values["chat-url"] !== undefined || values.project !== undefined;
+  if (hasChatOptions && !isChatTool(values.tool)) {
     throw new UsageError(`--chat-url and --project are only for chat tools (${TOOL_TAGS.filter(isChatTool).join(", ")})`);
   }
   const origin: Origin = isChatTool(values.tool)

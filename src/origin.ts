@@ -11,19 +11,23 @@ const TOOLS = {
 
 export type ToolTag = keyof typeof TOOLS;
 
+export type ChatToolTag = { [T in ToolTag]: (typeof TOOLS)[T]["kind"] extends "chat" ? T : never }[ToolTag];
+
+export type DevToolTag = Exclude<ToolTag, ChatToolTag>;
+
 export const TOOL_TAGS = Object.keys(TOOLS) as ToolTag[];
 
 export function isToolTag(value: string): value is ToolTag {
   return Object.hasOwn(TOOLS, value);
 }
 
-export function isChatTool(tool: ToolTag): boolean {
+export function isChatTool(tool: ToolTag): tool is ChatToolTag {
   return TOOLS[tool].kind === "chat";
 }
 
 export type DevOrigin = {
   kind: "dev";
-  tool: ToolTag;
+  tool: DevToolTag;
   project: string;
   location: string;
   branch: string | undefined;
@@ -32,7 +36,7 @@ export type DevOrigin = {
 
 export type ChatOrigin = {
   kind: "chat";
-  tool: ToolTag;
+  tool: ChatToolTag;
   chatUrl: string | undefined;
   project: string | undefined;
   at: Date;
@@ -40,7 +44,7 @@ export type ChatOrigin = {
 
 export type Origin = DevOrigin | ChatOrigin;
 
-export function detectDevOrigin(tool: ToolTag, cwd: string, at: Date): DevOrigin {
+export function detectDevOrigin(tool: DevToolTag, cwd: string, at: Date): DevOrigin {
   const root = git(cwd, "rev-parse", "--show-toplevel") ?? cwd;
   const branch = git(cwd, "branch", "--show-current") || undefined;
   return { kind: "dev", tool, project: basename(root), location: root, branch, at };
