@@ -5,6 +5,8 @@ import { BrainDumpError, DumpNotWrittenError, UsageError } from "./errors.ts";
 import { detectDevOrigin, isChatTool, isToolTag, TOOL_TAGS, type Origin } from "./origin.ts";
 import { applyFilingPlan, parseFilingPlan } from "./filing.ts";
 import { listUnfiledDumps, summarize } from "./inbox.ts";
+import { listNotes } from "./notes.ts";
+import { readRoutes } from "./routes.ts";
 import { locateVault } from "./vault.ts";
 import { findWeeklyNote } from "./weekly.ts";
 
@@ -19,6 +21,12 @@ async function main(argv: string[]): Promise<number> {
       return 0;
     case "list-dumps":
       writeJson(listUnfiledDumps(locateVault()).map(summarize));
+      return 0;
+    case "list-notes":
+      writeJson(listNotes(locateVault()));
+      return 0;
+    case "routes":
+      writeJson(readRoutes(locateVault()));
       return 0;
     case "weekly-note": {
       const { date } = parseOptions(rest, { date: { type: "string" } });
@@ -70,11 +78,12 @@ function parseOptions<T extends ParseArgsConfig["options"]>(args: string[], opti
   }
 }
 
+// exitCode, not process.exit(): exiting immediately truncates stdout when it is a pipe.
 try {
-  process.exit(await main(process.argv.slice(2)));
+  process.exitCode = await main(process.argv.slice(2));
 } catch (error) {
   if (!(error instanceof BrainDumpError)) throw error;
   if (error instanceof DumpNotWrittenError) process.stdout.write(error.dump);
   process.stderr.write(`brain-dump: ${error.message}\n`);
-  process.exit(error instanceof UsageError ? 2 : 1);
+  process.exitCode = error instanceof UsageError ? 2 : 1;
 }

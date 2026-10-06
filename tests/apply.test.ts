@@ -12,7 +12,7 @@ function apply(sandbox: Sandbox, plan: unknown) {
 }
 
 function fileTodo(index: number, line: string, note = WEEK) {
-  return { index, outcome: "filed", note, section: "# To-Do:", line };
+  return { index, outcome: "filed", note, section: "# To-Do:", lines: [line] };
 }
 
 describe("brain-dump apply", () => {
@@ -174,6 +174,87 @@ describe("brain-dump apply", () => {
 
     // #then
     expect(result.exitCode).toBe(2);
+  });
+
+  test("appends a filed Learning with its backlink at the end of a Topic Note, without a section", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const topic = "Research/Main Notes/Agent Skills.md";
+    writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Learnings\n- [ ] Codex reads ~/.agents/skills.\n"));
+    writeVaultFile(sandbox, topic, "---\ntags:\n  - LLMs\n---\n# Agent Skills\n- existing\n\n");
+    const lines = ["- Codex reads ~/.agents/skills.", "\t- From [[2026-10-05 1940 Brain-Dump - filing|dump 10-05-26]]"];
+
+    // #when
+    apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "filed", note: topic, lines }], inserts: [] });
+
+    // #then
+    expect(readVaultFile(sandbox, topic)).toBe(`---\ntags:\n  - LLMs\n---\n# Agent Skills\n- existing\n${lines.join("\n")}\n\n`);
+  });
+
+  test("keeps a multi-line Item together when it fills a placeholder that other bullets follow", () => {
+    // #given
+    const sandbox = makeSandbox();
+    writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Decisions\n- [ ] Decision.\n\t- Why: reason.\n"));
+    writeVaultFile(sandbox, WEEK, "# Notes:\n- \n- later bullet\n\n---\n");
+    const lines = ["- Decision.", "\t- Why: reason."];
+
+    // #when
+    apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "filed", note: WEEK, section: "# Notes:", lines }], inserts: [] });
+
+    // #then
+    expect(readVaultFile(sandbox, WEEK)).toBe("# Notes:\n- Decision.\n\t- Why: reason.\n- later bullet\n\n---\n");
+  });
+
+  test("appends to a note that has no trailing newline", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const topic = "Research/Main Notes/Agent Skills.md";
+    writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Learnings\n- [ ] A.\n"));
+    writeVaultFile(sandbox, topic, "# Agent Skills\n- existing");
+
+    // #when
+    apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "filed", note: topic, lines: ["- A."] }], inserts: [] });
+
+    // #then
+    expect(readVaultFile(sandbox, topic)).toBe("# Agent Skills\n- existing\n- A.");
+  });
+
+  test("appends new Routes to the Routes note, creating it when missing and skipping ones it has", () => {
+    // #given
+    const sandbox = makeSandbox();
+    writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Learnings\n- [ ] A.\n- [ ] B.\n"));
+    const plan = { dump: DUMP, items: [{ index: 1, outcome: "skipped" }], inserts: [], routes: [{ key: "Brain-Dump", title: "Brain-Dump" }] };
+    const second = { ...plan, items: [{ index: 2, outcome: "skipped" }], routes: [{ key: "Brain-Dump", title: "Brain-Dump" }, { key: "context-bridge", title: "Context Bridge MCP Main Note" }] };
+
+    // #when
+    apply(sandbox, plan);
+    apply(sandbox, second);
+
+    // #then
+    expect(readVaultFile(sandbox, "Inbox/Filing Routes.md")).toBe(
+      "Brain-Dump → [[Brain-Dump]]\ncontext-bridge → [[Context Bridge MCP Main Note]]\n",
+    );
+  });
+
+  describe("rejects a malformed plan", () => {
+    const cases: [string, unknown][] = [
+      ["a filed Item with no lines", { dump: DUMP, items: [{ index: 1, outcome: "filed", note: WEEK, lines: [] }], inserts: [] }],
+      ["a Route with a blank key", { dump: DUMP, items: [], inserts: [], routes: [{ key: " ", title: "X" }] }],
+      ["routes that are not a list", { dump: DUMP, items: [], inserts: [], routes: { key: "a", title: "b" } }],
+    ];
+
+    for (const [name, plan] of cases) {
+      test(name, () => {
+        // #given
+        const sandbox = makeSandbox();
+
+        // #when
+        const result = apply(sandbox, plan);
+
+        // #then
+        expect(result.exitCode).toBe(2);
+      });
+    }
   });
 
   test("rejects stdin that is not JSON", () => {

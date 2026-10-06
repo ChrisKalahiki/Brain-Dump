@@ -31,9 +31,12 @@ export type RunResult = {
 export function run(
   sandbox: Sandbox,
   args: string[],
-  options: { stdin?: string; cwd?: string } = {},
+  options: { stdin?: string; cwd?: string; throughPipe?: boolean } = {},
 ): RunResult {
-  const result = Bun.spawnSync(["bun", CLI, ...args], {
+  const command = options.throughPipe
+    ? ["sh", "-c", 'bun "$0" "$@" | cat', CLI, ...args]
+    : ["bun", CLI, ...args];
+  const result = Bun.spawnSync(command, {
     cwd: options.cwd ?? sandbox.home,
     env: { PATH: process.env.PATH, HOME: sandbox.home, TZ: "UTC" },
     stdin: options.stdin === undefined ? "ignore" : Buffer.from(options.stdin),
