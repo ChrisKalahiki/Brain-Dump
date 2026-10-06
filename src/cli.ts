@@ -3,7 +3,10 @@ import { parseArgs, type ParseArgsConfig } from "node:util";
 import { writeDump } from "./dump.ts";
 import { BrainDumpError, DumpNotWrittenError, UsageError } from "./errors.ts";
 import { detectDevOrigin, isChatTool, isToolTag, TOOL_TAGS, type Origin } from "./origin.ts";
+import { applyFilingPlan, parseFilingPlan } from "./filing.ts";
+import { listUnfiledDumps, summarize } from "./inbox.ts";
 import { locateVault } from "./vault.ts";
+import { findWeekNote } from "./weekly.ts";
 
 async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
@@ -13,6 +16,18 @@ async function main(argv: string[]): Promise<number> {
       return 0;
     case "write-dump":
       process.stdout.write(`${await runWriteDump(rest)}\n`);
+      return 0;
+    case "list-dumps":
+      writeJson(listUnfiledDumps(locateVault()).map(summarize));
+      return 0;
+    case "week-note": {
+      const { date } = parseOptions(rest, { date: { type: "string" } });
+      if (date === undefined) throw new UsageError("--date is required");
+      writeJson(findWeekNote(locateVault(), date));
+      return 0;
+    }
+    case "apply":
+      writeJson(applyFilingPlan(locateVault(), parseFilingPlan(await Bun.stdin.text())));
       return 0;
     default:
       throw new UsageError(`unknown command ${command ?? "(none)"}`);
@@ -41,6 +56,10 @@ async function runWriteDump(args: string[]): Promise<string> {
     ? { kind: "chat", tool: values.tool, chatUrl: values["chat-url"], project: values.project, at }
     : detectDevOrigin(values.tool, process.cwd(), at);
   return writeDump(origin, values.slug, await Bun.stdin.text());
+}
+
+function writeJson(value: unknown): void {
+  process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
 function parseOptions<T extends ParseArgsConfig["options"]>(args: string[], options: T) {

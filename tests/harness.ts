@@ -1,6 +1,6 @@
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 const CLI = join(import.meta.dir, "..", "src", "cli.ts");
 
@@ -63,3 +63,44 @@ export function originLine(dumpPath: string): string | undefined {
     .split("\n")
     .find((line) => line.startsWith("Session: "));
 }
+
+export function writeVaultFile(sandbox: Sandbox, relativePath: string, contents: string): string {
+  const path = join(sandbox.vault, relativePath);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, contents);
+  return path;
+}
+
+export function readVaultFile(sandbox: Sandbox, relativePath: string): string {
+  return readFileSync(join(sandbox.vault, relativePath), "utf8");
+}
+
+export function dumpFile(origin: string, body: string, tool = "ClaudeCode"): string {
+  return `---\ntags:\n  - dump\n  - AIGenerated\n  - ${tool}\n---\n${origin}\n\n${body}`;
+}
+
+export const WEEKLY_TEMPLATE = `---
+tags:
+  - weeklyupdate
+  - research
+---
+
+![[Clemson_Tigers_logo.png|200]]
+# Updates:
+- 
+---
+# To-Do: #todo 
+- [ ] 
+
+---
+# Blockers
+- [ ] 
+
+---
+# Notes:
+- 
+
+---
+# Key Takeaways
+- 
+`;
