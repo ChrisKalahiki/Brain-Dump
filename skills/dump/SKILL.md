@@ -43,7 +43,7 @@ Also write a **slug**: a 2–6 word title for the Dump, e.g. `wayfinder charting
 
 ## 3. Write the Dump
 
-Run the helper from the Session's working directory, passing the tool you are running in (`ClaudeCode` or `Codex`):
+Run the helper from the Session's working directory, passing the tool you are running in (`ClaudeCode` or `Codex`). In Codex, the helper writes outside the workspace, so run it with escalated permissions from the first attempt: the user approves the write once per Dump.
 
 ```bash
 brain-dump write-dump --tool ClaudeCode --slug "<slug>" <<'DUMP'
