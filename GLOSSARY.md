@@ -43,6 +43,10 @@ _Avoid_: Queue, staging
 Turning a Dump into structured notes: titled, tagged, linked, and merged into a Topic Note or Weekly Note or made into a new note.
 _Avoid_: Processing, organising, triage
 
+**Filing Plan**:
+The proposed destination for every Item in one Dump, approved or adjusted by the user before anything is written.
+_Avoid_: Proposal, preview
+
 **Weekly Note**:
 The per-week note holding that week's updates, to-dos, blockers, notes and key takeaways.
 _Avoid_: Weekly update, journal
@@ -50,3 +54,11 @@ _Avoid_: Weekly update, journal
 **Topic Note**:
 A durable note about one subject being researched or worked on.
 _Avoid_: Page, wiki note
+
+**Project Note**:
+The main note for one project, whatever its title (e.g. "Context Bridge MCP Main Note", "Virtual Assistant Project").
+_Avoid_: Index, main note
+
+**Route**:
+A remembered mapping from a project or subject to the note Filing should target, learned from the user's redirects.
+_Avoid_: Rule, mapping, alias
