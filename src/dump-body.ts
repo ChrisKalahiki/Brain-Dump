@@ -18,7 +18,7 @@ export function parseDumpBody(text: string): DumpBody {
   const body: DumpBody = new Map();
   let section: SectionName | undefined;
   let items: Item[] | undefined;
-  for (const [index, line] of text.split("\n").entries()) {
+  for (const [index, line] of text.split(/\r?\n/).entries()) {
     if (line.trim() === "") continue;
     const heading = /^## (.+)$/.exec(line);
     if (heading) {

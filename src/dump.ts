@@ -2,13 +2,13 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseDumpBody, renderDumpBody } from "./dump-body.ts";
 import { BrainDumpError, describeFsError, DumpNotWrittenError, errnoCode, UsageError } from "./errors.ts";
-import { filenameStamp, renderOriginLine, type Origin } from "./origin.ts";
+import { dumpStem, renderOriginLine, type Origin } from "./origin.ts";
 import { locateVault } from "./vault.ts";
 
 const OBSIDIAN_FORBIDDEN = /[*"\\/<>:|?#^[\]]+/g;
 
 export function writeDump(origin: Origin, slug: string, body: string): string {
-  const stem = `${filenameStamp(origin.at)} ${origin.project} - ${toFilenameSafe(slug)}`;
+  const stem = `${dumpStem(origin)} - ${toFilenameSafe(slug)}`;
   const contents = renderDump(origin, renderDumpBody(parseDumpBody(body)));
   try {
     const { inbox } = locateVault();

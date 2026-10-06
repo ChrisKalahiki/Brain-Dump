@@ -7,6 +7,8 @@ allowed-tools: Bash(brain-dump:*)
 
 Turn this Session into one **Dump**: the Items worth keeping a month from now, written into the Obsidian Vault's Inbox by the `brain-dump` helper. Vocabulary (Dump, Item, Learning, Decision, Rationale, Todo, Session) follows the Brain-Dump glossary.
 
+**Chat Session**: when the user runs `dump --paste` with a chat app's output, or gives a chat URL or "the open tab", the Session is a chat in Claude web, ChatGPT or Gemini. Read `chat.md` in this skill's folder and follow it instead of steps 1–2.
+
 ## 1. Pick the Items
 
 Read back over the Session and keep what would be lost otherwise:
@@ -43,7 +45,7 @@ Also write a **slug**: a 2–6 word title for the Dump, e.g. `wayfinder charting
 
 ## 3. Write the Dump
 
-Run the helper from the Session's working directory, passing the tool you are running in (`ClaudeCode` or `Codex`). In Codex, the helper writes outside the workspace, so run it with escalated permissions from the first attempt: the user approves the write once per Dump.
+Run the helper from the Session's working directory, passing the tool tag: the tool you are running in (`ClaudeCode` or `Codex`), or for a chat Session the tag `chat.md` names. In Codex, the helper writes outside the workspace, so run it with escalated permissions from the first attempt: the user approves the write once per Dump.
 
 ```bash
 brain-dump write-dump --tool <ClaudeCode|Codex> --slug "<slug>" <<'DUMP'

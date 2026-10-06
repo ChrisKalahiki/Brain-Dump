@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -56,4 +56,10 @@ export const DUMP_AT = "2026-10-05T19:40";
 
 export function writeDumpArgs(slug = "s", tool = "ClaudeCode"): string[] {
   return ["write-dump", "--tool", tool, "--slug", slug, "--at", DUMP_AT];
+}
+
+export function originLine(dumpPath: string): string | undefined {
+  return readFileSync(dumpPath, "utf8")
+    .split("\n")
+    .find((line) => line.startsWith("Session: "));
 }

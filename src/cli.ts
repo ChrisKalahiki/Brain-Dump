@@ -2,7 +2,7 @@
 import { parseArgs, type ParseArgsConfig } from "node:util";
 import { writeDump } from "./dump.ts";
 import { BrainDumpError, DumpNotWrittenError, UsageError } from "./errors.ts";
-import { detectOrigin, isToolTag, TOOL_TAGS } from "./origin.ts";
+import { detectDevOrigin, isChatTool, isToolTag, TOOL_TAGS, type Origin } from "./origin.ts";
 import { locateVault } from "./vault.ts";
 
 async function main(argv: string[]): Promise<number> {
@@ -24,6 +24,8 @@ async function runWriteDump(args: string[]): Promise<string> {
     tool: { type: "string" },
     slug: { type: "string" },
     at: { type: "string" },
+    "chat-url": { type: "string" },
+    project: { type: "string" },
   });
   if (values.tool === undefined || !isToolTag(values.tool)) {
     throw new UsageError(`--tool must be one of ${TOOL_TAGS.join(", ")}`);
@@ -31,7 +33,13 @@ async function runWriteDump(args: string[]): Promise<string> {
   if (values.slug === undefined) throw new UsageError("--slug is required");
   const at = values.at === undefined ? new Date() : new Date(values.at);
   if (Number.isNaN(at.getTime())) throw new UsageError(`--at "${values.at}" is not a date and time`);
-  const origin = detectOrigin(values.tool, process.cwd(), at);
+  const hasChatOptions = values["chat-url"] !== undefined || values.project !== undefined;
+  if (hasChatOptions && !isChatTool(values.tool)) {
+    throw new UsageError(`--chat-url and --project are only for chat tools (${TOOL_TAGS.filter(isChatTool).join(", ")})`);
+  }
+  const origin: Origin = isChatTool(values.tool)
+    ? { kind: "chat", tool: values.tool, chatUrl: values["chat-url"], project: values.project, at }
+    : detectDevOrigin(values.tool, process.cwd(), at);
   return writeDump(origin, values.slug, await Bun.stdin.text());
 }
 

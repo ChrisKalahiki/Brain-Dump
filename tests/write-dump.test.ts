@@ -114,7 +114,7 @@ ${BODY}`,
     const result = run(sandbox, ["write-dump", "--tool", "Cursor", "--slug", "s"], { stdin: BODY });
 
     // #then
-    expect([result.exitCode, result.stderr]).toEqual([2, "brain-dump: --tool must be one of ClaudeCode, Codex\n"]);
+    expect([result.exitCode, result.stderr]).toEqual([2, "brain-dump: --tool must be one of ClaudeCode, Codex, ClaudeWeb, ChatGPT, Gemini\n"]);
   });
 
   test("leaves out the branch in a repo with a detached HEAD", () => {
