@@ -17,11 +17,31 @@ Done when you hold the body exactly as pasted and a slug.
 
 ## A chat URL or "the open tab" (Claude Code only)
 
-Read the chat through Claude in Chrome: open the URL (or use the open tab) and read the whole Session, scrolling to its first message. If Claude in Chrome isn't available, ask the user to use `--paste` instead.
+Read the chat through Claude in Chrome, in a tab you open for it. If Claude in Chrome isn't available, ask the user to use `--paste` instead.
+
+**claude.ai**: the page shows only a window of messages, and clicking "Load earlier messages" repeatedly can freeze it. Read the transcript from the page's own conversation data instead, with the JavaScript tool in the chat's tab (same-origin, the user's own logged-in Session):
+
+```js
+const id = location.pathname.split('/').pop();
+const orgs = await fetch('/api/organizations').then(r => r.json());
+let convo;
+for (const o of orgs) {
+  const r = await fetch(`/api/organizations/${o.uuid}/chat_conversations/${id}?tree=True&rendering_mode=messages&render_all_tools=false`);
+  if (r.ok) { convo = await r.json(); break; }
+}
+window.__transcript = convo.chat_messages
+  .map((m, i) => `[${i} ${m.sender}]\n${m.content.filter(c => c.type === 'text').map(c => c.text).join('\n')}`)
+  .join('\n\n');
+({ messages: convo.chat_messages.length, chars: window.__transcript.length })
+```
+
+The JavaScript tool truncates long results, so read the transcript through the page text instead: replace the tab's body with one slice at a time (`document.body.innerHTML = ''`, then a `<main><pre>` holding `window.__transcript.slice(start, start + 15000)`), read it with the page-text tool, and repeat until the end. Close the tab when done. If the request fails (the endpoint is undocumented and may change), fall back to reading the page as below.
+
+**ChatGPT, Gemini, or the fallback**: read the page text, loading earlier messages until the first one is on the page.
 
 Then pick the Items and write the body and slug exactly as `SKILL.md` steps 1–2 describe, treating the chat as the Session.
 
-Done when the body covers the chat from its first message to its last. If the page would not show the start of the chat, say so to the user and suggest `--paste` for this one.
+Done when the body covers the chat from its first message to its last. If the start of the chat can't be read, say so to the user and suggest `--paste` for this one.
 
 ## Options for step 3
 
