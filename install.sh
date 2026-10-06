@@ -38,6 +38,10 @@ Manual steps (one-time):
 - Make sure ~/.local/bin is on your PATH.
 - macOS: give your terminal app access to the Documents folder
   (System Settings > Privacy & Security > Files and Folders).
+- Chat capture: paste $repo/prompts/chat-dump.md into a Claude Project's
+  instructions (or into ChatGPT / Gemini when needed), then hand its output
+  to "dump --paste".
+- "dump <chat URL>" (Claude Code only) needs the Claude in Chrome extension.
 - The Vault defaults to ~/Documents/The Vault. To use another path, put
   "vault = <path>" in ~/.config/brain-dump/config.
 EOF

@@ -1,20 +1,28 @@
 import { homedir } from "node:os";
 import { basename } from "node:path";
 
-const TOOL_NAMES = {
-  ClaudeCode: "Claude Code",
-  Codex: "Codex",
+const TOOLS = {
+  ClaudeCode: { name: "Claude Code", kind: "dev" },
+  Codex: { name: "Codex", kind: "dev" },
+  ClaudeWeb: { name: "Claude web", kind: "chat" },
+  ChatGPT: { name: "ChatGPT", kind: "chat" },
+  Gemini: { name: "Gemini", kind: "chat" },
 } as const;
 
-export type ToolTag = keyof typeof TOOL_NAMES;
+export type ToolTag = keyof typeof TOOLS;
 
-export const TOOL_TAGS = Object.keys(TOOL_NAMES) as ToolTag[];
+export const TOOL_TAGS = Object.keys(TOOLS) as ToolTag[];
 
 export function isToolTag(value: string): value is ToolTag {
-  return Object.hasOwn(TOOL_NAMES, value);
+  return Object.hasOwn(TOOLS, value);
 }
 
-export type Origin = {
+export function isChatTool(tool: ToolTag): boolean {
+  return TOOLS[tool].kind === "chat";
+}
+
+export type DevOrigin = {
+  kind: "dev";
   tool: ToolTag;
   project: string;
   location: string;
@@ -22,19 +30,41 @@ export type Origin = {
   at: Date;
 };
 
-export function detectOrigin(tool: ToolTag, cwd: string, at: Date): Origin {
+export type ChatOrigin = {
+  kind: "chat";
+  tool: ToolTag;
+  chatUrl: string | undefined;
+  project: string | undefined;
+  at: Date;
+};
+
+export type Origin = DevOrigin | ChatOrigin;
+
+export function detectDevOrigin(tool: ToolTag, cwd: string, at: Date): DevOrigin {
   const root = git(cwd, "rev-parse", "--show-toplevel") ?? cwd;
   const branch = git(cwd, "branch", "--show-current") || undefined;
-  return { tool, project: basename(root), location: root, branch, at };
+  return { kind: "dev", tool, project: basename(root), location: root, branch, at };
+}
+
+export function dumpStem(origin: Origin): string {
+  const label = origin.kind === "dev" ? origin.project : origin.tool;
+  return `${filenameStamp(origin.at)} ${label}`;
 }
 
 export function renderOriginLine(origin: Origin): string {
-  const location = `\`${abbreviateHome(origin.location)}\``;
-  const branch = origin.branch === undefined ? "" : ` @ \`${origin.branch}\``;
-  return `Session: ${TOOL_NAMES[origin.tool]} · ${location}${branch} · ${displayStamp(origin.at)} · [[${origin.project}]]`;
+  const segments = [`Session: ${TOOLS[origin.tool].name}`];
+  if (origin.kind === "dev") {
+    const branch = origin.branch === undefined ? "" : ` @ \`${origin.branch}\``;
+    segments.push(`\`${abbreviateHome(origin.location)}\`${branch}`);
+  } else if (origin.chatUrl !== undefined) {
+    segments.push(origin.chatUrl);
+  }
+  segments.push(displayStamp(origin.at));
+  if (origin.project !== undefined) segments.push(`[[${origin.project}]]`);
+  return segments.join(" · ");
 }
 
-export function filenameStamp(at: Date): string {
+function filenameStamp(at: Date): string {
   return `${datePart(at)} ${pad(at.getHours())}${pad(at.getMinutes())}`;
 }
 

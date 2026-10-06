@@ -7,6 +7,8 @@ allowed-tools: Bash(brain-dump:*)
 
 Turn this Session into one **Dump**: the Items worth keeping a month from now, written into the Obsidian Vault's Inbox by the `brain-dump` helper. Vocabulary (Dump, Item, Learning, Decision, Rationale, Todo, Session) follows the Brain-Dump glossary.
 
+**Chat Session**: when the user runs `dump --paste` with a chat app's output, or gives a chat URL or "the open tab", the Session is a chat in Claude web, ChatGPT or Gemini. Read `chat.md` in this skill's folder and follow it instead of steps 1–2.
+
 ## 1. Pick the Items
 
 Read back over the Session and keep what would be lost otherwise:
