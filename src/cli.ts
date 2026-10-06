@@ -78,11 +78,12 @@ function parseOptions<T extends ParseArgsConfig["options"]>(args: string[], opti
   }
 }
 
+// exitCode, not process.exit(): exiting immediately truncates stdout when it is a pipe.
 try {
-  process.exit(await main(process.argv.slice(2)));
+  process.exitCode = await main(process.argv.slice(2));
 } catch (error) {
   if (!(error instanceof BrainDumpError)) throw error;
   if (error instanceof DumpNotWrittenError) process.stdout.write(error.dump);
   process.stderr.write(`brain-dump: ${error.message}\n`);
-  process.exit(error instanceof UsageError ? 2 : 1);
+  process.exitCode = error instanceof UsageError ? 2 : 1;
 }

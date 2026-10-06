@@ -19,4 +19,16 @@ describe("brain-dump list-notes", () => {
       { note: "Side Projects/Talky/Updates for Talky.md", title: "Updates for Talky", folder: "Side Projects/Talky", tags: [] },
     ]);
   });
+
+  test("prints the whole list even when it is larger than a pipe buffer", () => {
+    // #given
+    const sandbox = makeSandbox();
+    for (let n = 0; n < 1200; n++) writeVaultFile(sandbox, `Research/Notes/Note number ${String(n).padStart(4, "0")}.md`, "");
+
+    // #when
+    const result = run(sandbox, ["list-notes"], { throughPipe: true });
+
+    // #then
+    expect(JSON.parse(result.stdout)).toHaveLength(1200);
+  });
 });
