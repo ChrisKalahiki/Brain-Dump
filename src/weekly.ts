@@ -4,6 +4,7 @@ import { UsageError } from "./errors.ts";
 import type { Vault } from "./vault.ts";
 
 const WEEKLY_FOLDER = join("Research", "Weekly Meetings");
+export const WEEKLY_TEMPLATE_NOTE = join("Research", "Other", "Templates", "XX-XX-XX Weekly Update.md");
 const WEEKLY_NOTE = /^(\d{2})-(\d{2})-(\d{2}) Weekly Update\.md$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
 

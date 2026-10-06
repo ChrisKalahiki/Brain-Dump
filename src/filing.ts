@@ -4,6 +4,7 @@ import { STATE_MARKS } from "./dump-body.ts";
 import { BrainDumpError, UsageError } from "./errors.ts";
 import { readDump, type StoredDump } from "./inbox.ts";
 import { readRoutes, renderRoute, ROUTES_NOTE, type Route } from "./routes.ts";
+import { WEEKLY_TEMPLATE_NOTE } from "./weekly.ts";
 import type { Vault } from "./vault.ts";
 
 /** Where lines go: a note's section, or the end of the note when `section` is absent. */
@@ -13,8 +14,11 @@ export type PlannedItem =
   | ({ index: number; outcome: "filed"; lines: string[] } & Placement)
   | { index: number; outcome: "dropped" | "skipped" };
 
+export type NoteCreation = { note: string } & ({ from: "weekly-template" } | { tags: string[] });
+
 export type FilingPlan = {
   dump: string;
+  creates?: NoteCreation[];
   items: PlannedItem[];
   inserts: (Placement & { lines: string[] })[];
   routes?: Route[];
@@ -28,7 +32,7 @@ export type FilingResult = {
 };
 
 const PLAN_SHAPE =
-  'expected {"dump": string, "items": [{"index": number, "outcome": "filed", "note": string, "section"?: string, "lines": string[]} | {"index": number, "outcome": "dropped"|"skipped"}], "inserts": [{"note": string, "section"?: string, "lines": string[]}], "routes"?: [{"key": string, "title": string}]}';
+  'expected {"dump": string, "items": [{"index": number, "outcome": "filed", "note": string, "section"?: string, "lines": string[]} | {"index": number, "outcome": "dropped"|"skipped"}], "inserts": [{"note": string, "section"?: string, "lines": string[]}], "routes"?: [{"key": string, "title": string}], "creates"?: [{"note": string, "from": "weekly-template"} | {"note": string, "tags": string[]}]}';
 const PLACEHOLDER = /^- (\[ \] ?)?$/;
 const HEADING = /^(#+) /;
 
@@ -50,6 +54,7 @@ export function applyFilingPlan(vault: Vault, plan: FilingPlan): FilingResult {
   const dump = readDump(vault, dumpPath);
   const dumpLines = markItems(dump, plan.items);
   const notes = new NoteEdits(vault);
+  for (const creation of plan.creates ?? []) notes.create(creation);
   for (const item of plan.items) if (item.outcome === "filed") notes.insert(item, item.lines);
   for (const insert of plan.inserts) notes.insert(insert, insert.lines);
   const newRoutes = unknownRoutes(vault, plan.routes ?? []);
@@ -95,10 +100,21 @@ function markItems(dump: StoredDump, planned: PlannedItem[]): string[] {
   return lines;
 }
 
+type EditedNote = { lines: string[]; eol: string; isNew: boolean };
+
 class NoteEdits {
-  private readonly notes = new Map<string, { lines: string[]; eol: string }>();
+  private readonly notes = new Map<string, EditedNote>();
 
   constructor(private readonly vault: Vault) {}
+
+  create(creation: NoteCreation): void {
+    const path = resolveInVault(this.vault, creation.note);
+    if (!path.endsWith(".md")) reject(`${creation.note} is not a Markdown note`);
+    if (existsSync(path) || this.notes.has(path)) reject(`${creation.note} already exists`);
+    const contents = "from" in creation ? this.weeklyTemplate() : renderTagsFrontmatter(creation.tags);
+    const eol = contents.includes("\r\n") ? "\r\n" : "\n";
+    this.notes.set(path, { lines: contents.split(eol), eol, isNew: true });
+  }
 
   insert({ note, section }: Placement, block: string[], { create = false } = {}): void {
     const { lines } = this.load(note, create);
@@ -122,10 +138,23 @@ class NoteEdits {
   }
 
   write(): void {
-    for (const [path, { lines, eol }] of this.notes) replaceFile(path, lines.join(eol));
+    for (const [path, { lines, eol, isNew }] of this.notes) {
+      if (isNew) {
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, lines.join(eol), { flag: "wx" });
+      } else {
+        replaceFile(path, lines.join(eol));
+      }
+    }
   }
 
-  private load(note: string, create: boolean): { lines: string[]; eol: string } {
+  private weeklyTemplate(): string {
+    const path = join(this.vault.root, WEEKLY_TEMPLATE_NOTE);
+    if (!existsSync(path)) reject(`the Weekly Note template ${WEEKLY_TEMPLATE_NOTE} does not exist`);
+    return readFileSync(path, "utf8");
+  }
+
+  private load(note: string, create: boolean): EditedNote {
     const path = resolveInVault(this.vault, note);
     const loaded = this.notes.get(path);
     if (loaded) return loaded;
@@ -133,10 +162,14 @@ class NoteEdits {
     if (!exists && !create) reject(`${note} does not exist`);
     const contents = exists ? readFileSync(path, "utf8") : "";
     const eol = contents.includes("\r\n") ? "\r\n" : "\n";
-    const fresh = { lines: contents.split(eol), eol };
+    const fresh = { lines: contents.split(eol), eol, isNew: !exists };
     this.notes.set(path, fresh);
     return fresh;
   }
+}
+
+function renderTagsFrontmatter(tags: string[]): string {
+  return tags.length === 0 ? "" : `---\ntags:\n${tags.map((tag) => `  - ${tag}\n`).join("")}---\n`;
 }
 
 function isHeading(line: string, section: string): boolean {
@@ -163,8 +196,15 @@ function resolveInVault(vault: Vault, relativePath: string): string {
 
 function isFilingPlan(value: unknown): value is FilingPlan {
   if (!isRecord(value) || typeof value.dump !== "string") return false;
+  const createsOk = value.creates === undefined || (Array.isArray(value.creates) && value.creates.every(isNoteCreation));
   const routesOk = value.routes === undefined || (Array.isArray(value.routes) && value.routes.every(isRoute));
-  return Array.isArray(value.items) && value.items.every(isPlannedItem) && Array.isArray(value.inserts) && value.inserts.every(hasPlacedLines) && routesOk;
+  return Array.isArray(value.items) && value.items.every(isPlannedItem) && Array.isArray(value.inserts) && value.inserts.every(hasPlacedLines) && routesOk && createsOk;
+}
+
+function isNoteCreation(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.note !== "string") return false;
+  if (value.from !== undefined) return value.from === "weekly-template" && value.tags === undefined;
+  return Array.isArray(value.tags) && value.tags.every((tag) => typeof tag === "string" && /^[^\s#]+$/.test(tag));
 }
 
 function isPlannedItem(value: unknown): boolean {
