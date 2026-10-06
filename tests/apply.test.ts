@@ -194,7 +194,7 @@ describe("brain-dump apply", () => {
   test("keeps a multi-line Item together when it fills a placeholder that other bullets follow", () => {
     // #given
     const sandbox = makeSandbox();
-    writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Todos\n- [ ] #todo A.\n"));
+    writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Decisions\n- [ ] Decision.\n\t- Why: reason.\n"));
     writeVaultFile(sandbox, WEEK, "# Notes:\n- \n- later bullet\n\n---\n");
     const lines = ["- Decision.", "\t- Why: reason."];
 
@@ -205,12 +205,26 @@ describe("brain-dump apply", () => {
     expect(readVaultFile(sandbox, WEEK)).toBe("# Notes:\n- Decision.\n\t- Why: reason.\n- later bullet\n\n---\n");
   });
 
-  test("appends new Routes to the Routes note, creating it when missing", () => {
+  test("appends to a note that has no trailing newline", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const topic = "Research/Main Notes/Agent Skills.md";
+    writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Learnings\n- [ ] A.\n"));
+    writeVaultFile(sandbox, topic, "# Agent Skills\n- existing");
+
+    // #when
+    apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "filed", note: topic, lines: ["- A."] }], inserts: [] });
+
+    // #then
+    expect(readVaultFile(sandbox, topic)).toBe("# Agent Skills\n- existing\n- A.");
+  });
+
+  test("appends new Routes to the Routes note, creating it when missing and skipping ones it has", () => {
     // #given
     const sandbox = makeSandbox();
     writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Learnings\n- [ ] A.\n- [ ] B.\n"));
-    const plan = { dump: DUMP, items: [{ index: 1, outcome: "skipped" }], inserts: [], routes: [{ key: "Brain-Dump", note: "Brain-Dump" }] };
-    const second = { ...plan, items: [{ index: 2, outcome: "skipped" }], routes: [{ key: "context-bridge", note: "Context Bridge MCP Main Note" }] };
+    const plan = { dump: DUMP, items: [{ index: 1, outcome: "skipped" }], inserts: [], routes: [{ key: "Brain-Dump", title: "Brain-Dump" }] };
+    const second = { ...plan, items: [{ index: 2, outcome: "skipped" }], routes: [{ key: "Brain-Dump", title: "Brain-Dump" }, { key: "context-bridge", title: "Context Bridge MCP Main Note" }] };
 
     // #when
     apply(sandbox, plan);
@@ -220,6 +234,27 @@ describe("brain-dump apply", () => {
     expect(readVaultFile(sandbox, "Inbox/Filing Routes.md")).toBe(
       "Brain-Dump → [[Brain-Dump]]\ncontext-bridge → [[Context Bridge MCP Main Note]]\n",
     );
+  });
+
+  describe("rejects a malformed plan", () => {
+    const cases: [string, unknown][] = [
+      ["a filed Item with no lines", { dump: DUMP, items: [{ index: 1, outcome: "filed", note: WEEK, lines: [] }], inserts: [] }],
+      ["a Route with a blank key", { dump: DUMP, items: [], inserts: [], routes: [{ key: " ", title: "X" }] }],
+      ["routes that are not a list", { dump: DUMP, items: [], inserts: [], routes: { key: "a", title: "b" } }],
+    ];
+
+    for (const [name, plan] of cases) {
+      test(name, () => {
+        // #given
+        const sandbox = makeSandbox();
+
+        // #when
+        const result = apply(sandbox, plan);
+
+        // #then
+        expect(result.exitCode).toBe(2);
+      });
+    }
   });
 
   test("rejects stdin that is not JSON", () => {

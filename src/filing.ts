@@ -3,7 +3,7 @@ import { basename, dirname, isAbsolute, join, normalize, relative } from "node:p
 import { STATE_MARKS } from "./dump-body.ts";
 import { BrainDumpError, UsageError } from "./errors.ts";
 import { readDump, type StoredDump } from "./inbox.ts";
-import { renderRoute, ROUTES_NOTE, type Route } from "./routes.ts";
+import { readRoutes, renderRoute, ROUTES_NOTE, type Route } from "./routes.ts";
 import type { Vault } from "./vault.ts";
 
 /** Where lines go: a note's section, or the end of the note when `section` is absent. */
@@ -28,7 +28,7 @@ export type FilingResult = {
 };
 
 const PLAN_SHAPE =
-  'expected {"dump": string, "items": [{"index": number, "outcome": "filed", "note": string, "section"?: string, "lines": string[]} | {"index": number, "outcome": "dropped"|"skipped"}], "inserts": [{"note": string, "section"?: string, "lines": string[]}], "routes"?: [{"key": string, "note": string}]}';
+  'expected {"dump": string, "items": [{"index": number, "outcome": "filed", "note": string, "section"?: string, "lines": string[]} | {"index": number, "outcome": "dropped"|"skipped"}], "inserts": [{"note": string, "section"?: string, "lines": string[]}], "routes"?: [{"key": string, "title": string}]}';
 const PLACEHOLDER = /^- (\[ \] ?)?$/;
 const HEADING = /^(#+) /;
 
@@ -52,7 +52,8 @@ export function applyFilingPlan(vault: Vault, plan: FilingPlan): FilingResult {
   const notes = new NoteEdits(vault);
   for (const item of plan.items) if (item.outcome === "filed") notes.insert(item, item.lines);
   for (const insert of plan.inserts) notes.insert(insert, insert.lines);
-  if (plan.routes?.length) notes.insert({ note: ROUTES_NOTE }, plan.routes.map(renderRoute), { create: true });
+  const newRoutes = unknownRoutes(vault, plan.routes ?? []);
+  if (newRoutes.length > 0) notes.insert({ note: ROUTES_NOTE }, newRoutes.map(renderRoute), { create: true });
 
   const closed = new Set(plan.items.filter(({ outcome }) => outcome !== "skipped").map(({ index }) => index));
   const finished = dump.items.every((item) => item.state !== "open" || closed.has(item.index));
@@ -68,6 +69,16 @@ export function applyFilingPlan(vault: Vault, plan: FilingPlan): FilingResult {
   }
   const count = (outcome: PlannedItem["outcome"]): number => plan.items.filter((item) => item.outcome === outcome).length;
   return { filed: count("filed"), dropped: count("dropped"), skipped: count("skipped"), movedTo: finished ? relative(vault.root, filedPath) : null };
+}
+
+function unknownRoutes(vault: Vault, routes: Route[]): Route[] {
+  const known = new Set(readRoutes(vault).map(renderRoute));
+  return routes.filter((route) => {
+    const line = renderRoute(route);
+    if (known.has(line)) return false;
+    known.add(line);
+    return true;
+  });
 }
 
 function markItems(dump: StoredDump, planned: PlannedItem[]): string[] {
@@ -118,8 +129,9 @@ class NoteEdits {
     const path = resolveInVault(this.vault, note);
     const loaded = this.notes.get(path);
     if (loaded) return loaded;
-    if (!existsSync(path) && !create) reject(`${note} does not exist`);
-    const contents = existsSync(path) ? readFileSync(path, "utf8") : "";
+    const exists = existsSync(path);
+    if (!exists && !create) reject(`${note} does not exist`);
+    const contents = exists ? readFileSync(path, "utf8") : "";
     const eol = contents.includes("\r\n") ? "\r\n" : "\n";
     const fresh = { lines: contents.split(eol), eol };
     this.notes.set(path, fresh);
@@ -152,16 +164,16 @@ function resolveInVault(vault: Vault, relativePath: string): string {
 function isFilingPlan(value: unknown): value is FilingPlan {
   if (!isRecord(value) || typeof value.dump !== "string") return false;
   const routesOk = value.routes === undefined || (Array.isArray(value.routes) && value.routes.every(isRoute));
-  return Array.isArray(value.items) && value.items.every(isPlannedItem) && Array.isArray(value.inserts) && value.inserts.every(isInsert) && routesOk;
+  return Array.isArray(value.items) && value.items.every(isPlannedItem) && Array.isArray(value.inserts) && value.inserts.every(hasPlacedLines) && routesOk;
 }
 
 function isPlannedItem(value: unknown): boolean {
   if (!isRecord(value) || !Number.isInteger(value.index)) return false;
   if (value.outcome === "dropped" || value.outcome === "skipped") return true;
-  return value.outcome === "filed" && isInsert(value);
+  return value.outcome === "filed" && hasPlacedLines(value);
 }
 
-function isInsert(value: unknown): boolean {
+function hasPlacedLines(value: unknown): boolean {
   return isRecord(value) && isPlacement(value) && isLines(value.lines);
 }
 
@@ -174,7 +186,7 @@ function isLines(value: unknown): boolean {
 }
 
 function isRoute(value: unknown): boolean {
-  return isRecord(value) && typeof value.key === "string" && value.key.trim() !== "" && typeof value.note === "string" && value.note.trim() !== "";
+  return isRecord(value) && typeof value.key === "string" && value.key.trim() !== "" && typeof value.title === "string" && value.title.trim() !== "";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

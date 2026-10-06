@@ -16,8 +16,8 @@ describe("brain-dump routes", () => {
 
     // #then
     expect(JSON.parse(result.stdout)).toEqual([
-      { key: "context-bridge", note: "Context Bridge MCP Main Note" },
-      { key: "Agent Skills", note: "Agent Skills" },
+      { key: "context-bridge", title: "Context Bridge MCP Main Note" },
+      { key: "Agent Skills", title: "Agent Skills" },
     ]);
   });
 
@@ -30,5 +30,17 @@ describe("brain-dump routes", () => {
 
     // #then
     expect(JSON.parse(result.stdout)).toEqual([]);
+  });
+
+  test("reads a Route written as a bullet", () => {
+    // #given
+    const sandbox = makeSandbox();
+    writeVaultFile(sandbox, "Inbox/Filing Routes.md", "- Brain-Dump → [[Brain-Dump]]\n");
+
+    // #when
+    const result = run(sandbox, ["routes"]);
+
+    // #then
+    expect(JSON.parse(result.stdout)).toEqual([{ key: "Brain-Dump", title: "Brain-Dump" }]);
   });
 });

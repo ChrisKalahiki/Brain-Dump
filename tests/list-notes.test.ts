@@ -31,4 +31,17 @@ describe("brain-dump list-notes", () => {
     // #then
     expect(JSON.parse(result.stdout)).toHaveLength(1200);
   });
+
+  test("reads no tags from frontmatter that is never closed or has an empty tags list", () => {
+    // #given
+    const sandbox = makeSandbox();
+    writeVaultFile(sandbox, "A.md", "---\ntags:\n  - Open\n# no closing fence\n");
+    writeVaultFile(sandbox, "B.md", "---\ntags:\naliases:\n  - Bee\n---\n");
+
+    // #when
+    const result = run(sandbox, ["list-notes"]);
+
+    // #then
+    expect(JSON.parse(result.stdout).map((note: { tags: string[] }) => note.tags)).toEqual([[], []]);
+  });
 });

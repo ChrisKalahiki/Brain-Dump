@@ -13,7 +13,7 @@ Run these once per run:
 
 - `brain-dump list-dumps`: each unfiled Dump's `file`, `title`, `date`, `project`, and `items` (`index`, `kind`, `text`, `rationale`, `state`). Only `open` Items are filed.
 - `brain-dump list-notes`: every note's `note` (path), `title`, `folder` and `tags`.
-- `brain-dump routes`: the user's **Routes**, `{key, note}` pairs mapping a project or subject to the note it belongs in.
+- `brain-dump routes`: the user's **Routes**, `{key, title}` pairs mapping a project or subject to the title of the note it belongs in.
 
 If there are no Dumps, tell the user the Inbox is clear. Done.
 
@@ -87,12 +87,12 @@ brain-dump apply <<'PLAN'
   "inserts": [
     { "note": "<the Session's week note>", "section": "# Notes:", "lines": ["- Filed [[<title>|<project> <slug>]]"] }
   ],
-  "routes": [{ "key": "<project or subject>", "note": "<note title>" }]
+  "routes": [{ "key": "<project or subject>", "title": "<note title>" }]
 }
 PLAN
 ```
 
-Every open Item appears once in `items`, in table order: `filed` with its note path, its `section` only for Weekly Note sections, and the exact lines from its row; `dropped` for a `drop`; `skipped` for everything else. `inserts` holds only the link line, when the plan has one; `routes` only the Routes the user accepted.
+Every open Item appears once in `items`, in table order: `filed` with its note path, its `section` only for Weekly Note sections, and the exact lines from its row; `dropped` for a `drop`; `skipped` for everything else. `inserts` holds only the link line, when the plan has one; `routes` only the Routes the user accepted (ones already in the Routes note are skipped).
 
 - **Exit 0**: it prints `filed`, `dropped`, `skipped` and `movedTo` (set when the Dump is finished and moved to `Inbox/Filed/`). Report that, then go to the next Dump.
 - **`Filing Plan rejected: …`**: nothing was written. Tell the user the reason, then offer to adjust the plan or skip this Dump.

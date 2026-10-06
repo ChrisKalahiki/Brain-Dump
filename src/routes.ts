@@ -3,11 +3,12 @@ import { join } from "node:path";
 import type { Vault } from "./vault.ts";
 
 export const ROUTES_NOTE = join("Inbox", "Filing Routes.md");
-const ROUTE = /^(.+?)\s*→\s*\[\[([^\]|]+)(?:\|[^\]]*)?\]\]\s*$/;
+const ROUTE = /^(?:[-*]\s+)?(.+?)\s*→\s*\[\[([^\]|]+)(?:\|[^\]]*)?\]\]\s*$/;
 
+/** A remembered mapping from a project or subject (`key`) to the title of the note Filing should target. */
 export type Route = {
   key: string;
-  note: string;
+  title: string;
 };
 
 export function readRoutes(vault: Vault): Route[] {
@@ -17,10 +18,10 @@ export function readRoutes(vault: Vault): Route[] {
     .split(/\r?\n/)
     .flatMap((line) => {
       const match = ROUTE.exec(line.trim());
-      return match?.[1] && match[2] ? [{ key: match[1], note: match[2] }] : [];
+      return match?.[1] && match[2] ? [{ key: match[1], title: match[2] }] : [];
     });
 }
 
-export function renderRoute({ key, note }: Route): string {
-  return `${key} → [[${note}]]`;
+export function renderRoute({ key, title }: Route): string {
+  return `${key} → [[${title}]]`;
 }
