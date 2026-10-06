@@ -15,10 +15,13 @@ If the list is empty, tell the user the Inbox is clear. Done.
 
 ## 2. Find the Weekly Notes
 
-- **This week's** (for Todos): `brain-dump week-note --date <today, YYYY-MM-DD>`.
-- **The Session's week** (for the link line): `brain-dump week-note --date <the Dump's date>`.
+- **This week's** (for Todos): `brain-dump weekly-note --date <today, YYYY-MM-DD>`.
+- **The Session's week** (for the link line): `brain-dump weekly-note --date <the Dump's date>`.
 
-Each prints `{"exists": …, "note": …}`. A Weekly Note that doesn't exist yet can't take lines in this version: Items bound for it stay open.
+Each prints `{"exists": …, "note": …}`. A Weekly Note that doesn't exist yet can't take lines in this version:
+
+- This week's note missing: Todos stay open (show them as "no Weekly Note yet").
+- The Session's week note missing: the whole Dump waits, every Item open, so its link line is never lost. Say so and move to the next Dump.
 
 ## 3. Show the Filing Plan
 
@@ -31,7 +34,7 @@ One numbered table per Dump, one row per open Item, numbered by the Item's `inde
 
 - **Todo** → this week's Weekly Note, section `# To-Do:`, as `- [ ] <text> #todo` (the Item's text with its `#todo` moved to the end).
 - **Learning / Decision** → "not routable yet", stays open.
-- **Link line**, when at least one Item is filed → the Session's week, section `# Notes:`, as `- Filed [[<title>|<project> <short title>]]`. Show it as a row marked `+`.
+- **Link line** → the Session's week, section `# Notes:`, as `- Filed [[<title>|<project> <slug>]]`, where `<slug>` is the part of the title after ` - `. Add it only when this plan finishes the Dump (no Item left open) and at least one of its Items is filed, now or in an earlier run; that way each Dump gets exactly one. Show it as a row marked `+`.
 
 Below the table, say Filing is append-only and list the replies: `ok` · `skip N` · `drop N` · `cancel` (combinable, e.g. `drop 2, skip 3`).
 
@@ -44,7 +47,7 @@ Done when the plan is on screen and nothing has been written.
 - `cancel`: write nothing, stop the whole run.
 - `ok`: apply the plan as it stands.
 
-After a `skip` or `drop`, show the updated plan and wait for `ok`.
+After a `skip` or `drop`, show the updated plan (the link-line rule may change) and wait for `ok`.
 
 ## 5. Apply
 
@@ -54,16 +57,19 @@ Build the plan as JSON and pass it on stdin:
 brain-dump apply <<'PLAN'
 {
   "dump": "<file>",
-  "items": [{ "index": 4, "outcome": "filed" }, { "index": 2, "outcome": "dropped" }, { "index": 1, "outcome": "skipped" }],
+  "items": [
+    { "index": 4, "outcome": "filed", "note": "<this week's note>", "section": "# To-Do:", "line": "- [ ] Ship the file skill. #todo" },
+    { "index": 2, "outcome": "dropped" },
+    { "index": 1, "outcome": "skipped" }
+  ],
   "inserts": [
-    { "note": "<this week's note>", "section": "# To-Do:", "lines": ["- [ ] Ship the file skill. #todo"] },
-    { "note": "<the Session's week note>", "section": "# Notes:", "lines": ["- Filed [[<title>|<project> <short title>]]"] }
+    { "note": "<the Session's week note>", "section": "# Notes:", "lines": ["- Filed [[<title>|<project> <slug>]]"] }
   ]
 }
 PLAN
 ```
 
-Every open Item appears once in `items`: `filed` for a row with a destination, `dropped` for a `drop`, `skipped` for everything else. Lines bound for the same note and section go in one insert, in table order.
+Every open Item appears once in `items`, in table order: `filed` (with the note, section and exact line from its row) for a row with a destination, `dropped` for a `drop`, `skipped` for everything else. `inserts` holds only the link line, when the plan has one.
 
 - **Exit 0**: it prints `filed`, `dropped`, `skipped` and `movedTo` (set when the Dump is finished and moved to `Inbox/Filed/`). Report that, then go to the next Dump.
 - **`Filing Plan rejected: …`**: nothing was written. Tell the user the reason, then offer to adjust the plan or skip this Dump.

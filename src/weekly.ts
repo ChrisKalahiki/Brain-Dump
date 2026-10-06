@@ -3,16 +3,16 @@ import { join } from "node:path";
 import { UsageError } from "./errors.ts";
 import type { Vault } from "./vault.ts";
 
-export const WEEKLY_FOLDER = join("Research", "Weekly Meetings");
+const WEEKLY_FOLDER = join("Research", "Weekly Meetings");
 const WEEKLY_NOTE = /^(\d{2})-(\d{2})-(\d{2}) Weekly Update\.md$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export type WeekNote = {
+export type WeeklyNote = {
   exists: boolean;
   note: string;
 };
 
-export function findWeekNote(vault: Vault, isoDate: string): WeekNote {
+export function findWeeklyNote(vault: Vault, isoDate: string): WeeklyNote {
   const target = parseIsoDay(isoDate);
   const folder = join(vault.root, WEEKLY_FOLDER);
   const candidates = existsSync(folder) ? readdirSync(folder).flatMap(datedNote) : [];
@@ -20,7 +20,7 @@ export function findWeekNote(vault: Vault, isoDate: string): WeekNote {
     .filter(({ day }) => day >= target - 6 && day <= target)
     .sort((a, b) => b.day - a.day)[0];
   if (latest) return { exists: true, note: join(WEEKLY_FOLDER, latest.name) };
-  return { exists: false, note: join(WEEKLY_FOLDER, weekNoteName(mondayOf(target))) };
+  return { exists: false, note: join(WEEKLY_FOLDER, weeklyNoteName(mondayOf(target))) };
 }
 
 function datedNote(name: string): { name: string; day: number }[] {
@@ -38,7 +38,7 @@ function mondayOf(day: number): number {
   return day - ((weekday + 6) % 7);
 }
 
-function weekNoteName(day: number): string {
+function weeklyNoteName(day: number): string {
   const date = new Date(day * DAY_MS);
   const pad = (n: number): string => String(n).padStart(2, "0");
   return `${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}-${pad(date.getUTCFullYear() % 100)} Weekly Update.md`;

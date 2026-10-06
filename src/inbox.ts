@@ -1,15 +1,17 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { basename, join, relative } from "node:path";
 import { parseDumpBody, SECTIONS, type ItemState, type SectionName } from "./dump-body.ts";
 import { BrainDumpError } from "./errors.ts";
 import type { Vault } from "./vault.ts";
 
-const ITEM_KINDS: Record<SectionName, string> = { Learnings: "Learning", Decisions: "Decision", Todos: "Todo" };
+export type ItemKind = "Learning" | "Decision" | "Todo";
+
+const ITEM_KINDS: Record<SectionName, ItemKind> = { Learnings: "Learning", Decisions: "Decision", Todos: "Todo" };
 const DUMP_FILENAME = /^(\d{4}-\d{2}-\d{2}) \d{4} (.+?) - .+\.md$/;
 
 export type StoredItem = {
   index: number;
-  kind: string;
+  kind: ItemKind;
   text: string;
   rationale: string | null;
   state: ItemState;
@@ -23,6 +25,7 @@ export type StoredDump = {
   project: string;
   items: StoredItem[];
   lines: string[];
+  eol: string;
 };
 
 export function listUnfiledDumps(vault: Vault): StoredDump[] {
@@ -34,10 +37,12 @@ export function listUnfiledDumps(vault: Vault): StoredDump[] {
 }
 
 export function readDump(vault: Vault, path: string): StoredDump {
-  const name = path.slice(path.lastIndexOf("/") + 1);
+  const name = basename(path);
   const match = DUMP_FILENAME.exec(name);
   if (!match?.[1] || !match[2]) throw new BrainDumpError(`${name} is not a Dump`);
-  const lines = readFileSync(path, "utf8").split(/\r?\n/);
+  const contents = readFileSync(path, "utf8");
+  const eol = contents.includes("\r\n") ? "\r\n" : "\n";
+  const lines = contents.split(eol);
   const bodyStart = lines.findIndex((line) => line.startsWith("## "));
   if (bodyStart === -1) throw new BrainDumpError(`${name} has no Items`);
   const body = parseDumpBody(lines.slice(bodyStart).join("\n"), { stored: true });
@@ -52,11 +57,11 @@ export function readDump(vault: Vault, path: string): StoredDump {
       line: bodyStart + item.line,
     })),
   );
-  return { file: relative(vault.root, path), title: name.slice(0, -3), date: match[1], project: match[2], items, lines };
+  return { file: relative(vault.root, path), title: name.slice(0, -3), date: match[1], project: match[2], items, lines, eol };
 }
 
-export type DumpSummary = Omit<StoredDump, "lines" | "items"> & { items: Omit<StoredItem, "line">[] };
+export type DumpSummary = Omit<StoredDump, "lines" | "items" | "eol"> & { items: Omit<StoredItem, "line">[] };
 
-export function summarize({ lines, items, ...dump }: StoredDump): DumpSummary {
+export function summarize({ lines, items, eol, ...dump }: StoredDump): DumpSummary {
   return { ...dump, items: items.map(({ line, ...item }) => item) };
 }

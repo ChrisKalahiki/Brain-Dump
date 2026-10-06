@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { dumpFile, makeSandbox, run, writeVaultFile } from "./harness.ts";
+import { DEV_ORIGIN as ORIGIN, dumpFile, makeSandbox, run, writeVaultFile } from "./harness.ts";
 
-const ORIGIN = "Session: Claude Code · `~/Projects/Brain-Dump` @ `main` · 2026-10-05 19:40 · [[Brain-Dump]]";
 
 describe("brain-dump list-dumps", () => {
   test("lists a Dump's Items with their kind, text, Rationale and state", () => {
@@ -59,5 +58,16 @@ describe("brain-dump list-dumps", () => {
       "Inbox/2026-10-04 0900 A - older.md",
       "Inbox/2026-10-06 0900 B - newer.md",
     ]);
+  });
+
+  test("prints an empty list when the Inbox has no Dumps", () => {
+    // #given
+    const sandbox = makeSandbox();
+
+    // #when
+    const result = run(sandbox, ["list-dumps"]);
+
+    // #then
+    expect(JSON.parse(result.stdout)).toEqual([]);
   });
 });

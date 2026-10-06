@@ -104,3 +104,5 @@ tags:
 # Key Takeaways
 - 
 `;
+
+export const DEV_ORIGIN = "Session: Claude Code · `~/Projects/Brain-Dump` @ `main` · 2026-10-05 19:40 · [[Brain-Dump]]";

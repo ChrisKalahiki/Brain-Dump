@@ -15,9 +15,16 @@ export type Item = {
 
 export type DumpBody = Map<SectionName, Item[]>;
 
+export const STATE_MARKS: Record<ItemState, string> = { open: " ", filed: "x", dropped: "-" };
+
 const OPEN_ITEM = /^- \[( )\] (.+)$/;
 const STORED_ITEM = /^- \[([ x-])\] (.+)$/;
-const STATES: Record<string, ItemState> = { " ": "open", x: "filed", "-": "dropped" };
+
+function stateOf(mark: string): ItemState {
+  const state = (Object.keys(STATE_MARKS) as ItemState[]).find((candidate) => STATE_MARKS[candidate] === mark);
+  if (state === undefined) invalid(`unknown Item mark "[${mark}]"`);
+  return state;
+}
 const RATIONALE_LINE = /^(?:\t| {2,})- Why: (.+)$/;
 
 /** Parses a Dump body; `stored` also accepts Items already filed `[x]` or dropped `[-]`. */
@@ -43,7 +50,7 @@ export function parseDumpBody(text: string, { stored = false } = {}): DumpBody {
     }
     const item = itemPattern.exec(line);
     if (item?.[1] && item[2] && items) {
-      items.push({ text: item[2], rationale: undefined, state: STATES[item[1]] ?? "open", line: index });
+      items.push({ text: item[2], rationale: undefined, state: stateOf(item[1]), line: index });
       continue;
     }
     const rationale = RATIONALE_LINE.exec(line);

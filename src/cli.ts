@@ -6,7 +6,7 @@ import { detectDevOrigin, isChatTool, isToolTag, TOOL_TAGS, type Origin } from "
 import { applyFilingPlan, parseFilingPlan } from "./filing.ts";
 import { listUnfiledDumps, summarize } from "./inbox.ts";
 import { locateVault } from "./vault.ts";
-import { findWeekNote } from "./weekly.ts";
+import { findWeeklyNote } from "./weekly.ts";
 
 async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
@@ -20,10 +20,10 @@ async function main(argv: string[]): Promise<number> {
     case "list-dumps":
       writeJson(listUnfiledDumps(locateVault()).map(summarize));
       return 0;
-    case "week-note": {
+    case "weekly-note": {
       const { date } = parseOptions(rest, { date: { type: "string" } });
       if (date === undefined) throw new UsageError("--date is required");
-      writeJson(findWeekNote(locateVault(), date));
+      writeJson(findWeeklyNote(locateVault(), date));
       return 0;
     }
     case "apply":

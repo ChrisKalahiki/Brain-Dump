@@ -3,7 +3,7 @@ import { makeSandbox, run, writeVaultFile } from "./harness.ts";
 
 const WEEKLY = "Research/Weekly Meetings";
 
-describe("brain-dump week-note", () => {
+describe("brain-dump weekly-note", () => {
   test("finds the latest Weekly Note dated within the 7 days up to the date, even one made on a Tuesday", () => {
     // #given
     const sandbox = makeSandbox();
@@ -12,7 +12,7 @@ describe("brain-dump week-note", () => {
     writeVaultFile(sandbox, `${WEEKLY}/10-09-26 Weekly Update.md`, "");
 
     // #when
-    const result = run(sandbox, ["week-note", "--date", "2026-10-08"]);
+    const result = run(sandbox, ["weekly-note", "--date", "2026-10-08"]);
 
     // #then
     expect(JSON.parse(result.stdout)).toEqual({ exists: true, note: `${WEEKLY}/10-06-26 Weekly Update.md` });
@@ -24,9 +24,20 @@ describe("brain-dump week-note", () => {
     writeVaultFile(sandbox, `${WEEKLY}/10-05-26 Weekly Update.md`, "");
 
     // #when
-    const result = run(sandbox, ["week-note", "--date", "2026-10-14"]);
+    const result = run(sandbox, ["weekly-note", "--date", "2026-10-14"]);
 
     // #then
     expect(JSON.parse(result.stdout)).toEqual({ exists: false, note: `${WEEKLY}/10-12-26 Weekly Update.md` });
+  });
+
+  test("rejects a date that is not YYYY-MM-DD", () => {
+    // #given
+    const sandbox = makeSandbox();
+
+    // #when
+    const result = run(sandbox, ["weekly-note", "--date", "10/08/26"]);
+
+    // #then
+    expect([result.exitCode, result.stderr]).toEqual([2, 'brain-dump: --date "10/08/26" is not a YYYY-MM-DD date\n']);
   });
 });
