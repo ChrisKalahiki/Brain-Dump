@@ -12,7 +12,7 @@ function apply(sandbox: Sandbox, plan: unknown) {
 }
 
 function fileTodo(index: number, line: string, note = WEEK) {
-  return { index, outcome: "filed", note, section: "# To-Do:", line };
+  return { index, outcome: "filed", note, section: "# To-Do:", lines: [line] };
 }
 
 describe("brain-dump apply", () => {
@@ -174,6 +174,52 @@ describe("brain-dump apply", () => {
 
     // #then
     expect(result.exitCode).toBe(2);
+  });
+
+  test("appends a filed Learning with its backlink at the end of a Topic Note, without a section", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const topic = "Research/Main Notes/Agent Skills.md";
+    writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Learnings\n- [ ] Codex reads ~/.agents/skills.\n"));
+    writeVaultFile(sandbox, topic, "---\ntags:\n  - LLMs\n---\n# Agent Skills\n- existing\n\n");
+    const lines = ["- Codex reads ~/.agents/skills.", "\t- From [[2026-10-05 1940 Brain-Dump - filing|dump 10-05-26]]"];
+
+    // #when
+    apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "filed", note: topic, lines }], inserts: [] });
+
+    // #then
+    expect(readVaultFile(sandbox, topic)).toBe(`---\ntags:\n  - LLMs\n---\n# Agent Skills\n- existing\n${lines.join("\n")}\n\n`);
+  });
+
+  test("keeps a multi-line Item together when it fills a placeholder that other bullets follow", () => {
+    // #given
+    const sandbox = makeSandbox();
+    writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Todos\n- [ ] #todo A.\n"));
+    writeVaultFile(sandbox, WEEK, "# Notes:\n- \n- later bullet\n\n---\n");
+    const lines = ["- Decision.", "\t- Why: reason."];
+
+    // #when
+    apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "filed", note: WEEK, section: "# Notes:", lines }], inserts: [] });
+
+    // #then
+    expect(readVaultFile(sandbox, WEEK)).toBe("# Notes:\n- Decision.\n\t- Why: reason.\n- later bullet\n\n---\n");
+  });
+
+  test("appends new Routes to the Routes note, creating it when missing", () => {
+    // #given
+    const sandbox = makeSandbox();
+    writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Learnings\n- [ ] A.\n- [ ] B.\n"));
+    const plan = { dump: DUMP, items: [{ index: 1, outcome: "skipped" }], inserts: [], routes: [{ key: "Brain-Dump", note: "Brain-Dump" }] };
+    const second = { ...plan, items: [{ index: 2, outcome: "skipped" }], routes: [{ key: "context-bridge", note: "Context Bridge MCP Main Note" }] };
+
+    // #when
+    apply(sandbox, plan);
+    apply(sandbox, second);
+
+    // #then
+    expect(readVaultFile(sandbox, "Inbox/Filing Routes.md")).toBe(
+      "Brain-Dump → [[Brain-Dump]]\ncontext-bridge → [[Context Bridge MCP Main Note]]\n",
+    );
   });
 
   test("rejects stdin that is not JSON", () => {

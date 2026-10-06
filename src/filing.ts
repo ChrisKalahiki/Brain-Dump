@@ -3,18 +3,21 @@ import { basename, dirname, isAbsolute, join, normalize, relative } from "node:p
 import { STATE_MARKS } from "./dump-body.ts";
 import { BrainDumpError, UsageError } from "./errors.ts";
 import { readDump, type StoredDump } from "./inbox.ts";
+import { renderRoute, ROUTES_NOTE, type Route } from "./routes.ts";
 import type { Vault } from "./vault.ts";
 
-type Placement = { note: string; section: string };
+/** Where lines go: a note's section, or the end of the note when `section` is absent. */
+type Placement = { note: string; section?: string };
 
 export type PlannedItem =
-  | ({ index: number; outcome: "filed"; line: string } & Placement)
+  | ({ index: number; outcome: "filed"; lines: string[] } & Placement)
   | { index: number; outcome: "dropped" | "skipped" };
 
 export type FilingPlan = {
   dump: string;
   items: PlannedItem[];
   inserts: (Placement & { lines: string[] })[];
+  routes?: Route[];
 };
 
 export type FilingResult = {
@@ -25,7 +28,7 @@ export type FilingResult = {
 };
 
 const PLAN_SHAPE =
-  'expected {"dump": string, "items": [{"index": number, "outcome": "filed", "note": string, "section": string, "line": string} | {"index": number, "outcome": "dropped"|"skipped"}], "inserts": [{"note": string, "section": string, "lines": string[]}]}';
+  'expected {"dump": string, "items": [{"index": number, "outcome": "filed", "note": string, "section"?: string, "lines": string[]} | {"index": number, "outcome": "dropped"|"skipped"}], "inserts": [{"note": string, "section"?: string, "lines": string[]}], "routes"?: [{"key": string, "note": string}]}';
 const PLACEHOLDER = /^- (\[ \] ?)?$/;
 const HEADING = /^(#+) /;
 
@@ -47,8 +50,9 @@ export function applyFilingPlan(vault: Vault, plan: FilingPlan): FilingResult {
   const dump = readDump(vault, dumpPath);
   const dumpLines = markItems(dump, plan.items);
   const notes = new NoteEdits(vault);
-  for (const item of plan.items) if (item.outcome === "filed") notes.insert(item, item.line);
-  for (const insert of plan.inserts) for (const line of insert.lines) notes.insert(insert, line);
+  for (const item of plan.items) if (item.outcome === "filed") notes.insert(item, item.lines);
+  for (const insert of plan.inserts) notes.insert(insert, insert.lines);
+  if (plan.routes?.length) notes.insert({ note: ROUTES_NOTE }, plan.routes.map(renderRoute), { create: true });
 
   const closed = new Set(plan.items.filter(({ outcome }) => outcome !== "skipped").map(({ index }) => index));
   const finished = dump.items.every((item) => item.state !== "open" || closed.has(item.index));
@@ -85,33 +89,37 @@ class NoteEdits {
 
   constructor(private readonly vault: Vault) {}
 
-  insert({ note, section }: Placement, line: string): void {
-    const { lines } = this.load(note);
-    const heading = lines.findIndex((candidate) => isHeading(candidate, section));
-    if (heading === -1) reject(`${note} has no "${section}" section`);
-    const level = HEADING.exec(lines[heading] ?? "")?.[1]?.length ?? 1;
-    let end = heading + 1;
-    while (end < lines.length && !endsSection(lines[end] ?? "", level)) end++;
-    const placeholder = lines.slice(heading + 1, end).findIndex((candidate) => PLACEHOLDER.test(candidate));
-    if (placeholder !== -1) {
-      lines[heading + 1 + placeholder] = line;
-      return;
+  insert({ note, section }: Placement, block: string[], { create = false } = {}): void {
+    const { lines } = this.load(note, create);
+    let start = -1;
+    let end = lines.length;
+    if (section !== undefined) {
+      start = lines.findIndex((candidate) => isHeading(candidate, section));
+      if (start === -1) reject(`${note} has no "${section}" section`);
+      const level = HEADING.exec(lines[start] ?? "")?.[1]?.length ?? 1;
+      end = start + 1;
+      while (end < lines.length && !endsSection(lines[end] ?? "", level)) end++;
+      const placeholder = lines.slice(start + 1, end).findIndex((candidate) => PLACEHOLDER.test(candidate));
+      if (placeholder !== -1) {
+        lines.splice(start + 1 + placeholder, 1, ...block);
+        return;
+      }
     }
     let last = end - 1;
-    while (last > heading && lines[last]?.trim() === "") last--;
-    lines.splice(last + 1, 0, line);
+    while (last > start && lines[last]?.trim() === "") last--;
+    lines.splice(last + 1, 0, ...block);
   }
 
   write(): void {
     for (const [path, { lines, eol }] of this.notes) replaceFile(path, lines.join(eol));
   }
 
-  private load(note: string): { lines: string[]; eol: string } {
+  private load(note: string, create: boolean): { lines: string[]; eol: string } {
     const path = resolveInVault(this.vault, note);
     const loaded = this.notes.get(path);
     if (loaded) return loaded;
-    if (!existsSync(path)) reject(`${note} does not exist`);
-    const contents = readFileSync(path, "utf8");
+    if (!existsSync(path) && !create) reject(`${note} does not exist`);
+    const contents = existsSync(path) ? readFileSync(path, "utf8") : "";
     const eol = contents.includes("\r\n") ? "\r\n" : "\n";
     const fresh = { lines: contents.split(eol), eol };
     this.notes.set(path, fresh);
@@ -143,21 +151,30 @@ function resolveInVault(vault: Vault, relativePath: string): string {
 
 function isFilingPlan(value: unknown): value is FilingPlan {
   if (!isRecord(value) || typeof value.dump !== "string") return false;
-  return Array.isArray(value.items) && value.items.every(isPlannedItem) && Array.isArray(value.inserts) && value.inserts.every(isInsert);
+  const routesOk = value.routes === undefined || (Array.isArray(value.routes) && value.routes.every(isRoute));
+  return Array.isArray(value.items) && value.items.every(isPlannedItem) && Array.isArray(value.inserts) && value.inserts.every(isInsert) && routesOk;
 }
 
 function isPlannedItem(value: unknown): boolean {
   if (!isRecord(value) || !Number.isInteger(value.index)) return false;
   if (value.outcome === "dropped" || value.outcome === "skipped") return true;
-  return value.outcome === "filed" && isPlacement(value) && typeof value.line === "string";
+  return value.outcome === "filed" && isInsert(value);
 }
 
 function isInsert(value: unknown): boolean {
-  return isRecord(value) && isPlacement(value) && Array.isArray(value.lines) && value.lines.every((line) => typeof line === "string");
+  return isRecord(value) && isPlacement(value) && isLines(value.lines);
 }
 
 function isPlacement(value: Record<string, unknown>): boolean {
-  return typeof value.note === "string" && typeof value.section === "string";
+  return typeof value.note === "string" && (value.section === undefined || typeof value.section === "string");
+}
+
+function isLines(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0 && value.every((line) => typeof line === "string");
+}
+
+function isRoute(value: unknown): boolean {
+  return isRecord(value) && typeof value.key === "string" && value.key.trim() !== "" && typeof value.note === "string" && value.note.trim() !== "";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
