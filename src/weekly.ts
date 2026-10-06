@@ -1,5 +1,5 @@
-import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { basename, dirname, join, normalize } from "node:path";
 import { UsageError } from "./errors.ts";
 import type { Vault } from "./vault.ts";
 
@@ -22,6 +22,17 @@ export function findWeeklyNote(vault: Vault, isoDate: string): WeeklyNote {
     .sort((a, b) => b.day - a.day)[0];
   if (latest) return { exists: true, note: join(WEEKLY_FOLDER, latest.name) };
   return { exists: false, note: join(WEEKLY_FOLDER, weeklyNoteName(mondayOf(target))) };
+}
+
+/** True for a Weekly Note path the template may be copied to: `Research/Weekly Meetings/MM-DD-YY Weekly Update.md` dated a Monday. */
+export function isMondayWeeklyNote(note: string): boolean {
+  const [dated] = datedNote(basename(note));
+  return dirname(normalize(note)) === WEEKLY_FOLDER && dated !== undefined && mondayOf(dated.day) === dated.day;
+}
+
+export function readWeeklyTemplate(vault: Vault): string | undefined {
+  const path = join(vault.root, WEEKLY_TEMPLATE_NOTE);
+  return existsSync(path) ? readFileSync(path, "utf8") : undefined;
 }
 
 function datedNote(name: string): { name: string; day: number }[] {

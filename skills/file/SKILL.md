@@ -22,7 +22,7 @@ If there are no Dumps, tell the user the Inbox is clear. Done.
 - **This week's** (for Todos): `brain-dump weekly-note --date <today, YYYY-MM-DD>`.
 - **The Session's week** (for the link line): `brain-dump weekly-note --date <the Dump's date>`.
 
-Each prints `{"exists": …, "note": …}`. When `exists` is false, `note` is the path a new Weekly Note for that week would have: propose creating it (a **NEW** row, see step 4) as a verbatim copy of the Weekly Note template.
+Each prints `{"exists": …, "note": …}`. When `exists` is false, `note` is the path a new Weekly Note for that week would have: propose creating it (a **NEW** row, see step 4) as a verbatim copy of the Weekly Note template. When the Session's week is this week, both are the same note: create it once.
 
 ## 3. Route each Item
 
@@ -69,7 +69,7 @@ Done when the plan is on screen and nothing has been written.
 
 - `skip N`: Item N stays open for a later run.
 - `drop N`: Item N will never be filed (marked `[-]`); remove its row.
-- `N → [[Note]]`: send Item N to that existing note instead. Then offer the redirect back as a Route, e.g. "Remember `<project or subject> → [[Note]]`?"; a yes adds it to this plan's `routes`.
+- `N → [[Note]]`: send Item N to that note instead: an existing one, or a NEW note another row in this plan proposes. Then offer the redirect back as a Route, e.g. "Remember `<project or subject> → [[Note]]`?"; a yes adds it to this plan's `routes`.
 - `N → <folder>/`: keep Item N's NEW note but create it in that folder.
 - `add tags`: accept the proposed new tags; without it, NEW notes get only existing tags.
 - `show N`: print the exact lines Item N would append.
@@ -105,7 +105,7 @@ brain-dump apply <<'PLAN'
 PLAN
 ```
 
-`creates` lists every NEW note still in the plan; a declined one (its Items skipped or redirected) is left out. Every open Item appears once in `items`, in table order: `filed` with its note path, its `section` only for Weekly Note sections, and the exact lines from its row; `dropped` for a `drop`; `skipped` for everything else. `inserts` holds only the link line, when the plan has one; `routes` only the Routes the user accepted (ones already in the Routes note are skipped).
+`creates` lists every NEW note still in the plan, each once; a NEW note nothing is filed into any more (its Items skipped or redirected) is left out, and the helper rejects one left in. Every open Item appears once in `items`, in table order: `filed` with its note path, its `section` only for Weekly Note sections, and the exact lines from its row; `dropped` for a `drop`; `skipped` for everything else. `inserts` holds only the link line, when the plan has one; `routes` only the Routes the user accepted (ones already in the Routes note are skipped).
 
 - **Exit 0**: it prints `filed`, `dropped`, `skipped` and `movedTo` (set when the Dump is finished and moved to `Inbox/Filed/`). Report that, then go to the next Dump.
 - **`Filing Plan rejected: …`**: nothing was written. Tell the user the reason, then offer to adjust the plan or skip this Dump.
