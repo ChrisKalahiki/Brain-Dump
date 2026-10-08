@@ -3,15 +3,20 @@ import { basename, dirname, isAbsolute, join, normalize, relative } from "node:p
 import { STATE_MARKS } from "./dump-body.ts";
 import { BrainDumpError, describeFsError, UsageError } from "./errors.ts";
 import { readDump, type StoredDump } from "./inbox.ts";
-import { readRoutes, renderRoute, ROUTES_NOTE, type Route } from "./routes.ts";
+import { readRoutes, renderRoute, routeIdentity, ROUTES_NOTE, type Route } from "./routes.ts";
+import { findSection } from "./sections.ts";
+import { groupKey, parseTodoGroups } from "./todo-groups.ts";
 import { isMondayWeeklyNote, readWeeklyTemplate, WEEKLY_TEMPLATE_NOTE } from "./weekly.ts";
 import type { Vault } from "./vault.ts";
 
 /** Where lines go: a note's section, or the end of the note when `section` is absent. */
 type Placement = { note: string; section?: string };
 
+/** A Todo Group path, outermost group first, e.g. `["Dissertation", "IRB"]`. */
+export type GroupPath = string[];
+
 export type PlannedItem =
-  | ({ index: number; outcome: "filed"; lines: string[] } & Placement)
+  | ({ index: number; outcome: "filed"; lines: string[]; group?: GroupPath } & Placement)
   | { index: number; outcome: "dropped" | "skipped" };
 
 export type NoteCreation = { note: string } & ({ from: "weekly-template" } | { tags: string[] });
@@ -22,6 +27,7 @@ export type FilingPlan = {
   items: PlannedItem[];
   inserts: (Placement & { lines: string[] })[];
   routes?: Route[];
+  createGroups?: GroupPath[];
 };
 
 export type FilingResult = {
@@ -32,10 +38,9 @@ export type FilingResult = {
 };
 
 const PLAN_SHAPE =
-  'expected {"dump": string, "items": [{"index": number, "outcome": "filed", "note": string, "section"?: string, "lines": string[]} | {"index": number, "outcome": "dropped"|"skipped"}], "inserts": [{"note": string, "section"?: string, "lines": string[]}], "routes"?: [{"key": string, "title": string}], "creates"?: [{"note": string, "from": "weekly-template"} | {"note": string, "tags": string[]}]}';
+  'expected {"dump": string, "items": [{"index": number, "outcome": "filed", "note": string, "section"?: string, "group"?: string[], "lines": string[]} | {"index": number, "outcome": "dropped"|"skipped"}], "inserts": [{"note": string, "section"?: string, "lines": string[]}], "routes"?: [{"key": string, "title": string} | {"key": string, "group": string[]}], "creates"?: [{"note": string, "from": "weekly-template"} | {"note": string, "tags": string[]}], "createGroups"?: string[][]}';
 const PLACEHOLDER = /^- (\[ \] ?)?$/;
 const TAG = /^[^\s#]+$/;
-const HEADING = /^(#+) /;
 
 export function parseFilingPlan(text: string): FilingPlan {
   let value: unknown;
@@ -55,8 +60,13 @@ export function applyFilingPlan(vault: Vault, plan: FilingPlan): FilingResult {
   const dump = readDump(vault, dumpPath);
   const dumpLines = markItems(dump, plan.items);
   const notes = new NoteEdits(vault);
+  const groups = plannedGroups(plan);
   for (const creation of plan.creates ?? []) notes.create(creation);
-  for (const item of plan.items) if (item.outcome === "filed") notes.insert(item, item.lines);
+  for (const item of plan.items) {
+    if (item.outcome !== "filed") continue;
+    if (item.group === undefined) notes.insert(item, item.lines);
+    else notes.insertInGroup(item, item.group, item.lines, groups);
+  }
   for (const insert of plan.inserts) notes.insert(insert, insert.lines);
   const newRoutes = unknownRoutes(vault, plan.routes ?? []);
   if (newRoutes.length > 0) notes.insert({ note: ROUTES_NOTE }, newRoutes.map(renderRoute), { create: true });
@@ -78,12 +88,26 @@ export function applyFilingPlan(vault: Vault, plan: FilingPlan): FilingResult {
   return { filed: count("filed"), dropped: count("dropped"), skipped: count("skipped"), movedTo: finished ? relative(vault.root, filedPath) : null };
 }
 
+/** The Todo Groups the plan may create: each `createGroups` path and every group along it. Rejects a path no filed Todo goes into. */
+function plannedGroups(plan: FilingPlan): PlannedGroups {
+  const entries = plan.createGroups ?? [];
+  const targets = plan.items.flatMap((item) => (item.outcome === "filed" && item.group ? [item.group] : []));
+  for (const entry of entries) {
+    const used = targets.some((target) => target.length >= entry.length && pathKey(target.slice(0, entry.length)) === pathKey(entry));
+    if (!used) reject(`Todo Group "${entry.join(" › ")}" would be created with nothing filed into it`);
+  }
+  return {
+    entries: new Set(entries.map(pathKey)),
+    creatable: new Set(entries.flatMap((path) => path.map((_, depth) => pathKey(path.slice(0, depth + 1))))),
+  };
+}
+
 function unknownRoutes(vault: Vault, routes: Route[]): Route[] {
-  const known = new Set(readRoutes(vault).map(renderRoute));
+  const known = new Set(readRoutes(vault).map(routeIdentity));
   return routes.filter((route) => {
-    const line = renderRoute(route);
-    if (known.has(line)) return false;
-    known.add(line);
+    const identity = routeIdentity(route);
+    if (known.has(identity)) return false;
+    known.add(identity);
     return true;
   });
 }
@@ -102,10 +126,13 @@ function markItems(dump: StoredDump, planned: PlannedItem[]): string[] {
   return lines;
 }
 
+type PlannedGroups = { entries: Set<string>; creatable: Set<string> };
+
 type EditedNote = { lines: string[]; eol: string; isNew: boolean; used: boolean };
 
 class NoteEdits {
   private readonly notes = new Map<string, EditedNote>();
+  private readonly createdGroups = new Set<string>();
 
   constructor(private readonly vault: Vault) {}
 
@@ -130,11 +157,9 @@ class NoteEdits {
     let start = -1;
     let end = lines.length;
     if (section !== undefined) {
-      start = lines.findIndex((candidate) => isHeading(candidate, section));
-      if (start === -1) reject(`${note} has no "${section}" section`);
-      const level = HEADING.exec(lines[start] ?? "")?.[1]?.length ?? 1;
-      end = start + 1;
-      while (end < lines.length && !endsSection(lines[end] ?? "", level)) end++;
+      const bounds = findSection(lines, section);
+      if (bounds === undefined) reject(`${note} has no "${section}" section`);
+      ({ start, end } = bounds);
       const placeholder = lines.slice(start + 1, end).findIndex((candidate) => PLACEHOLDER.test(candidate));
       if (placeholder !== -1) {
         lines.splice(start + 1 + placeholder, 1, ...block);
@@ -144,6 +169,43 @@ class NoteEdits {
     let last = end - 1;
     while (last > start && lines[last]?.trim() === "") last--;
     lines.splice(last + 1, 0, ...block);
+  }
+
+  /** Adds `block` after the group's last direct Todo, or right under the group bullet when it has none, indented one level below the group. */
+  insertInGroup({ note, section }: Placement, path: GroupPath, block: string[], { entries, creatable }: PlannedGroups): void {
+    const edited = this.load(note, false);
+    edited.used = true;
+    const { lines } = edited;
+    for (;;) {
+      const bounds = section === undefined ? undefined : findSection(lines, section);
+      if (bounds === undefined) reject(`${note} has no "${section}" section`);
+      const root = parseTodoGroups(lines, bounds.start, bounds.end);
+      let group = root;
+      let missing: number | undefined;
+      for (const [depth, name] of path.entries()) {
+        const shown = path.slice(0, depth + 1).join(" › ");
+        const matches = group.children.filter((child) => groupKey(child.name) === groupKey(name));
+        if (matches.length > 1) reject(`"${shown}" matches lines ${matches.map(({ line }) => line + 1).join(" and ")} of ${note}`);
+        const [match] = matches;
+        if (match === undefined) {
+          if (!creatable.has(pathKey(path.slice(0, depth + 1)))) reject(`${note} has no Todo Group "${shown}"`);
+          missing = depth;
+          break;
+        }
+        group = match;
+      }
+      if (missing === undefined) {
+        const created = `${note}\0${pathKey(path)}`;
+        if (entries.has(pathKey(path)) && !this.createdGroups.has(created)) reject(`Todo Group "${path.join(" › ")}" already exists in ${note}`);
+        lines.splice(group.todoEnd, 0, ...block.map((line) => "\t".repeat(group.level + 1) + line));
+        return;
+      }
+      const bullet = `${"\t".repeat(group.level + 1)}- ${path[missing]}`;
+      for (let depth = missing; depth < path.length; depth++) this.createdGroups.add(`${note}\0${pathKey(path.slice(0, depth + 1))}`);
+      const placeholder = group === root ? lines.slice(bounds.start + 1, bounds.end).findIndex((line) => PLACEHOLDER.test(line)) : -1;
+      if (placeholder === -1) lines.splice(group.blockEnd, 0, bullet);
+      else lines.splice(bounds.start + 1 + placeholder, 1, bullet);
+    }
   }
 
   /** Stages every note as a temporary file, then creates new notes (never overwriting, rolled back together on failure), then replaces existing ones. */
@@ -189,6 +251,10 @@ class NoteEdits {
   }
 }
 
+function pathKey(path: GroupPath): string {
+  return path.map(groupKey).join("\0");
+}
+
 function splitLines(contents: string): { lines: string[]; eol: string } {
   const eol = contents.includes("\r\n") ? "\r\n" : "\n";
   return { lines: contents.split(eol), eol };
@@ -196,16 +262,6 @@ function splitLines(contents: string): { lines: string[]; eol: string } {
 
 function renderTagsFrontmatter(tags: string[]): string {
   return tags.length === 0 ? "" : `---\ntags:\n${tags.map((tag) => `  - ${tag}\n`).join("")}---\n`;
-}
-
-function isHeading(line: string, section: string): boolean {
-  const trimmed = line.trim();
-  return HEADING.test(trimmed) && (trimmed === section || trimmed.startsWith(`${section} `));
-}
-
-function endsSection(line: string, level: number): boolean {
-  const heading = HEADING.exec(line);
-  return line.trim() === "---" || (heading?.[1] !== undefined && heading[1].length <= level);
 }
 
 function replaceFile(path: string, contents: string): void {
@@ -224,7 +280,8 @@ function isFilingPlan(value: unknown): value is FilingPlan {
   if (!isRecord(value) || typeof value.dump !== "string") return false;
   const createsOk = value.creates === undefined || (Array.isArray(value.creates) && value.creates.every(isNoteCreation));
   const routesOk = value.routes === undefined || (Array.isArray(value.routes) && value.routes.every(isRoute));
-  return Array.isArray(value.items) && value.items.every(isPlannedItem) && Array.isArray(value.inserts) && value.inserts.every(hasPlacedLines) && routesOk && createsOk;
+  const groupsOk = value.createGroups === undefined || (Array.isArray(value.createGroups) && value.createGroups.every(isGroupPath));
+  return Array.isArray(value.items) && value.items.every(isPlannedItem) && Array.isArray(value.inserts) && value.inserts.every(hasPlacedLines) && routesOk && createsOk && groupsOk;
 }
 
 function isNoteCreation(value: unknown): boolean {
@@ -236,7 +293,12 @@ function isNoteCreation(value: unknown): boolean {
 function isPlannedItem(value: unknown): boolean {
   if (!isRecord(value) || !Number.isInteger(value.index)) return false;
   if (value.outcome === "dropped" || value.outcome === "skipped") return true;
-  return value.outcome === "filed" && hasPlacedLines(value);
+  const groupOk = value.group === undefined || (isGroupPath(value.group) && typeof value.section === "string");
+  return value.outcome === "filed" && hasPlacedLines(value) && groupOk;
+}
+
+function isGroupPath(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0 && value.every((name) => typeof name === "string" && name.trim() !== "");
 }
 
 function hasPlacedLines(value: unknown): boolean {
@@ -252,7 +314,9 @@ function isLines(value: unknown): boolean {
 }
 
 function isRoute(value: unknown): boolean {
-  return isRecord(value) && typeof value.key === "string" && value.key.trim() !== "" && typeof value.title === "string" && value.title.trim() !== "";
+  if (!isRecord(value) || typeof value.key !== "string" || value.key.trim() === "") return false;
+  if (value.group !== undefined) return value.title === undefined && isGroupPath(value.group);
+  return typeof value.title === "string" && value.title.trim() !== "";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

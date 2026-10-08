@@ -32,6 +32,21 @@ describe("brain-dump routes", () => {
     expect(JSON.parse(result.stdout)).toEqual([]);
   });
 
+  test("reads a Route to a Todo Group, telling it apart from a Route to a note", () => {
+    // #given
+    const sandbox = makeSandbox();
+    writeVaultFile(sandbox, "Inbox/Filing Routes.md", "Brain-Dump → [[Brain-Dump]]\n- Byzantine Agents → To-Do › Dissertation › Agents\n");
+
+    // #when
+    const result = run(sandbox, ["routes"]);
+
+    // #then
+    expect(JSON.parse(result.stdout)).toEqual([
+      { key: "Brain-Dump", title: "Brain-Dump" },
+      { key: "Byzantine Agents", group: ["Dissertation", "Agents"] },
+    ]);
+  });
+
   test("reads a Route written as a bullet", () => {
     // #given
     const sandbox = makeSandbox();
