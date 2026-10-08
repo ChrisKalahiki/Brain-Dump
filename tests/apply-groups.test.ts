@@ -87,6 +87,28 @@ describe("brain-dump apply into Todo Groups", () => {
     );
   });
 
+  test("closes a group at a top-level paragraph, so a Todo stays inside the group", () => {
+    // #given
+    const sandbox = setup("# To-Do:\n- SaTC\n\t- [ ] a\n\nSome paragraph\n- [ ] top\n");
+
+    // #when
+    apply(sandbox, { items: [todoIn(1, ["SaTC"])] });
+
+    // #then
+    expect(readVaultFile(sandbox, WEEK)).toBe("# To-Do:\n- SaTC\n\t- [ ] a\n\t- [ ] T1. #todo\n\nSome paragraph\n- [ ] top\n");
+  });
+
+  test("puts a new top-level group after the existing groups, not in a placeholder above them", () => {
+    // #given
+    const sandbox = setup("# To-Do:\n- [ ] \n- SaTC\n\t- [ ] a\n");
+
+    // #when
+    apply(sandbox, { items: [todoIn(1, ["Lab Website"])], createGroups: [["Lab Website"]] });
+
+    // #then
+    expect(readVaultFile(sandbox, WEEK)).toBe("# To-Do:\n- [ ] \n- SaTC\n\t- [ ] a\n- Lab Website\n\t- [ ] T1. #todo\n");
+  });
+
   test("files two Todos into the same new group, creating it once", () => {
     // #given
     const sandbox = setup("# To-Do:\n- SaTC\n", 2);
@@ -101,20 +123,22 @@ describe("brain-dump apply into Todo Groups", () => {
 
 describe("brain-dump apply rejects a Todo Group plan and writes nothing", () => {
   const NOTE = "# To-Do:\n- Dissertation\n\t- [ ] Update consent form\n- SaTC\n- Dissertation\n";
+  const DUMP_BEFORE = dumpFile(ORIGIN, "## Todos\n- [ ] #todo T1.\n");
 
-  function rejection(plan: unknown, todos = 1) {
-    const sandbox = setup(NOTE, todos);
-    const dump = readVaultFile(sandbox, DUMP);
-    const result = apply(sandbox, plan);
-    return { exitCode: result.exitCode, stderr: result.stderr, untouched: readVaultFile(sandbox, WEEK) === NOTE && readVaultFile(sandbox, DUMP) === dump };
+  function outcome(sandbox: Sandbox, result: { exitCode: number; stderr: string }) {
+    const untouched = readVaultFile(sandbox, WEEK) === NOTE && readVaultFile(sandbox, DUMP) === DUMP_BEFORE;
+    return { exitCode: result.exitCode, stderr: result.stderr, untouched };
   }
 
   test("a path that does not exist and is not in createGroups", () => {
+    // #given
+    const sandbox = setup(NOTE);
+
     // #when
-    const result = rejection({ items: [todoIn(1, ["Disertation"])] });
+    const result = apply(sandbox, { items: [todoIn(1, ["Disertation"])] });
 
     // #then
-    expect(result).toEqual({
+    expect(outcome(sandbox, result)).toEqual({
       exitCode: 1,
       stderr: `brain-dump: Filing Plan rejected: ${WEEK} has no Todo Group "Disertation"\n`,
       untouched: true,
@@ -122,11 +146,14 @@ describe("brain-dump apply rejects a Todo Group plan and writes nothing", () => 
   });
 
   test("a path that matches two bullets", () => {
+    // #given
+    const sandbox = setup(NOTE);
+
     // #when
-    const result = rejection({ items: [todoIn(1, ["dissertation:"])] });
+    const result = apply(sandbox, { items: [todoIn(1, ["dissertation:"])] });
 
     // #then
-    expect(result).toEqual({
+    expect(outcome(sandbox, result)).toEqual({
       exitCode: 1,
       stderr: `brain-dump: Filing Plan rejected: "dissertation:" matches lines 2 and 5 of ${WEEK}\n`,
       untouched: true,
@@ -134,35 +161,74 @@ describe("brain-dump apply rejects a Todo Group plan and writes nothing", () => 
   });
 
   test("a createGroups entry that already exists", () => {
+    // #given
+    const sandbox = setup(NOTE);
+
     // #when
-    const result = rejection({ items: [todoIn(1, ["SaTC"])], createGroups: [["SaTC"]] });
+    const result = apply(sandbox, { items: [todoIn(1, ["SaTC"])], createGroups: [["SaTC"]] });
 
     // #then
-    expect(result).toEqual({
+    expect(outcome(sandbox, result)).toEqual({
       exitCode: 1,
       stderr: `brain-dump: Filing Plan rejected: Todo Group "SaTC" already exists in ${WEEK}\n`,
       untouched: true,
     });
   });
 
-  test("a createGroups entry no Todo is filed into", () => {
+  test("a createGroups entry that already exists, listed for a Todo filed deeper inside it", () => {
+    // #given
+    const sandbox = setup(NOTE);
+
     // #when
-    const result = rejection({ items: [todoIn(1, ["SaTC"])], createGroups: [["Lab Website"]] });
+    const result = apply(sandbox, { items: [todoIn(1, ["SaTC", "Paper"])], createGroups: [["SaTC"], ["SaTC", "Paper"]] });
 
     // #then
-    expect(result).toEqual({
+    expect(outcome(sandbox, result)).toEqual({
+      exitCode: 1,
+      stderr: `brain-dump: Filing Plan rejected: Todo Group "SaTC" already exists in ${WEEK}\n`,
+      untouched: true,
+    });
+  });
+
+  test("a path matching two bullets is named by the note's own line numbers, even after an earlier Todo in the plan", () => {
+    // #given
+    const sandbox = setup(NOTE, 2);
+
+    // #when
+    const result = apply(sandbox, { items: [todoIn(1, ["SaTC"]), todoIn(2, ["Dissertation"])] });
+
+    // #then
+    expect([result.exitCode, result.stderr]).toEqual([1, `brain-dump: Filing Plan rejected: "Dissertation" matches lines 2 and 5 of ${WEEK}\n`]);
+  });
+
+  test("a createGroups entry no Todo is filed into", () => {
+    // #given
+    const sandbox = setup(NOTE);
+
+    // #when
+    const result = apply(sandbox, { items: [todoIn(1, ["SaTC"])], createGroups: [["Lab Website"]] });
+
+    // #then
+    expect(outcome(sandbox, result)).toEqual({
       exitCode: 1,
       stderr: 'brain-dump: Filing Plan rejected: Todo Group "Lab Website" would be created with nothing filed into it\n',
       untouched: true,
     });
   });
 
-  test("a group on a Todo with no section", () => {
+  test("a group on a Todo with no section, as an invalid plan", () => {
+    // #given
+    const sandbox = setup(NOTE);
+
     // #when
-    const result = rejection({ items: [{ index: 1, outcome: "filed", note: WEEK, group: ["SaTC"], lines: ["- [ ] T1. #todo"] }] });
+    const result = apply(sandbox, { items: [{ index: 1, outcome: "filed", note: WEEK, group: ["SaTC"], lines: ["- [ ] T1. #todo"] }] });
 
     // #then
-    expect([result.exitCode, result.untouched]).toEqual([2, true]);
+    expect({ ...outcome(sandbox, result), stderr: result.stderr.startsWith("brain-dump: invalid Filing Plan: expected {") }).toEqual({
+      exitCode: 2,
+      stderr: true,
+      untouched: true,
+    });
   });
 });
 

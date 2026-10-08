@@ -5,15 +5,12 @@ import { BrainDumpError, describeFsError, UsageError } from "./errors.ts";
 import { readDump, type StoredDump } from "./inbox.ts";
 import { readRoutes, renderRoute, routeIdentity, ROUTES_NOTE, type Route } from "./routes.ts";
 import { findSection } from "./sections.ts";
-import { groupKey, parseTodoGroups } from "./todo-groups.ts";
+import { formatGroupPath, parseTodoGroups, pathKey, resolveGroupPath, type GroupNode, type GroupPath } from "./todo-groups.ts";
 import { isMondayWeeklyNote, readWeeklyTemplate, WEEKLY_TEMPLATE_NOTE } from "./weekly.ts";
 import type { Vault } from "./vault.ts";
 
 /** Where lines go: a note's section, or the end of the note when `section` is absent. */
 type Placement = { note: string; section?: string };
-
-/** A Todo Group path, outermost group first, e.g. `["Dissertation", "IRB"]`. */
-export type GroupPath = string[];
 
 export type PlannedItem =
   | ({ index: number; outcome: "filed"; lines: string[]; group?: GroupPath } & Placement)
@@ -90,15 +87,15 @@ export function applyFilingPlan(vault: Vault, plan: FilingPlan): FilingResult {
 
 /** The Todo Groups the plan may create: each `createGroups` path and every group along it. Rejects a path no filed Todo goes into. */
 function plannedGroups(plan: FilingPlan): PlannedGroups {
-  const entries = plan.createGroups ?? [];
+  const listed = plan.createGroups ?? [];
   const targets = plan.items.flatMap((item) => (item.outcome === "filed" && item.group ? [item.group] : []));
-  for (const entry of entries) {
-    const used = targets.some((target) => target.length >= entry.length && pathKey(target.slice(0, entry.length)) === pathKey(entry));
-    if (!used) reject(`Todo Group "${entry.join(" › ")}" would be created with nothing filed into it`);
+  for (const path of listed) {
+    const used = targets.some((target) => pathKey(target.slice(0, path.length)) === pathKey(path));
+    if (!used) reject(`Todo Group "${formatGroupPath(path)}" would be created with nothing filed into it`);
   }
   return {
-    entries: new Set(entries.map(pathKey)),
-    creatable: new Set(entries.flatMap((path) => path.map((_, depth) => pathKey(path.slice(0, depth + 1))))),
+    listed: new Set(listed.map(pathKey)),
+    creatable: new Set(listed.flatMap((path) => path.map((_, depth) => pathKey(path.slice(0, depth + 1))))),
   };
 }
 
@@ -126,9 +123,10 @@ function markItems(dump: StoredDump, planned: PlannedItem[]): string[] {
   return lines;
 }
 
-type PlannedGroups = { entries: Set<string>; creatable: Set<string> };
+type PlannedGroups = { listed: Set<string>; creatable: Set<string> };
 
-type EditedNote = { lines: string[]; eol: string; isNew: boolean; used: boolean };
+/** `original` is the note as read, so rejections can name its own line numbers after earlier edits shift them. */
+type EditedNote = { lines: string[]; original: string[]; eol: string; isNew: boolean; used: boolean };
 
 class NoteEdits {
   private readonly notes = new Map<string, EditedNote>();
@@ -141,7 +139,8 @@ class NoteEdits {
     if (!path.endsWith(".md")) reject(`${creation.note} is not a Markdown note`);
     if (existsSync(path) || this.notes.has(path)) reject(`${creation.note} already exists`);
     const contents = "from" in creation ? this.weeklyTemplate(creation.note) : renderTagsFrontmatter(creation.tags);
-    this.notes.set(path, { ...splitLines(contents), isNew: true, used: false });
+    const split = splitLines(contents);
+    this.notes.set(path, { ...split, original: split.lines, isNew: true, used: false });
   }
 
   requireCreatedNotesUsed(): void {
@@ -172,39 +171,41 @@ class NoteEdits {
   }
 
   /** Adds `block` after the group's last direct Todo, or right under the group bullet when it has none, indented one level below the group. */
-  insertInGroup({ note, section }: Placement, path: GroupPath, block: string[], { entries, creatable }: PlannedGroups): void {
+  insertInGroup({ note, section }: Placement, path: GroupPath, block: string[], { listed, creatable }: PlannedGroups): void {
     const edited = this.load(note, false);
     edited.used = true;
-    const { lines } = edited;
-    for (;;) {
-      const bounds = section === undefined ? undefined : findSection(lines, section);
+    const { lines, original } = edited;
+    const sectionGroups = (source: string[]): GroupNode => {
+      const bounds = section === undefined ? undefined : findSection(source, section);
       if (bounds === undefined) reject(`${note} has no "${section}" section`);
-      const root = parseTodoGroups(lines, bounds.start, bounds.end);
-      let group = root;
-      let missing: number | undefined;
-      for (const [depth, name] of path.entries()) {
-        const shown = path.slice(0, depth + 1).join(" › ");
-        const matches = group.children.filter((child) => groupKey(child.name) === groupKey(name));
-        if (matches.length > 1) reject(`"${shown}" matches lines ${matches.map(({ line }) => line + 1).join(" and ")} of ${note}`);
-        const [match] = matches;
-        if (match === undefined) {
-          if (!creatable.has(pathKey(path.slice(0, depth + 1)))) reject(`${note} has no Todo Group "${shown}"`);
-          missing = depth;
-          break;
-        }
-        group = match;
+      return parseTodoGroups(source, bounds.start, bounds.end);
+    };
+    const createdKey = (depth: number): string => `${note}\0${pathKey(path.slice(0, depth + 1))}`;
+    for (const depth of path.keys()) {
+      const prefix = path.slice(0, depth + 1);
+      const listedAndExisting = listed.has(pathKey(prefix)) && !this.createdGroups.has(createdKey(depth)) && resolveGroupPath(sectionGroups(lines), prefix).kind === "found";
+      if (listedAndExisting) reject(`Todo Group "${formatGroupPath(prefix)}" already exists in ${note}`);
+    }
+    for (;;) {
+      const root = sectionGroups(lines);
+      const lookup = resolveGroupPath(root, path);
+      if (lookup.kind === "ambiguous") {
+        const inOriginal = resolveGroupPath(sectionGroups(original), path);
+        const matched = inOriginal.kind === "ambiguous" ? inOriginal.lines : lookup.lines;
+        reject(`"${formatGroupPath(path.slice(0, lookup.depth + 1))}" matches lines ${listInEnglish(matched.map((line) => String(line + 1)))} of ${note}`);
       }
-      if (missing === undefined) {
-        const created = `${note}\0${pathKey(path)}`;
-        if (entries.has(pathKey(path)) && !this.createdGroups.has(created)) reject(`Todo Group "${path.join(" › ")}" already exists in ${note}`);
-        lines.splice(group.todoEnd, 0, ...block.map((line) => "\t".repeat(group.level + 1) + line));
+      if (lookup.kind === "found") {
+        const indent = "\t".repeat(lookup.group.level + 1);
+        lines.splice(lookup.group.todoEnd, 0, ...block.map((line) => indent + line));
         return;
       }
-      const bullet = `${"\t".repeat(group.level + 1)}- ${path[missing]}`;
-      for (let depth = missing; depth < path.length; depth++) this.createdGroups.add(`${note}\0${pathKey(path.slice(0, depth + 1))}`);
-      const placeholder = group === root ? lines.slice(bounds.start + 1, bounds.end).findIndex((line) => PLACEHOLDER.test(line)) : -1;
-      if (placeholder === -1) lines.splice(group.blockEnd, 0, bullet);
-      else lines.splice(bounds.start + 1 + placeholder, 1, bullet);
+      const { depth, parent } = lookup;
+      if (!creatable.has(pathKey(path.slice(0, depth + 1)))) reject(`${note} has no Todo Group "${formatGroupPath(path.slice(0, depth + 1))}"`);
+      for (let created = depth; created < path.length; created++) this.createdGroups.add(createdKey(created));
+      const bullet = `${"\t".repeat(parent.level + 1)}- ${path[depth]}`;
+      const placeholder = parent === root && root.children.length === 0 ? lines.slice(root.line + 1, root.blockEnd).findIndex((line) => PLACEHOLDER.test(line)) : -1;
+      if (placeholder === -1) lines.splice(parent.blockEnd, 0, bullet);
+      else lines.splice(root.line + 1 + placeholder, 1, bullet);
     }
   }
 
@@ -245,14 +246,15 @@ class NoteEdits {
     if (loaded) return loaded;
     const exists = existsSync(path);
     if (!exists && !create) reject(`${note} does not exist`);
-    const fresh = { ...splitLines(exists ? readFileSync(path, "utf8") : ""), isNew: !exists, used: false };
+    const split = splitLines(exists ? readFileSync(path, "utf8") : "");
+    const fresh = { ...split, original: [...split.lines], isNew: !exists, used: false };
     this.notes.set(path, fresh);
     return fresh;
   }
 }
 
-function pathKey(path: GroupPath): string {
-  return path.map(groupKey).join("\0");
+function listInEnglish(items: string[]): string {
+  return items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
 }
 
 function splitLines(contents: string): { lines: string[]; eol: string } {

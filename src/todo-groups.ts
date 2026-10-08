@@ -4,11 +4,15 @@ import { findSection } from "./sections.ts";
 import type { Vault } from "./vault.ts";
 import { findPreviousWeeklyNote, findWeeklyNote } from "./weekly.ts";
 
-export const TODO_SECTION = "# To-Do:";
+const TODO_SECTION = "# To-Do:";
+const PATH_SEPARATOR = " › ";
 const BULLET = /^[-*+] (.*)$/;
 const CHECKBOX = /^\[.\]/;
 
 export type TodoGroup = { name: string; children: TodoGroup[] };
+
+/** A Todo Group path, outermost group first, e.g. `["Dissertation", "IRB"]`. */
+export type GroupPath = string[];
 
 /**
  * A Todo Group (or the section itself, at level -1) located in a note's lines.
@@ -48,8 +52,8 @@ export function parseTodoGroups(lines: string[], start: number, end: number): Gr
     if (line.trim() === "") continue;
     const level = indentLevel(line);
     const bullet = BULLET.exec(line.trimStart());
+    while ((stack.at(-1)?.level ?? -1) >= level) stack.pop();
     if (bullet) {
-      while ((stack.at(-1)?.level ?? -1) >= level) stack.pop();
       const parent = stack.length === 0 ? root : stack.at(-1)?.group;
       const content = (bullet[1] ?? "").trim();
       if (parent !== undefined && content !== "" && !CHECKBOX.test(content)) {
@@ -69,9 +73,39 @@ export function parseTodoGroups(lines: string[], start: number, end: number): Gr
   return root;
 }
 
-/** Group names match ignoring case, surrounding space and a trailing colon. */
-export function groupKey(name: string): string {
+/** Where a path leads in a parsed section: to a group, to the first `depth` with no match (under `parent`), or to a `depth` that matches several bullets. */
+export type GroupLookup =
+  | { kind: "found"; group: GroupNode }
+  | { kind: "missing"; depth: number; parent: GroupNode }
+  | { kind: "ambiguous"; depth: number; lines: number[] };
+
+export function resolveGroupPath(root: GroupNode, path: GroupPath): GroupLookup {
+  let group = root;
+  for (const [depth, name] of path.entries()) {
+    const matches = group.children.filter((child) => groupKey(child.name) === groupKey(name));
+    if (matches.length > 1) return { kind: "ambiguous", depth, lines: matches.map(({ line }) => line) };
+    const [match] = matches;
+    if (match === undefined) return { kind: "missing", depth, parent: group };
+    group = match;
+  }
+  return { kind: "found", group };
+}
+
+/** Names match ignoring case, surrounding space and a trailing colon, so `MCP Paper:` is `mcp paper`. */
+function groupKey(name: string): string {
   return name.trim().replace(/:$/, "").trim().toLowerCase();
+}
+
+export function pathKey(path: GroupPath): string {
+  return path.map(groupKey).join("\0");
+}
+
+export function formatGroupPath(path: GroupPath): string {
+  return path.join(PATH_SEPARATOR);
+}
+
+export function parseGroupPath(text: string): GroupPath {
+  return text.split(PATH_SEPARATOR.trim()).map((name) => name.trim());
 }
 
 function indentLevel(line: string): number {
