@@ -51,6 +51,10 @@ _Avoid_: Proposal, preview
 The per-week note holding that week's updates, to-dos, blockers, notes and key takeaways.
 _Avoid_: Weekly update, journal
 
+**Todo Group**:
+A plain bullet in a Weekly Note's to-do section that gathers the week's Todos for one project or kind of work (e.g. "Dissertation", "Workshop papers"); groups can nest inside groups.
+_Avoid_: Header bullet, category, heading
+
 **Topic Note**:
 A durable note about one subject being researched or worked on.
 _Avoid_: Page, wiki note
@@ -60,5 +64,5 @@ The main note for one project, whatever its title (e.g. "Context Bridge MCP Main
 _Avoid_: Index, main note
 
 **Route**:
-A remembered mapping from a project or subject to the note Filing should target, learned from the user's redirects.
+A remembered mapping from a project or subject to the note or Todo Group Filing should target, learned from the user's redirects.
 _Avoid_: Rule, mapping, alias

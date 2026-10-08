@@ -15,13 +15,24 @@ export type WeeklyNote = {
 
 export function findWeeklyNote(vault: Vault, isoDate: string): WeeklyNote {
   const target = parseIsoDay(isoDate);
-  const folder = join(vault.root, WEEKLY_FOLDER);
-  const candidates = existsSync(folder) ? readdirSync(folder).flatMap(datedNote) : [];
-  const latest = candidates
-    .filter(({ day }) => day >= target - 6 && day <= target)
-    .sort((a, b) => b.day - a.day)[0];
+  const latest = latestWeeklyNote(vault, (day) => day >= target - 6 && day <= target);
   if (latest) return { exists: true, note: join(WEEKLY_FOLDER, latest.name) };
   return { exists: false, note: join(WEEKLY_FOLDER, weeklyNoteName(mondayOf(target))) };
+}
+
+/** The most recent Weekly Note dated before the week's note that `findWeeklyNote` finds for the date, however many weeks back. */
+export function findPreviousWeeklyNote(vault: Vault, isoDate: string): string | undefined {
+  const target = parseIsoDay(isoDate);
+  const thisWeek = latestWeeklyNote(vault, (day) => day >= target - 6 && day <= target);
+  const before = thisWeek?.day ?? target + 1;
+  const previous = latestWeeklyNote(vault, (day) => day < before);
+  return previous && join(WEEKLY_FOLDER, previous.name);
+}
+
+function latestWeeklyNote(vault: Vault, accept: (day: number) => boolean): { name: string; day: number } | undefined {
+  const folder = join(vault.root, WEEKLY_FOLDER);
+  const candidates = existsSync(folder) ? readdirSync(folder).flatMap(datedNote) : [];
+  return candidates.filter(({ day }) => accept(day)).sort((a, b) => b.day - a.day)[0];
 }
 
 /** True for a Weekly Note path the template may be copied to: `Research/Weekly Meetings/MM-DD-YY Weekly Update.md` dated a Monday. */

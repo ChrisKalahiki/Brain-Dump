@@ -7,6 +7,7 @@ import { applyFilingPlan, parseFilingPlan } from "./filing.ts";
 import { listUnfiledDumps, summarize } from "./inbox.ts";
 import { listNotes } from "./notes.ts";
 import { readRoutes } from "./routes.ts";
+import { readTodoGroups } from "./todo-groups.ts";
 import { locateVault } from "./vault.ts";
 import { findWeeklyNote } from "./weekly.ts";
 
@@ -32,6 +33,12 @@ async function main(argv: string[]): Promise<number> {
       const { date } = parseOptions(rest, { date: { type: "string" } });
       if (date === undefined) throw new UsageError("--date is required");
       writeJson(findWeeklyNote(locateVault(), date));
+      return 0;
+    }
+    case "todo-groups": {
+      const { date } = parseOptions(rest, { date: { type: "string" } });
+      if (date === undefined) throw new UsageError("--date is required");
+      writeJson(readTodoGroups(locateVault(), date));
       return 0;
     }
     case "apply":
