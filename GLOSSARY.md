@@ -71,6 +71,10 @@ _Avoid_: Index, main note
 A remembered mapping from a project or subject to the note or Todo Group Filing should target, learned from the user's redirects.
 _Avoid_: Rule, mapping, alias
 
+**Run**:
+One set of Vault changes Brain-Dump applies together; undone only as a whole.
+_Avoid_: Transaction, batch, commit
+
 **Consolidation**:
 Distilling a long Topic Note or Project Note into a Digest, without changing or removing any of the note's existing text.
 _Avoid_: Tidy, cleanup, rewrite
