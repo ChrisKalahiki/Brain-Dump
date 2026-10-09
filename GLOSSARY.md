@@ -66,3 +66,11 @@ _Avoid_: Index, main note
 **Route**:
 A remembered mapping from a project or subject to the note or Todo Group Filing should target, learned from the user's redirects.
 _Avoid_: Rule, mapping, alias
+
+**Consolidation**:
+Distilling a long Topic Note or Project Note into a Digest, without changing or removing any of the note's existing text.
+_Avoid_: Tidy, cleanup, rewrite
+
+**Digest**:
+The summary Consolidation produces for a note, linking back to the Items it distils.
+_Avoid_: Summary, rollup
