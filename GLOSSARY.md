@@ -47,6 +47,10 @@ _Avoid_: Processing, organising, triage
 The proposed destination for every Item in one Dump, approved or adjusted by the user before anything is written.
 _Avoid_: Proposal, preview
 
+**Curated Note**:
+Any note in the Vault outside the Inbox; it changes only through an approved Filing Plan or other approved plan.
+_Avoid_: Curated zone, permanent note
+
 **Weekly Note**:
 The per-week note holding that week's updates, to-dos, blockers, notes and key takeaways.
 _Avoid_: Weekly update, journal
