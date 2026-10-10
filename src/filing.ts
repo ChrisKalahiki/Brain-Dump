@@ -3,10 +3,11 @@ import { basename, dirname, isAbsolute, join, normalize, relative } from "node:p
 import { STATE_MARKS } from "./dump-body.ts";
 import { BrainDumpError, describeFsError, UsageError } from "./errors.ts";
 import { readDump, type StoredDump } from "./inbox.ts";
-import { readRoutes, renderRoute, routeIdentity, ROUTES_NOTE, type Route } from "./routes.ts";
+import { FILED_FOLDER, ROUTES_NOTE, WEEKLY_FOLDER, WEEKLY_TEMPLATE_NOTE } from "./layout.ts";
+import { readRoutes, renderRoute, routeIdentity, type Route } from "./routes.ts";
 import { findSection } from "./sections.ts";
 import { formatGroupPath, parseTodoGroups, pathKey, resolveGroupPath, type GroupNode, type GroupPath } from "./todo-groups.ts";
-import { isMondayWeeklyNote, readWeeklyTemplate, WEEKLY_TEMPLATE_NOTE } from "./weekly.ts";
+import { isMondayWeeklyNote, readWeeklyTemplate } from "./weekly.ts";
 import type { Vault } from "./vault.ts";
 
 /** Where lines go: a note's section, or the end of the note when `section` is absent. */
@@ -71,9 +72,9 @@ export function applyFilingPlan(vault: Vault, plan: FilingPlan): FilingResult {
 
   const closed = new Set(plan.items.filter(({ outcome }) => outcome !== "skipped").map(({ index }) => index));
   const finished = dump.items.every((item) => item.state !== "open" || closed.has(item.index));
-  const filedFolder = join(vault.inbox, "Filed");
+  const filedFolder = join(vault.root, FILED_FOLDER);
   const filedPath = join(filedFolder, basename(dumpPath));
-  if (finished && existsSync(filedPath)) reject(`Inbox/Filed already has ${basename(dumpPath)}`);
+  if (finished && existsSync(filedPath)) reject(`${FILED_FOLDER} already has ${basename(dumpPath)}`);
 
   notes.write();
   replaceFile(dumpPath, dumpLines.join(dump.eol));
@@ -234,7 +235,7 @@ class NoteEdits {
   }
 
   private weeklyTemplate(note: string): string {
-    if (!isMondayWeeklyNote(note)) reject(`${note} is not a Monday Weekly Note in Research/Weekly Meetings`);
+    if (!isMondayWeeklyNote(note)) reject(`${note} is not a Monday Weekly Note in ${WEEKLY_FOLDER}`);
     const template = readWeeklyTemplate(this.vault);
     if (template === undefined) reject(`the Weekly Note template ${WEEKLY_TEMPLATE_NOTE} does not exist`);
     return template;

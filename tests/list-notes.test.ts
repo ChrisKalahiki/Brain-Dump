@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { makeSandbox, run, writeVaultFile } from "./harness.ts";
 
 describe("brain-dump list-notes", () => {
-  test("lists every note with its title, folder and frontmatter tags, skipping the Inbox and .obsidian", () => {
+  test("lists notes with their title, folder and frontmatter tags, skipping the Inbox and .obsidian", () => {
     // #given
     const sandbox = makeSandbox();
     writeVaultFile(sandbox, "Research/Main Notes/Context MCP/Context Bridge MCP Main Note.md", "---\ntags:\n  - MCP\n  - research\n---\n# Context Bridge\n");
@@ -20,10 +20,36 @@ describe("brain-dump list-notes", () => {
     ]);
   });
 
+  test("lists only notes inside the write allowlist, subfolders included", () => {
+    // #given
+    const sandbox = makeSandbox();
+    for (const note of [
+      "Research/Main Notes/Agent Skills.md",
+      "Research/Weekly Meetings/10-05-26 Weekly Update.md",
+      "Side Projects/Talky/Deep/Plan.md",
+      "Resources/Links.md",
+      "Journal/2026-10-05.md",
+      "Research/Other/Templates/XX-XX-XX Weekly Update.md",
+      "Research/Main Notes Archive/Old.md",
+      "Home.md",
+    ]) writeVaultFile(sandbox, note, "");
+
+    // #when
+    const result = run(sandbox, ["list-notes"]);
+
+    // #then
+    expect(JSON.parse(result.stdout).map((note: { note: string }) => note.note)).toEqual([
+      "Research/Main Notes/Agent Skills.md",
+      "Research/Weekly Meetings/10-05-26 Weekly Update.md",
+      "Resources/Links.md",
+      "Side Projects/Talky/Deep/Plan.md",
+    ]);
+  });
+
   test("prints the whole list even when it is larger than a pipe buffer", () => {
     // #given
     const sandbox = makeSandbox();
-    for (let n = 0; n < 1200; n++) writeVaultFile(sandbox, `Research/Notes/Note number ${String(n).padStart(4, "0")}.md`, "");
+    for (let n = 0; n < 1200; n++) writeVaultFile(sandbox, `Research/Main Notes/Note number ${String(n).padStart(4, "0")}.md`, "");
 
     // #when
     const result = run(sandbox, ["list-notes"], { throughPipe: true });
@@ -35,8 +61,8 @@ describe("brain-dump list-notes", () => {
   test("reads no tags from frontmatter that is never closed or has an empty tags list", () => {
     // #given
     const sandbox = makeSandbox();
-    writeVaultFile(sandbox, "A.md", "---\ntags:\n  - Open\n# no closing fence\n");
-    writeVaultFile(sandbox, "B.md", "---\ntags:\naliases:\n  - Bee\n---\n");
+    writeVaultFile(sandbox, "Resources/A.md", "---\ntags:\n  - Open\n# no closing fence\n");
+    writeVaultFile(sandbox, "Resources/B.md", "---\ntags:\naliases:\n  - Bee\n---\n");
 
     // #when
     const result = run(sandbox, ["list-notes"]);

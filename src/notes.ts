@@ -1,5 +1,6 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
+import { INBOX, WRITE_ALLOWLIST } from "./layout.ts";
 import type { Vault } from "./vault.ts";
 
 export type NoteSummary = {
@@ -9,10 +10,12 @@ export type NoteSummary = {
   tags: string[];
 };
 
-const SKIPPED_FOLDERS = new Set(["Inbox"]);
-
+/** Every note in the write allowlist outside the Inbox, so Filing never proposes a private note or a Dump. */
 export function listNotes(vault: Vault): NoteSummary[] {
-  return markdownFiles(vault.root, vault.root)
+  return WRITE_ALLOWLIST.filter((tree) => tree !== INBOX)
+    .map((tree) => join(vault.root, tree))
+    .filter((tree) => existsSync(tree))
+    .flatMap(markdownFiles)
     .sort()
     .map((path) => {
       const note = relative(vault.root, path);
@@ -20,13 +23,10 @@ export function listNotes(vault: Vault): NoteSummary[] {
     });
 }
 
-function markdownFiles(root: string, folder: string): string[] {
+function markdownFiles(folder: string): string[] {
   return readdirSync(folder, { withFileTypes: true }).flatMap((entry) => {
     const path = join(folder, entry.name);
-    if (entry.isDirectory()) {
-      const skipped = entry.name.startsWith(".") || (folder === root && SKIPPED_FOLDERS.has(entry.name));
-      return skipped ? [] : markdownFiles(root, path);
-    }
+    if (entry.isDirectory()) return entry.name.startsWith(".") ? [] : markdownFiles(path);
     return entry.isFile() && entry.name.endsWith(".md") ? [path] : [];
   });
 }

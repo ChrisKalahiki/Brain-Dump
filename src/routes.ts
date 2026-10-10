@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { ROUTES_NOTE } from "./layout.ts";
 import { formatGroupPath, parseGroupPath, pathKey, type GroupPath } from "./todo-groups.ts";
 import type { Vault } from "./vault.ts";
 
-export const ROUTES_NOTE = join("Inbox", "Filing Routes.md");
 const NOTE_ROUTE = /^(?:[-*]\s+)?(.+?)\s*→\s*\[\[([^\]|]+)(?:\|[^\]]*)?\]\]\s*$/;
 const GROUP_ROUTE = /^(?:[-*]\s+)?(.+?)\s*→\s*To-Do\s*›\s*(.+?)\s*$/;
 
