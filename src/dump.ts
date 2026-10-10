@@ -1,9 +1,9 @@
-import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseDumpBody, renderDumpBody } from "./dump-body.ts";
-import { BrainDumpError, describeFsError, DumpNotWrittenError, errnoCode, UsageError } from "./errors.ts";
+import { BrainDumpError, DumpNotWrittenError, UsageError } from "./errors.ts";
+import { commit, NoteExistsError, WriteFailedError } from "./gateway.ts";
 import { dumpStem, renderOriginLine, type Origin } from "./origin.ts";
-import { locateVault } from "./vault.ts";
+import { locateVault, type Vault } from "./vault.ts";
 
 const OBSIDIAN_FORBIDDEN = /[*"\\/<>:|?#^[\]]+/g;
 
@@ -11,8 +11,7 @@ export function writeDump(origin: Origin, slug: string, body: string): string {
   const stem = `${dumpStem(origin)} - ${toFilenameSafe(slug)}`;
   const contents = renderDump(origin, renderDumpBody(parseDumpBody(body)));
   try {
-    const { inbox } = locateVault();
-    return createWithFreeName(inbox, stem, contents);
+    return createWithFreeName(locateVault(), stem, contents);
   } catch (error) {
     if (error instanceof BrainDumpError) throw new DumpNotWrittenError(error.message, contents);
     throw error;
@@ -25,15 +24,16 @@ function toFilenameSafe(slug: string): string {
   return safe;
 }
 
-function createWithFreeName(inbox: string, stem: string, contents: string): string {
+function createWithFreeName(vault: Vault, stem: string, contents: string): string {
   for (let copy = 1; ; copy++) {
-    const path = join(inbox, `${stem}${copy === 1 ? "" : `-${copy}`}.md`);
+    const path = join(vault.inbox, `${stem}${copy === 1 ? "" : `-${copy}`}.md`);
     try {
-      writeFileSync(path, contents, { flag: "wx" });
+      commit(vault, "automation", [{ mode: "create", path, contents }]);
       return path;
     } catch (error) {
-      if (errnoCode(error) === "EEXIST") continue;
-      throw new BrainDumpError(`cannot write the Dump into ${inbox}: ${describeFsError(error)}`);
+      if (error instanceof NoteExistsError) continue;
+      if (error instanceof WriteFailedError) throw new BrainDumpError(`cannot write the Dump into ${vault.inbox}: ${error.reason}`);
+      throw error;
     }
   }
 }

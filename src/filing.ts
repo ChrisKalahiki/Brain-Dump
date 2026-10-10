@@ -1,7 +1,9 @@
-import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, normalize, relative } from "node:path";
+import type { ClosedMark } from "./append-only.ts";
 import { STATE_MARKS } from "./dump-body.ts";
-import { BrainDumpError, describeFsError, UsageError } from "./errors.ts";
+import { BrainDumpError, UsageError } from "./errors.ts";
+import { commit, type Write } from "./gateway.ts";
 import { readDump, type StoredDump } from "./inbox.ts";
 import { FILED_FOLDER, ROUTES_NOTE, WEEKLY_FOLDER, WEEKLY_TEMPLATE_NOTE } from "./layout.ts";
 import { readRoutes, renderRoute, routeIdentity, type Route } from "./routes.ts";
@@ -37,6 +39,7 @@ export type FilingResult = {
 
 const PLAN_SHAPE =
   'expected {"dump": string, "items": [{"index": number, "outcome": "filed", "note": string, "section"?: string, "group"?: string[], "lines": string[]} | {"index": number, "outcome": "dropped"|"skipped"}], "inserts": [{"note": string, "section"?: string, "lines": string[]}], "routes"?: [{"key": string, "title": string} | {"key": string, "group": string[]}], "creates"?: [{"note": string, "from": "weekly-template"} | {"note": string, "tags": string[]}], "createGroups"?: string[][]}';
+const CLOSED_MARKS: Record<"filed" | "dropped", ClosedMark> = { filed: "x", dropped: "-" };
 const PLACEHOLDER = /^- (\[ \] ?)?$/;
 const TAG = /^[^\s#]+$/;
 
@@ -72,16 +75,18 @@ export function applyFilingPlan(vault: Vault, plan: FilingPlan): FilingResult {
 
   const closed = new Set(plan.items.filter(({ outcome }) => outcome !== "skipped").map(({ index }) => index));
   const finished = dump.items.every((item) => item.state !== "open" || closed.has(item.index));
-  const filedFolder = join(vault.root, FILED_FOLDER);
-  const filedPath = join(filedFolder, basename(dumpPath));
+  const filedPath = join(vault.root, FILED_FOLDER, basename(dumpPath));
   if (finished && existsSync(filedPath)) reject(`${FILED_FOLDER} already has ${basename(dumpPath)}`);
 
-  notes.write();
-  replaceFile(dumpPath, dumpLines.join(dump.eol));
-  if (finished) {
-    mkdirSync(filedFolder, { recursive: true });
-    renameSync(dumpPath, filedPath);
-  }
+  const lineOf = new Map(dump.items.map((item) => [item.index, item.line]));
+  const planned = new Map(
+    plan.items.flatMap(({ index, outcome }): [number, ClosedMark][] => {
+      const line = lineOf.get(index);
+      return outcome === "skipped" || line === undefined ? [] : [[line, CLOSED_MARKS[outcome]]];
+    }),
+  );
+  const filedDump: Write = { mode: "file-dump", path: dumpPath, contents: dumpLines.join(dump.eol), planned, moveTo: finished ? filedPath : undefined };
+  commit(vault, "approved-plan", [...notes.writes(), filedDump]);
   const count = (outcome: PlannedItem["outcome"]): number => plan.items.filter((item) => item.outcome === outcome).length;
   return { filed: count("filed"), dropped: count("dropped"), skipped: count("skipped"), movedTo: finished ? relative(vault.root, filedPath) : null };
 }
@@ -210,28 +215,8 @@ class NoteEdits {
     }
   }
 
-  /** Stages every note as a temporary file, then creates new notes (never overwriting, rolled back together on failure), then replaces existing ones. */
-  write(): void {
-    const staged = [...this.notes].map(([path, { lines, eol, isNew }]) => {
-      mkdirSync(dirname(path), { recursive: true });
-      const temporary = `${path}.brain-dump-tmp`;
-      writeFileSync(temporary, lines.join(eol));
-      return { path, temporary, isNew };
-    });
-    const created: string[] = [];
-    try {
-      for (const { path, temporary, isNew } of staged) {
-        if (!isNew) continue;
-        linkSync(temporary, path);
-        created.push(path);
-      }
-      for (const { path, temporary, isNew } of staged) if (!isNew) renameSync(temporary, path);
-    } catch (error) {
-      for (const path of created) unlinkSync(path);
-      throw new BrainDumpError(`could not write the notes: ${describeFsError(error)}`);
-    } finally {
-      for (const { temporary } of staged) if (existsSync(temporary)) unlinkSync(temporary);
-    }
+  writes(): Write[] {
+    return [...this.notes].map(([path, { lines, eol, isNew }]) => ({ mode: isNew ? "create" : "append", path, contents: lines.join(eol) }));
   }
 
   private weeklyTemplate(note: string): string {
@@ -265,12 +250,6 @@ function splitLines(contents: string): { lines: string[]; eol: string } {
 
 function renderTagsFrontmatter(tags: string[]): string {
   return tags.length === 0 ? "" : `---\ntags:\n${tags.map((tag) => `  - ${tag}\n`).join("")}---\n`;
-}
-
-function replaceFile(path: string, contents: string): void {
-  const temporary = `${path}.brain-dump-tmp`;
-  writeFileSync(temporary, contents);
-  renameSync(temporary, path);
 }
 
 function resolveInVault(vault: Vault, relativePath: string): string {
