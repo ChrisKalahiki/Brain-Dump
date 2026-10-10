@@ -75,6 +75,10 @@ _Avoid_: Search, query, lookup
 A remembered mapping from a project or subject to the note or Todo Group Filing should target, learned from the user's redirects.
 _Avoid_: Rule, mapping, alias
 
+**Routine Item**:
+An Item whose destination comes from a Route to a note or Todo Group that already exists; listed compactly in the Filing Plan, but approved like any other Item.
+_Avoid_: Auto-filed item, trusted item
+
 **Run**:
 One set of Vault changes Brain-Dump applies together; undone only as a whole.
 _Avoid_: Transaction, batch, commit
