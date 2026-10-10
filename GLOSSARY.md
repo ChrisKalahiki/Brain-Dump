@@ -84,5 +84,5 @@ Distilling a long Topic Note or Project Note into a Digest, without changing or 
 _Avoid_: Tidy, cleanup, rewrite
 
 **Digest**:
-The summary Consolidation produces for a note, linking back to the Items it distils.
+The summary Consolidation adds to a note, distilling the note's earlier Digest and the Items since, linking back to the Dumps those Items came from; the latest Digest supersedes earlier ones.
 _Avoid_: Summary, rollup
