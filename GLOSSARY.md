@@ -67,6 +67,10 @@ _Avoid_: Page, wiki note
 The main note for one project, whatever its title (e.g. "Context Bridge MCP Main Note", "Virtual Assistant Project").
 _Avoid_: Index, main note
 
+**Recall**:
+Looking up what the Vault already holds from inside a Session.
+_Avoid_: Search, query, lookup
+
 **Route**:
 A remembered mapping from a project or subject to the note or Todo Group Filing should target, learned from the user's redirects.
 _Avoid_: Rule, mapping, alias
