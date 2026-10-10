@@ -35,6 +35,10 @@ _Avoid_: Task, action item
 One interaction with an AI tool that a Dump is drawn from, whether a coding agent run (Claude Code, Codex) or a chat app thread (Claude web, ChatGPT, Gemini).
 _Avoid_: Conversation, chat, thread
 
+**Sweep**:
+The scheduled run that drafts a Dump from each recent Session not yet captured, writing only new Dumps into the Inbox.
+_Avoid_: Auto-dump, capture job, harvest
+
 **Inbox**:
 The place in the Vault where Dumps land before Filing.
 _Avoid_: Queue, staging
