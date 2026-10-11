@@ -1,7 +1,8 @@
-import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { contentHash } from "../src/content-hash.ts";
+import { ROUTES_NOTE } from "../src/layout.ts";
 
 const CLI = join(import.meta.dir, "..", "src", "cli.ts");
 
@@ -111,15 +112,10 @@ tags:
 
 export const DEV_ORIGIN = "Session: Claude Code · `~/Projects/Brain-Dump` @ `main` · 2026-10-05 19:40 · [[Brain-Dump]]";
 
-export const ROUTES_NOTE = "Inbox/Filing Routes.md";
-
-/** The first 16 hex characters of the SHA-256 of a file's exact bytes. */
-export function fileHash(bytes: string | Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex").slice(0, 16);
-}
+export { ROUTES_NOTE };
 
 export function vaultFileHash(sandbox: Sandbox, relativePath: string): string {
-  return fileHash(readFileSync(join(sandbox.vault, relativePath)));
+  return contentHash(readFileSync(join(sandbox.vault, relativePath)));
 }
 
 /** Adds `expect`, pinning the Dump, every note the plan names and the Routes note to their hashes on disk now, as the file skill does from its reads. A plan that already has `expect`, or isn't an object, is left as it is. */

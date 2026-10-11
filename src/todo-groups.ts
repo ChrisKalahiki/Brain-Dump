@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { contentHash } from "./content-hash.ts";
+import { readHashed } from "./content-hash.ts";
 import { findSection } from "./sections.ts";
 import type { Vault } from "./vault.ts";
 import { findPreviousWeeklyNote, locateWeeklyNote } from "./weekly.ts";
@@ -30,9 +30,9 @@ export type WeekGroups = {
 export function readTodoGroups(vault: Vault, isoDate: string): WeekGroups {
   const thisWeek = locateWeeklyNote(vault, isoDate);
   const previous = findPreviousWeeklyNote(vault, isoDate);
-  const bytes = thisWeek.exists ? readFileSync(join(vault.root, thisWeek.note)) : undefined;
+  const read = thisWeek.exists ? readHashed(join(vault.root, thisWeek.note)) : undefined;
   return {
-    thisWeek: { ...thisWeek, hash: bytes === undefined ? null : contentHash(bytes), groups: bytes === undefined ? [] : noteGroups(bytes.toString("utf8")) },
+    thisWeek: { ...thisWeek, hash: read?.hash ?? null, groups: read === undefined ? [] : noteGroups(read.contents) },
     lastWeek: previous === undefined ? null : { note: previous, groups: readNoteGroups(vault, previous) },
   };
 }

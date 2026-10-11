@@ -1,6 +1,6 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
-import { contentHash } from "./content-hash.ts";
+import { readHashed } from "./content-hash.ts";
 import { INBOX, WRITE_ALLOWLIST } from "./layout.ts";
 import type { Vault } from "./vault.ts";
 
@@ -21,8 +21,8 @@ export function listNotes(vault: Vault): NoteSummary[] {
     .sort()
     .map((path) => {
       const note = relative(vault.root, path);
-      const bytes = readFileSync(path);
-      return { note, title: basename(note, ".md"), folder: dirname(note), tags: frontmatterTags(bytes.toString("utf8")), hash: contentHash(bytes) };
+      const { contents, hash } = readHashed(path);
+      return { note, title: basename(note, ".md"), folder: dirname(note), tags: frontmatterTags(contents), hash };
     });
 }
 

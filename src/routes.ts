@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { contentHash } from "./content-hash.ts";
+import { readHashed } from "./content-hash.ts";
 import { ROUTES_NOTE } from "./layout.ts";
 import { formatGroupPath, parseGroupPath, pathKey, type GroupPath } from "./todo-groups.ts";
 import type { Vault } from "./vault.ts";
@@ -19,8 +19,8 @@ export function readRoutes(vault: Vault): Route[] {
 export function readRoutesNote(vault: Vault): { hash: string | null; routes: Route[] } {
   const path = join(vault.root, ROUTES_NOTE);
   if (!existsSync(path)) return { hash: null, routes: [] };
-  const bytes = readFileSync(path);
-  return { hash: contentHash(bytes), routes: parseRoutes(bytes.toString("utf8")) };
+  const { contents, hash } = readHashed(path);
+  return { hash, routes: parseRoutes(contents) };
 }
 
 function parseRoutes(contents: string): Route[] {

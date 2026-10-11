@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join, normalize } from "node:path";
-import { contentHash } from "./content-hash.ts";
+import { readHashed } from "./content-hash.ts";
 import { UsageError } from "./errors.ts";
 import { WEEKLY_FOLDER, WEEKLY_TEMPLATE_NOTE } from "./layout.ts";
 import type { Vault } from "./vault.ts";
@@ -13,10 +13,10 @@ export type WeeklyNote = {
   note: string;
 };
 
-/** The week's Weekly Note, with its hash, or `null` when it doesn't exist yet. */
+/** The week's Weekly Note with its hash, which is `null` when the note doesn't exist yet. */
 export function findWeeklyNote(vault: Vault, isoDate: string): WeeklyNote & { hash: string | null } {
   const found = locateWeeklyNote(vault, isoDate);
-  return { ...found, hash: found.exists ? contentHash(readFileSync(join(vault.root, found.note))) : null };
+  return { ...found, hash: found.exists ? readHashed(join(vault.root, found.note)).hash : null };
 }
 
 export function locateWeeklyNote(vault: Vault, isoDate: string): WeeklyNote {

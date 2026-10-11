@@ -116,6 +116,32 @@ describe("brain-dump apply checks expect", () => {
     expect(result.stderr).toBe(`brain-dump: Filing Plan stale: ${WEEK} changed since it was read\n`);
   });
 
+  test("names the changed files even when another file the plan writes has no expect entry", () => {
+    // #given
+    const sandbox = setup();
+    writeVaultFile(sandbox, TOPIC, "- Skills\n");
+    const plan = { dump: DUMP, items: [fileTodo(1, "- [ ] Ship it. #todo"), { index: 2, outcome: "filed", note: TOPIC, lines: ["- Test it."] }], inserts: [], expect: { [DUMP]: "0000000000000000" } };
+
+    // #when
+    const result = apply(sandbox, plan);
+
+    // #then
+    expect(result.stderr).toBe(`brain-dump: Filing Plan stale: ${DUMP} changed since it was read\n`);
+  });
+
+  test("treats a Routes note that appeared since the read as changed", () => {
+    // #given
+    const sandbox = setup();
+    const plan = pinned(sandbox, { dump: DUMP, items: [fileTodo(1, "- [ ] Ship it. #todo")], inserts: [], routes: [{ key: "Brain-Dump", title: "Brain-Dump" }] });
+    writeVaultFile(sandbox, ROUTES_NOTE, "Talky → [[Talky]]\n");
+
+    // #when
+    const result = apply(sandbox, plan);
+
+    // #then
+    expect(result.stderr).toBe(`brain-dump: Filing Plan stale: ${ROUTES_NOTE} changed since it was read\n`);
+  });
+
   test("returns the hash of every file it wrote, which a later plan in the same run can pin", () => {
     // #given
     const sandbox = setup();

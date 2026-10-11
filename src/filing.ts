@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, normalize, relative } from "node:path";
 import type { ClosedMark } from "./append-only.ts";
-import { contentHash } from "./content-hash.ts";
+import { contentHash, readHashed } from "./content-hash.ts";
 import { STATE_MARKS } from "./dump-body.ts";
 import { BrainDumpError, UsageError } from "./errors.ts";
 import { commit, type Write } from "./gateway.ts";
@@ -107,15 +107,19 @@ function checkFresh(vault: Vault, plan: FilingPlan, writesRoutes: boolean): void
   const filed = plan.items.flatMap((item) => (item.outcome === "filed" ? [item.note] : []));
   const notes = [plan.dump, ...filed, ...plan.inserts.map(({ note }) => note), ...(writesRoutes ? [ROUTES_NOTE] : [])];
   const written = new Map(notes.map((note) => [resolveInVault(vault, note), note]));
+  const routesPath = resolveInVault(vault, ROUTES_NOTE);
   const stale: string[] = [];
+  const unpinned: string[] = [];
   for (const [path, note] of written) {
     if (created.has(path)) continue;
-    const current = existsSync(path) ? contentHash(readFileSync(path)) : undefined;
+    const current = existsSync(path) ? readHashed(path).hash : undefined;
     const hash = expected.get(path);
-    if (hash === undefined && current !== undefined) reject(`expect has no hash for ${note}`);
+    // The Routes note is created on demand, so having no hash for it means it didn't exist when the agent read it.
+    if (hash === undefined && current !== undefined) (path === routesPath ? stale : unpinned).push(note);
     if (hash !== undefined && hash !== current) stale.push(note);
   }
   if (stale.length > 0) throw new BrainDumpError(`Filing Plan stale: ${listInEnglish(stale)} changed since it was read`);
+  if (unpinned.length > 0) reject(`expect has no hash for ${listInEnglish(unpinned)}`);
 }
 
 /** The Todo Groups the plan may create: each `createGroups` path and every group along it. Rejects a path no filed Todo goes into. */

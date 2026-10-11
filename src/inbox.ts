@@ -1,6 +1,6 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import { basename, join, relative } from "node:path";
-import { contentHash } from "./content-hash.ts";
+import { readHashed } from "./content-hash.ts";
 import { parseDumpBody, SECTIONS, type ItemState, type SectionName } from "./dump-body.ts";
 import { BrainDumpError } from "./errors.ts";
 import type { Vault } from "./vault.ts";
@@ -42,8 +42,7 @@ export function readDump(vault: Vault, path: string): StoredDump {
   const name = basename(path);
   const match = DUMP_FILENAME.exec(name);
   if (!match?.[1] || !match[2]) throw new BrainDumpError(`${name} is not a Dump`);
-  const bytes = readFileSync(path);
-  const contents = bytes.toString("utf8");
+  const { contents, hash } = readHashed(path);
   const eol = contents.includes("\r\n") ? "\r\n" : "\n";
   const lines = contents.split(eol);
   const bodyStart = lines.findIndex((line) => line.startsWith("## "));
@@ -60,7 +59,7 @@ export function readDump(vault: Vault, path: string): StoredDump {
       line: bodyStart + item.line,
     })),
   );
-  return { file: relative(vault.root, path), title: name.slice(0, -3), date: match[1], project: match[2], items, lines, eol, hash: contentHash(bytes) };
+  return { file: relative(vault.root, path), title: name.slice(0, -3), date: match[1], project: match[2], items, lines, eol, hash };
 }
 
 export type DumpSummary = Omit<StoredDump, "lines" | "items" | "eol"> & { items: Omit<StoredItem, "line">[] };
