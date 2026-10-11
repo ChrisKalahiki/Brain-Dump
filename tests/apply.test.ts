@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { DEV_ORIGIN as ORIGIN, dumpFile, makeSandbox, readVaultFile, run, WEEKLY_TEMPLATE, writeVaultFile, type Sandbox } from "./harness.ts";
+import { DEV_ORIGIN as ORIGIN, dumpFile, makeSandbox, readVaultFile, run, WEEKLY_TEMPLATE, writeVaultFile, type Sandbox, pinned, vaultFileHash } from "./harness.ts";
 
 const DUMP = "Inbox/2026-10-05 1940 Brain-Dump - filing.md";
 const WEEK = "Research/Weekly Meetings/10-05-26 Weekly Update.md";
 const LINK = "- Filed [[2026-10-05 1940 Brain-Dump - filing|Brain-Dump filing]]";
 
 function apply(sandbox: Sandbox, plan: unknown) {
-  return run(sandbox, ["apply"], { stdin: typeof plan === "string" ? plan : JSON.stringify(plan) });
+  return run(sandbox, ["apply"], { stdin: typeof plan === "string" ? plan : JSON.stringify(pinned(sandbox, plan)) });
 }
 
 function fileTodo(index: number, line: string, note = WEEK) {
@@ -106,7 +106,7 @@ describe("brain-dump apply", () => {
 
     // #then
     expect([JSON.parse(result.stdout), readVaultFile(sandbox, DUMP)]).toEqual([
-      { filed: 0, dropped: 1, skipped: 1, movedTo: null },
+      { filed: 0, dropped: 1, skipped: 1, movedTo: null, hashes: { [DUMP]: vaultFileHash(sandbox, DUMP) } },
       dumpFile(ORIGIN, "## Todos\n- [-] #todo A.\n- [ ] #todo B.\n"),
     ]);
   });

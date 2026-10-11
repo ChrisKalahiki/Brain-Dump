@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { join, relative } from "node:path";
-import { DEV_ORIGIN as ORIGIN, DUMP_AT, dumpFile, makeSandbox, readVaultFile, run, WEEKLY_TEMPLATE, writeVaultFile, type Sandbox } from "./harness.ts";
+import { DEV_ORIGIN as ORIGIN, DUMP_AT, dumpFile, makeSandbox, readVaultFile, run, WEEKLY_TEMPLATE, writeVaultFile, type Sandbox, pinned } from "./harness.ts";
 
 const DUMP = "Inbox/2026-10-05 1940 Brain-Dump - filing.md";
 const FILED = "Inbox/Filed/2026-10-05 1940 Brain-Dump - filing.md";
@@ -54,7 +54,7 @@ describe("every gateway commit is recorded as a Run", () => {
     };
 
     // #when
-    const result = run(sandbox, ["apply"], { stdin: JSON.stringify(plan), now: NOW });
+    const result = run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, plan)), now: NOW });
 
     // #then
     const recorded = journals(sandbox);
@@ -87,7 +87,7 @@ describe("every gateway commit is recorded as a Run", () => {
     writeVaultFile(sandbox, DUMP, dump);
 
     // #when
-    const result = run(sandbox, ["apply"], { stdin: JSON.stringify({ dump: DUMP, items: [{ index: 1, outcome: "dropped" }], inserts: [] }), now: NOW });
+    const result = run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "dropped" }], inserts: [] })), now: NOW });
 
     // #then
     expect({ exitCode: result.exitCode, files: journals(sandbox).map(({ files }) => files) }).toEqual({
@@ -127,7 +127,7 @@ describe("every gateway commit is recorded as a Run", () => {
     writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Todos\n- [ ] #todo A.\n"));
 
     // #when
-    const result = run(sandbox, ["apply"], { stdin: JSON.stringify({ dump: DUMP, items: [], inserts: [{ note: "Journal/Today.md", lines: ["- leaked"] }] }), now: NOW });
+    const result = run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: DUMP, items: [], inserts: [{ note: "Journal/Today.md", lines: ["- leaked"] }] })), now: NOW });
 
     // #then
     expect({ exitCode: result.exitCode, journals: journals(sandbox) }).toEqual({ exitCode: 1, journals: [] });
@@ -142,7 +142,7 @@ describe("every gateway commit is recorded as a Run", () => {
     writeFileSync(join(sandbox.home, ".local", "state", "brain-dump"), "not a folder");
 
     // #when
-    const result = run(sandbox, ["apply"], { stdin: JSON.stringify({ dump: DUMP, items: [{ index: 1, outcome: "dropped" }], inserts: [] }), now: NOW });
+    const result = run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "dropped" }], inserts: [] })), now: NOW });
 
     // #then
     expect({

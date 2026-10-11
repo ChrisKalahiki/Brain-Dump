@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { DEV_ORIGIN as ORIGIN, dumpFile, makeSandbox, readVaultFile, run, WEEKLY_TEMPLATE, writeVaultFile, type Sandbox } from "./harness.ts";
+import { DEV_ORIGIN as ORIGIN, dumpFile, makeSandbox, readVaultFile, run, WEEKLY_TEMPLATE, writeVaultFile, type Sandbox, pinned } from "./harness.ts";
 
 const DUMP = "Inbox/2026-10-05 1940 Brain-Dump - filing.md";
 const OTHER_DUMP = "Inbox/2026-10-04 1200 Brain-Dump - other.md";
@@ -9,7 +9,7 @@ const WEEK = "Research/Weekly Meetings/10-05-26 Weekly Update.md";
 const JOURNAL = "Journal/2026-10-05.md";
 
 function apply(sandbox: Sandbox, plan: unknown) {
-  return run(sandbox, ["apply"], { stdin: JSON.stringify(plan) });
+  return run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, plan)) });
 }
 
 function stagedFiles(sandbox: Sandbox): string[] {

@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join, normalize } from "node:path";
+import { contentHash } from "./content-hash.ts";
 import { UsageError } from "./errors.ts";
 import { WEEKLY_FOLDER, WEEKLY_TEMPLATE_NOTE } from "./layout.ts";
 import type { Vault } from "./vault.ts";
@@ -12,14 +13,20 @@ export type WeeklyNote = {
   note: string;
 };
 
-export function findWeeklyNote(vault: Vault, isoDate: string): WeeklyNote {
+/** The week's Weekly Note, with its hash, or `null` when it doesn't exist yet. */
+export function findWeeklyNote(vault: Vault, isoDate: string): WeeklyNote & { hash: string | null } {
+  const found = locateWeeklyNote(vault, isoDate);
+  return { ...found, hash: found.exists ? contentHash(readFileSync(join(vault.root, found.note))) : null };
+}
+
+export function locateWeeklyNote(vault: Vault, isoDate: string): WeeklyNote {
   const target = parseIsoDay(isoDate);
   const latest = latestWeeklyNote(vault, (day) => day >= target - 6 && day <= target);
   if (latest) return { exists: true, note: join(WEEKLY_FOLDER, latest.name) };
   return { exists: false, note: join(WEEKLY_FOLDER, weeklyNoteName(mondayOf(target))) };
 }
 
-/** The most recent Weekly Note dated before the week's note that `findWeeklyNote` finds for the date, however many weeks back. */
+/** The most recent Weekly Note dated before the week's note that `locateWeeklyNote` finds for the date, however many weeks back. */
 export function findPreviousWeeklyNote(vault: Vault, isoDate: string): string | undefined {
   const target = parseIsoDay(isoDate);
   const thisWeek = latestWeeklyNote(vault, (day) => day >= target - 6 && day <= target);

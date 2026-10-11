@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DEV_ORIGIN as ORIGIN, dumpFile, makeSandbox, readVaultFile, run, type Sandbox, writeVaultFile } from "./harness.ts";
+import { DEV_ORIGIN as ORIGIN, dumpFile, makeSandbox, readVaultFile, run, type Sandbox, writeVaultFile, pinned } from "./harness.ts";
 
 const DUMP = "Inbox/2026-10-05 1940 Brain-Dump - filing.md";
 const WEEK = "Research/Weekly Meetings/10-05-26 Weekly Update.md";
@@ -17,7 +17,7 @@ function todoIn(index: number, group: string[], line = `- [ ] T${index}. #todo`)
 }
 
 function apply(sandbox: Sandbox, plan: unknown) {
-  return run(sandbox, ["apply"], { stdin: JSON.stringify({ dump: DUMP, inserts: [], ...(plan as object) }) });
+  return run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: DUMP, inserts: [], ...(plan as object) })) });
 }
 
 describe("brain-dump apply into Todo Groups", () => {

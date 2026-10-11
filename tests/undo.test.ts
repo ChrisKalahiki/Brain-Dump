@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { DEV_ORIGIN as ORIGIN, dumpFile, makeSandbox, readVaultFile, run, WEEKLY_TEMPLATE, writeConfig, writeVaultFile, type Sandbox } from "./harness.ts";
+import { DEV_ORIGIN as ORIGIN, dumpFile, makeSandbox, readVaultFile, run, WEEKLY_TEMPLATE, writeConfig, writeVaultFile, type Sandbox, pinned } from "./harness.ts";
 
 const DUMP = "Inbox/2026-10-05 1940 Brain-Dump - filing.md";
 const FILED = "Inbox/Filed/2026-10-05 1940 Brain-Dump - filing.md";
@@ -44,7 +44,7 @@ function fileDump(sandbox: Sandbox): { before: Snapshot; id: string } {
     inserts: [],
     routes: [{ key: "Brain-Dump", title: "Brain-Dump" }],
   };
-  const result = run(sandbox, ["apply"], { stdin: JSON.stringify(plan), now: APPLIED_AT });
+  const result = run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, plan)), now: APPLIED_AT });
   if (result.exitCode !== 0) throw new Error(result.stderr);
   return { before, id: runId(sandbox, "2026-10-05 1940 Brain-Dump - filing") };
 }
@@ -152,7 +152,7 @@ describe("brain-dump undo", () => {
     const { id } = fileDump(sandbox);
     writeVaultFile(sandbox, OTHER_DUMP, dumpFile(ORIGIN, "## Todos\n- [ ] #todo Later.\n"));
     const later = { dump: OTHER_DUMP, items: [{ index: 1, outcome: "filed", note: WEEK, section: "# To-Do:", lines: ["- [ ] Later. #todo"] }], inserts: [] };
-    run(sandbox, ["apply"], { stdin: JSON.stringify(later), now: LATER });
+    run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, later)), now: LATER });
     const laterId = runId(sandbox, "2026-10-05 2000 Brain-Dump - other");
     writeFileSync(join(sandbox.vault, ROUTES), `${readVaultFile(sandbox, ROUTES)}- edited by hand\n`);
     const changed = vaultFiles(sandbox);
@@ -178,7 +178,7 @@ describe("brain-dump undo", () => {
     const sandbox = makeSandbox();
     const { id } = fileDump(sandbox);
     writeVaultFile(sandbox, OTHER_DUMP, dumpFile(ORIGIN, "## Todos\n- [ ] #todo Later.\n"));
-    run(sandbox, ["apply"], { stdin: JSON.stringify({ dump: OTHER_DUMP, items: [{ index: 1, outcome: "filed", note: WEEK, section: "# To-Do:", lines: ["- [ ] Later. #todo"] }], inserts: [] }), now: LATER });
+    run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: OTHER_DUMP, items: [{ index: 1, outcome: "filed", note: WEEK, section: "# To-Do:", lines: ["- [ ] Later. #todo"] }], inserts: [] })), now: LATER });
     writeFileSync(join(sandbox.vault, WEEK), `${readVaultFile(sandbox, WEEK)}- edited by hand\n`);
 
     // #when

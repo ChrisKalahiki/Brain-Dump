@@ -1,8 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { contentHash } from "./content-hash.ts";
 import { findSection } from "./sections.ts";
 import type { Vault } from "./vault.ts";
-import { findPreviousWeeklyNote, findWeeklyNote } from "./weekly.ts";
+import { findPreviousWeeklyNote, locateWeeklyNote } from "./weekly.ts";
 
 const TODO_SECTION = "# To-Do:";
 const PATH_SEPARATOR = " › ";
@@ -22,23 +23,27 @@ export type GroupPath = string[];
 export type GroupNode = { name: string; line: number; level: number; children: GroupNode[]; todoEnd: number; blockEnd: number };
 
 export type WeekGroups = {
-  thisWeek: { note: string; exists: boolean; groups: TodoGroup[] };
+  thisWeek: { note: string; exists: boolean; hash: string | null; groups: TodoGroup[] };
   lastWeek: { note: string; groups: TodoGroup[] } | null;
 };
 
 export function readTodoGroups(vault: Vault, isoDate: string): WeekGroups {
-  const thisWeek = findWeeklyNote(vault, isoDate);
+  const thisWeek = locateWeeklyNote(vault, isoDate);
   const previous = findPreviousWeeklyNote(vault, isoDate);
+  const bytes = thisWeek.exists ? readFileSync(join(vault.root, thisWeek.note)) : undefined;
   return {
-    thisWeek: { ...thisWeek, groups: thisWeek.exists ? readNoteGroups(vault, thisWeek.note) : [] },
+    thisWeek: { ...thisWeek, hash: bytes === undefined ? null : contentHash(bytes), groups: bytes === undefined ? [] : noteGroups(bytes.toString("utf8")) },
     lastWeek: previous === undefined ? null : { note: previous, groups: readNoteGroups(vault, previous) },
   };
 }
 
 function readNoteGroups(vault: Vault, note: string): TodoGroup[] {
   const path = join(vault.root, note);
-  if (!existsSync(path)) return [];
-  const lines = readFileSync(path, "utf8").split(/\r?\n/);
+  return existsSync(path) ? noteGroups(readFileSync(path, "utf8")) : [];
+}
+
+function noteGroups(contents: string): TodoGroup[] {
+  const lines = contents.split(/\r?\n/);
   const section = findSection(lines, TODO_SECTION);
   return section === undefined ? [] : parseTodoGroups(lines, section.start, section.end).children.map(toTree);
 }

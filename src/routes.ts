@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { contentHash } from "./content-hash.ts";
 import { ROUTES_NOTE } from "./layout.ts";
 import { formatGroupPath, parseGroupPath, pathKey, type GroupPath } from "./todo-groups.ts";
 import type { Vault } from "./vault.ts";
@@ -11,9 +12,19 @@ const GROUP_ROUTE = /^(?:[-*]\s+)?(.+?)\s*→\s*To-Do\s*›\s*(.+?)\s*$/;
 export type Route = { key: string; title: string } | { key: string; group: GroupPath };
 
 export function readRoutes(vault: Vault): Route[] {
+  return readRoutesNote(vault).routes;
+}
+
+/** The Routes note's Routes and its hash, or `null` when it doesn't exist yet. */
+export function readRoutesNote(vault: Vault): { hash: string | null; routes: Route[] } {
   const path = join(vault.root, ROUTES_NOTE);
-  if (!existsSync(path)) return [];
-  return readFileSync(path, "utf8")
+  if (!existsSync(path)) return { hash: null, routes: [] };
+  const bytes = readFileSync(path);
+  return { hash: contentHash(bytes), routes: parseRoutes(bytes.toString("utf8")) };
+}
+
+function parseRoutes(contents: string): Route[] {
+  return contents
     .split(/\r?\n/)
     .flatMap((line): Route[] => {
       const note = NOTE_ROUTE.exec(line.trim());
