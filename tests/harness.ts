@@ -31,14 +31,14 @@ export type RunResult = {
 export function run(
   sandbox: Sandbox,
   args: string[],
-  options: { stdin?: string; cwd?: string; throughPipe?: boolean } = {},
+  options: { stdin?: string; cwd?: string; throughPipe?: boolean; now?: string } = {},
 ): RunResult {
   const command = options.throughPipe
     ? ["sh", "-c", 'bun "$0" "$@" | cat', CLI, ...args]
     : ["bun", CLI, ...args];
   const result = Bun.spawnSync(command, {
     cwd: options.cwd ?? sandbox.home,
-    env: { PATH: process.env.PATH, HOME: sandbox.home, TZ: "UTC" },
+    env: { PATH: process.env.PATH, HOME: sandbox.home, TZ: "UTC", ...(options.now === undefined ? {} : { BRAIN_DUMP_NOW: options.now }) },
     stdin: options.stdin === undefined ? "ignore" : Buffer.from(options.stdin),
   });
   return {

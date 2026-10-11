@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { parseDumpBody, renderDumpBody } from "./dump-body.ts";
 import { BrainDumpError, DumpNotWrittenError, UsageError } from "./errors.ts";
 import { commit, NoteExistsError, WriteFailedError } from "./gateway.ts";
@@ -28,7 +28,7 @@ function createWithFreeName(vault: Vault, stem: string, contents: string): strin
   for (let copy = 1; ; copy++) {
     const path = join(vault.inbox, `${stem}${copy === 1 ? "" : `-${copy}`}.md`);
     try {
-      commit(vault, "automation", [{ mode: "create", path, contents }]);
+      commit(vault, "automation", { command: "write-dump", label: basename(path, ".md") }, [{ mode: "create", path, contents }]);
       return path;
     } catch (error) {
       if (error instanceof NoteExistsError) continue;

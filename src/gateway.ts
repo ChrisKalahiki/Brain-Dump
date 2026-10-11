@@ -3,6 +3,7 @@ import { dirname, relative, sep } from "node:path";
 import { appendOnlyViolation, checkboxOnlyViolation, type ClosedMark, type Violation } from "./append-only.ts";
 import { BrainDumpError, describeFsError, errnoCode } from "./errors.ts";
 import { FILED_FOLDER, INBOX, ROUTES_NOTE, WRITE_ALLOWLIST } from "./layout.ts";
+import { discardRun, finishRun, startRun, type Change, type RunInfo } from "./runs.ts";
 import type { Vault } from "./vault.ts";
 
 // The one module that writes, renames or deletes Vault files (ADR 0005). Paths are absolute.
@@ -37,8 +38,8 @@ const PLAN_SIZE_LIMIT = 8;
 /** `original` is the target as re-read from disk at verification, kept to restore it if a later write fails. */
 type Staged = Write & { temporary: string; original?: string };
 
-/** Checks every rule, stages every file, re-reads each target from disk to verify it, then writes all of it, or restores everything it touched. `confirmLarge` is set only after the user separately approved a plan over the size limit. */
-export function commit(vault: Vault, actor: Actor, writes: Write[], { confirmLarge = false } = {}): void {
+/** Checks every rule, stages every file, re-reads each target from disk to verify it, journals it as a Run, then writes all of it, or restores everything it touched. `confirmLarge` is set only after the user separately approved a plan over the size limit. */
+export function commit(vault: Vault, actor: Actor, run: RunInfo, writes: Write[], { confirmLarge = false } = {}): void {
   for (const write of writes) checkRules(vault, actor, write);
   checkPlanSize(vault, writes, confirmLarge);
   const staged: Staged[] = [];
@@ -47,8 +48,16 @@ export function commit(vault: Vault, actor: Actor, writes: Write[], { confirmLar
   try {
     for (const write of writes) staged.push(stage(write, newFolders));
     for (const write of staged) verify(vault, write);
-    install(vault, staged);
+    const pending = startRun(vault, run, staged.map((write) => toChange(vault, write)));
+    try {
+      install(vault, staged);
+    } catch (error) {
+      // Only a BrainDumpError means install finished rolling back; anything else may have left the Vault half-written, so the Run stays pending.
+      if (error instanceof BrainDumpError) discardRun(pending);
+      throw error;
+    }
     installed = true;
+    finishRun(pending);
   } finally {
     for (const { temporary } of staged) if (existsSync(temporary)) unlinkSync(temporary);
     if (!installed) for (const folder of newFolders.reverse()) rmSync(folder, { recursive: true, force: true });
@@ -103,6 +112,20 @@ function verify(vault: Vault, write: Staged): void {
   const violation = write.mode === "append" ? appendOnlyViolation(write.original, next) : checkboxOnlyViolation(write.original, next, write.planned);
   if (violation !== undefined) throw new BrainDumpError(`brain-dump bug: ${name} ${describe(violation)}, so nothing was written. Please report this.`);
   if (write.mode === "file-dump" && write.moveTo !== undefined && existsSync(write.moveTo)) throw new NoteExistsError(`${vaultRelative(vault, write.moveTo)} already exists`);
+}
+
+function toChange(vault: Vault, write: Staged): Change {
+  const path = vaultRelative(vault, write.path);
+  const before = write.original ?? "";
+  switch (write.mode) {
+    case "create":
+      return { operation: "create", path, after: write.contents };
+    case "append":
+      return { operation: "append", path, before, after: write.contents };
+    case "file-dump":
+      if (write.moveTo === undefined) return { operation: "checkbox", path, before, after: write.contents };
+      return { operation: "move", from: path, to: vaultRelative(vault, write.moveTo), before, after: write.contents };
+  }
 }
 
 /** New files first, linked so they never overwrite; then appends; then Dumps last. Each step registers how to reverse it, and a failure reverses every step taken. */
