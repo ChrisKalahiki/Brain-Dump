@@ -28,6 +28,7 @@ export type FilingPlan = {
   inserts: (Placement & { lines: string[] })[];
   routes?: Route[];
   createGroups?: GroupPath[];
+  confirmLarge?: boolean;
 };
 
 export type FilingResult = {
@@ -38,7 +39,7 @@ export type FilingResult = {
 };
 
 const PLAN_SHAPE =
-  'expected {"dump": string, "items": [{"index": number, "outcome": "filed", "note": string, "section"?: string, "group"?: string[], "lines": string[]} | {"index": number, "outcome": "dropped"|"skipped"}], "inserts": [{"note": string, "section"?: string, "lines": string[]}], "routes"?: [{"key": string, "title": string} | {"key": string, "group": string[]}], "creates"?: [{"note": string, "from": "weekly-template"} | {"note": string, "tags": string[]}], "createGroups"?: string[][]}';
+  'expected {"dump": string, "items": [{"index": number, "outcome": "filed", "note": string, "section"?: string, "group"?: string[], "lines": string[]} | {"index": number, "outcome": "dropped"|"skipped"}], "inserts": [{"note": string, "section"?: string, "lines": string[]}], "routes"?: [{"key": string, "title": string} | {"key": string, "group": string[]}], "creates"?: [{"note": string, "from": "weekly-template"} | {"note": string, "tags": string[]}], "createGroups"?: string[][], "confirmLarge"?: boolean}';
 const CLOSED_MARKS: Record<"filed" | "dropped", ClosedMark> = { filed: "x", dropped: "-" };
 const PLACEHOLDER = /^- (\[ \] ?)?$/;
 const TAG = /^[^\s#]+$/;
@@ -86,7 +87,7 @@ export function applyFilingPlan(vault: Vault, plan: FilingPlan): FilingResult {
     }),
   );
   const filedDump: Write = { mode: "file-dump", path: dumpPath, contents: dumpLines.join(dump.eol), planned, moveTo: finished ? filedPath : undefined };
-  commit(vault, "approved-plan", [...notes.writes(), filedDump]);
+  commit(vault, "approved-plan", [...notes.writes(), filedDump], { confirmLarge: plan.confirmLarge });
   const count = (outcome: PlannedItem["outcome"]): number => plan.items.filter((item) => item.outcome === outcome).length;
   return { filed: count("filed"), dropped: count("dropped"), skipped: count("skipped"), movedTo: finished ? relative(vault.root, filedPath) : null };
 }
@@ -263,7 +264,8 @@ function isFilingPlan(value: unknown): value is FilingPlan {
   const createsOk = value.creates === undefined || (Array.isArray(value.creates) && value.creates.every(isNoteCreation));
   const routesOk = value.routes === undefined || (Array.isArray(value.routes) && value.routes.every(isRoute));
   const groupsOk = value.createGroups === undefined || (Array.isArray(value.createGroups) && value.createGroups.every(isGroupPath));
-  return Array.isArray(value.items) && value.items.every(isPlannedItem) && Array.isArray(value.inserts) && value.inserts.every(hasPlacedLines) && routesOk && createsOk && groupsOk;
+  const confirmLargeOk = value.confirmLarge === undefined || typeof value.confirmLarge === "boolean";
+  return Array.isArray(value.items) && value.items.every(isPlannedItem) && Array.isArray(value.inserts) && value.inserts.every(hasPlacedLines) && routesOk && createsOk && groupsOk && confirmLargeOk;
 }
 
 function isNoteCreation(value: unknown): boolean {

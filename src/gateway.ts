@@ -31,12 +31,16 @@ export class WriteFailedError extends BrainDumpError {
   }
 }
 
+/** A plan over this many notes needs the user's separate confirmation (ADR 0004). */
+const PLAN_SIZE_LIMIT = 8;
+
 /** `original` is the target as re-read from disk at verification, kept to restore it if a later write fails. */
 type Staged = Write & { temporary: string; original?: string };
 
-/** Checks every rule, stages every file, re-reads each target from disk to verify it, then writes all of it, or restores everything it touched. */
-export function commit(vault: Vault, actor: Actor, writes: Write[]): void {
+/** Checks every rule, stages every file, re-reads each target from disk to verify it, then writes all of it, or restores everything it touched. `confirmLarge` is set only after the user separately approved a plan over the size limit. */
+export function commit(vault: Vault, actor: Actor, writes: Write[], { confirmLarge = false } = {}): void {
   for (const write of writes) checkRules(vault, actor, write);
+  checkPlanSize(vault, writes, confirmLarge);
   const staged: Staged[] = [];
   const newFolders: string[] = [];
   let installed = false;
@@ -64,6 +68,11 @@ function checkRules(vault: Vault, actor: Actor, write: Write): void {
   if (write.mode === "file-dump" ? !isDumpFiling(vault, write) : inTree(name, INBOX) && name !== ROUTES_NOTE) {
     throw new WriteRefusedError(`${name} is in the Inbox, which a plan changes only through its own Dump and the Routes note`);
   }
+}
+
+function checkPlanSize(vault: Vault, writes: Write[], confirmLarge: boolean): void {
+  const notes = new Set(writes.filter(({ mode, path }) => mode !== "file-dump" && vaultRelative(vault, path) !== ROUTES_NOTE).map(({ path }) => path));
+  if (notes.size > PLAN_SIZE_LIMIT && !confirmLarge) throw new WriteRefusedError(`the plan writes ${notes.size} notes, more than ${PLAN_SIZE_LIMIT}, so it needs confirmLarge`);
 }
 
 /** A Dump is filed where it lies, at the top of the Inbox, and can only move into `Inbox/Filed`. */

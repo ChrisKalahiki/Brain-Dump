@@ -87,7 +87,7 @@ Done when the plan is on screen and nothing has been written.
 - `show N`: print the exact lines Item N would append.
 - `edit N`: ask for the new wording, then use it in Item N's lines. The Dump itself keeps its original text.
 - `cancel`: write nothing, stop the whole run.
-- `ok`: apply the plan as it stands.
+- `ok`: apply the plan as it stands. If the plan writes or creates more than 8 distinct notes, not counting its Dump or the Routes note, first ask a separate question: "This plan writes N notes. Apply all of them?" Only an explicit yes to that question sets `confirmLarge`; anything else returns to the plan. The `ok` itself never counts as that yes.
 
 After anything but `ok` or `cancel`, show the updated plan (the link-line rule may change) and wait again.
 
@@ -119,9 +119,10 @@ brain-dump apply <<'PLAN'
 PLAN
 ```
 
-`creates` lists every NEW note still in the plan, each once; a NEW note nothing is filed into any more (its Items skipped or redirected) is left out, and the helper rejects one left in. Every open Item appears once in `items`, in table order: `filed` with its note path, its `section` only for Weekly Note sections, and the exact lines from its row; `dropped` for a `drop`; `skipped` for everything else. A grouped Todo carries its `group` path, unindented `lines` (the helper indents them), and no `group` when ungrouped. `createGroups` lists each NEW group path once, its full path; every missing level along it is created, and the helper rejects a path a Todo names that neither exists nor is listed, a listed path that already exists, one no Todo is filed into, and a path matching two bullets. `inserts` holds only the link line, when the plan has one; `routes` only the Routes the user accepted (ones already in the Routes note are skipped).
+`creates` lists every NEW note still in the plan, each once; a NEW note nothing is filed into any more (its Items skipped or redirected) is left out, and the helper rejects one left in. Every open Item appears once in `items`, in table order: `filed` with its note path, its `section` only for Weekly Note sections, and the exact lines from its row; `dropped` for a `drop`; `skipped` for everything else. A grouped Todo carries its `group` path, unindented `lines` (the helper indents them), and no `group` when ungrouped. `createGroups` lists each NEW group path once, its full path; every missing level along it is created, and the helper rejects a path a Todo names that neither exists nor is listed, a listed path that already exists, one no Todo is filed into, and a path matching two bullets. `inserts` holds only the link line, when the plan has one; `routes` only the Routes the user accepted (ones already in the Routes note are skipped). `"confirmLarge": true` goes in only after the user's separate yes to a plan over 8 notes (step 5); never set it otherwise.
 
 - **Exit 0**: it prints `filed`, `dropped`, `skipped` and `movedTo` (set when the Dump is finished and moved to `Inbox/Filed/`). Report that, then go to the next Dump.
+- **`write refused: the plan writes N notes, more than 8, so it needs confirmLarge`**: nothing was written. Ask the separate question from step 5; on a yes, apply again with `confirmLarge`.
 - **`Filing Plan rejected: …`**: nothing was written. Tell the user the reason, then offer to adjust the plan or skip this Dump.
 
 Done when every Dump has been applied, skipped, or the user cancelled, and the user has a one-line summary of the run.
