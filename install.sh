@@ -32,6 +32,8 @@ link "$repo/src/cli.ts" "$HOME/.local/bin/brain-dump"
 link "$repo/skills/dump" "$HOME/.claude/skills/dump"
 link "$repo/skills/dump" "$HOME/.agents/skills/dump"
 link "$repo/skills/file" "$HOME/.claude/skills/file"
+link "$repo/skills/recall" "$HOME/.claude/skills/recall"
+link "$repo/skills/recall" "$HOME/.agents/skills/recall"
 
 guard_command="$HOME/.local/bin/brain-dump guard"
 

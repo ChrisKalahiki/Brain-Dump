@@ -14,16 +14,20 @@ export type NoteSummary = {
 
 /** Every note in the write allowlist outside the Inbox, so Filing never proposes a private note or a Dump. */
 export function listNotes(vault: Vault): NoteSummary[] {
-  return WRITE_ALLOWLIST.filter((tree) => tree !== INBOX)
+  return noteFiles(vault, WRITE_ALLOWLIST.filter((tree) => tree !== INBOX)).map((path) => {
+    const note = relative(vault.root, path);
+    const { contents, hash } = readHashed(path);
+    return { note, title: basename(note, ".md"), folder: dirname(note), tags: frontmatterTags(contents), hash };
+  });
+}
+
+/** The absolute paths of the Markdown notes in `trees`, sorted. */
+export function noteFiles(vault: Vault, trees: readonly string[] = WRITE_ALLOWLIST): string[] {
+  return trees
     .map((tree) => join(vault.root, tree))
     .filter((tree) => existsSync(tree))
     .flatMap(markdownFiles)
-    .sort()
-    .map((path) => {
-      const note = relative(vault.root, path);
-      const { contents, hash } = readHashed(path);
-      return { note, title: basename(note, ".md"), folder: dirname(note), tags: frontmatterTags(contents), hash };
-    });
+    .sort();
 }
 
 function markdownFiles(folder: string): string[] {

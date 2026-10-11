@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { makeRepo, makeSandbox, run, writeConfig, writeDumpArgs } from "./harness.ts";
 
 const BODY = `## Learnings
@@ -60,6 +60,23 @@ ${BODY}`,
     expect(readFileSync(result.stdout.trim(), "utf8").split("\n")[6]).toBe(
       "Session: Codex · `~/scratch` · 2026-10-05 08:05 · [[scratch]]",
     );
+  });
+
+  test("in a linked worktree, names the project after the main worktree", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const repo = makeRepo(sandbox, "Brain-Dump", "main");
+    const worktree = join(repo, ".claude", "worktrees", "feature");
+    const git = (...args: string[]) => Bun.spawnSync(["git", "-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: repo });
+    git("commit", "--quiet", "--allow-empty", "-m", "init");
+    git("worktree", "add", "--quiet", "-b", "feature", worktree);
+
+    // #when
+    const result = run(sandbox, writeDumpArgs("w"), { stdin: BODY, cwd: worktree });
+
+    // #then
+    const path = result.stdout.trim();
+    expect([basename(path), readFileSync(path, "utf8").split("\n")[6]?.endsWith(" · [[Brain-Dump]]")]).toEqual(["2026-10-05 1940 Brain-Dump - w.md", true]);
   });
 
   test("adds -2 then -3 when a Dump with the same name already exists", () => {
