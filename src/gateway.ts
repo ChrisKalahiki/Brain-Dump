@@ -3,16 +3,20 @@ import { dirname, relative, sep } from "node:path";
 import { appendOnlyViolation, checkboxOnlyViolation, type ClosedMark, type Violation } from "./append-only.ts";
 import { BrainDumpError, describeFsError, errnoCode } from "./errors.ts";
 import { FILED_FOLDER, INBOX, ROUTES_NOTE, WRITE_ALLOWLIST } from "./layout.ts";
-import { discardRun, finishRun, startRun, type Change, type RunInfo } from "./runs.ts";
+import { discardRun, finishRun, sha256, startRun, type Change, type RunInfo } from "./runs.ts";
 import type { Vault } from "./vault.ts";
 
 // The one module that writes, renames or deletes Vault files (ADR 0005). Paths are absolute.
 
-/** One file in a commit: a new file, an append to an existing note, or a Dump whose planned Items (by 0-based line) close and which may move to `Inbox/Filed`. */
+/**
+ * One file in a commit: a new file, an append to an existing note, a Dump whose planned Items (by 0-based line) close and which may move to `Inbox/Filed`,
+ * or a revert of one file a Run touched, from the hash it `left` back to its `before` hash and contents (ADR 0006). A `null` hash or contents means no file.
+ */
 export type Write =
   | { mode: "create"; path: string; contents: string }
   | { mode: "append"; path: string; contents: string }
-  | { mode: "file-dump"; path: string; contents: string; planned: ReadonlyMap<number, ClosedMark>; moveTo?: string };
+  | { mode: "file-dump"; path: string; contents: string; planned: ReadonlyMap<number, ClosedMark>; moveTo?: string }
+  | { mode: "revert"; path: string; left: string | null; before: string | null; contents: string | null };
 
 /** Automation may only create new Dumps in the Inbox; everything else needs a plan the user approved (ADR 0004). */
 export type Actor = "automation" | "approved-plan";
@@ -38,8 +42,8 @@ const PLAN_SIZE_LIMIT = 8;
 /** `original` is the target as re-read from disk at verification, kept to restore it if a later write fails. */
 type Staged = Write & { temporary: string; original?: string };
 
-/** Checks every rule, stages every file, re-reads each target from disk to verify it, journals it as a Run, then writes all of it, or restores everything it touched. `confirmLarge` is set only after the user separately approved a plan over the size limit. */
-export function commit(vault: Vault, actor: Actor, run: RunInfo, writes: Write[], { confirmLarge = false } = {}): void {
+/** Checks every rule, stages every file, re-reads each target from disk to verify it, journals it as a Run, then writes all of it, or restores everything it touched. `confirmLarge` is set only after the user separately approved a plan over the size limit. Returns the Run's id. */
+export function commit(vault: Vault, actor: Actor, run: RunInfo, writes: Write[], { confirmLarge = false } = {}): string {
   for (const write of writes) checkRules(vault, actor, write);
   checkPlanSize(vault, writes, confirmLarge);
   const staged: Staged[] = [];
@@ -58,6 +62,7 @@ export function commit(vault: Vault, actor: Actor, run: RunInfo, writes: Write[]
     }
     installed = true;
     finishRun(pending);
+    return pending.journal.id;
   } finally {
     for (const { temporary } of staged) if (existsSync(temporary)) unlinkSync(temporary);
     if (!installed) for (const folder of newFolders.reverse()) rmSync(folder, { recursive: true, force: true });
@@ -70,6 +75,10 @@ function checkRules(vault: Vault, actor: Actor, write: Write): void {
     if (!inAllowlist(vaultRelative(vault, target))) throw new WriteRefusedError(`${vaultRelative(vault, target)} is outside the write allowlist`);
   }
   const name = vaultRelative(vault, write.path);
+  if (write.mode === "revert") {
+    if (actor === "automation") throw new WriteRefusedError(`automation may not undo a Run, so it may not revert ${name}`);
+    return;
+  }
   if (actor === "automation") {
     if (write.mode !== "create" || dirname(name) !== INBOX || name === ROUTES_NOTE) throw new WriteRefusedError(`automation may only create new Dumps in the Inbox, not write ${name}`);
     return;
@@ -80,7 +89,7 @@ function checkRules(vault: Vault, actor: Actor, write: Write): void {
 }
 
 function checkPlanSize(vault: Vault, writes: Write[], confirmLarge: boolean): void {
-  const notes = new Set(writes.filter(({ mode, path }) => mode !== "file-dump" && vaultRelative(vault, path) !== ROUTES_NOTE).map(({ path }) => path));
+  const notes = new Set(writes.filter(({ mode, path }) => mode !== "file-dump" && mode !== "revert" && vaultRelative(vault, path) !== ROUTES_NOTE).map(({ path }) => path));
   if (notes.size > PLAN_SIZE_LIMIT && !confirmLarge) throw new WriteRefusedError(`the plan writes ${notes.size} notes, more than ${PLAN_SIZE_LIMIT}, so it needs confirmLarge`);
 }
 
@@ -91,6 +100,7 @@ function isDumpFiling(vault: Vault, { path, moveTo }: Extract<Write, { mode: "fi
 
 function stage(write: Write, newFolders: string[]): Staged {
   const temporary = `${write.path}.brain-dump-tmp`;
+  if (write.contents === null) return { ...write, temporary };
   try {
     const created = mkdirSync(dirname(write.path), { recursive: true });
     if (created !== undefined) newFolders.push(created);
@@ -103,6 +113,10 @@ function stage(write: Write, newFolders: string[]): Staged {
 
 function verify(vault: Vault, write: Staged): void {
   const name = vaultRelative(vault, write.path);
+  if (write.mode === "revert") {
+    verifyRevert(name, write);
+    return;
+  }
   if (write.mode === "create") {
     if (existsSync(write.path)) throw new NoteExistsError(`${name} already exists`);
     return;
@@ -112,6 +126,18 @@ function verify(vault: Vault, write: Staged): void {
   const violation = write.mode === "append" ? appendOnlyViolation(write.original, next) : checkboxOnlyViolation(write.original, next, write.planned);
   if (violation !== undefined) throw new BrainDumpError(`brain-dump bug: ${name} ${describe(violation)}, so nothing was written. Please report this.`);
   if (write.mode === "file-dump" && write.moveTo !== undefined && existsSync(write.moveTo)) throw new NoteExistsError(`${vaultRelative(vault, write.moveTo)} already exists`);
+}
+
+/** Byte-identical to what the Run left, and the staged file byte-identical to the copy taken before it, or nothing is reverted. */
+function verifyRevert(name: string, write: Extract<Staged, { mode: "revert" }>): void {
+  write.original = existsSync(write.path) ? readFileSync(write.path, "utf8") : undefined;
+  if (hashOf(write.original) !== write.left) throw new WriteRefusedError(`${name} changed since the Run it would revert`);
+  const staged = write.contents === null ? undefined : readFileSync(write.temporary, "utf8");
+  if (hashOf(staged) !== write.before) throw new BrainDumpError(`brain-dump bug: reverting ${name} would not restore it exactly, so nothing was written. Please report this.`);
+}
+
+function hashOf(contents: string | undefined): string | null {
+  return contents === undefined ? null : sha256(contents);
 }
 
 function toChange(vault: Vault, write: Staged): Change {
@@ -125,21 +151,25 @@ function toChange(vault: Vault, write: Staged): Change {
     case "file-dump":
       if (write.moveTo === undefined) return { operation: "checkbox", path, before, after: write.contents };
       return { operation: "move", from: path, to: vaultRelative(vault, write.moveTo), before, after: write.contents };
+    case "revert":
+      if (write.contents === null) return { operation: "delete", path, before };
+      if (write.original === undefined) return { operation: "create", path, after: write.contents };
+      return { operation: "revert", path, before, after: write.contents };
   }
 }
 
-/** New files first, linked so they never overwrite; then appends; then Dumps last. Each step registers how to reverse it, and a failure reverses every step taken. */
+/** New files first, linked so they never overwrite; then appends and reverted contents; then Dumps; then deletions last. Each step registers how to reverse it, and a failure reverses every step taken. */
 function install(vault: Vault, staged: Staged[]): void {
   const undo: (() => void)[] = [];
   const restore = (path: string, original: string | undefined) => () => writeFileSync(path, original ?? "");
   let target = "";
   try {
-    for (const write of staged.filter(({ mode }) => mode === "create")) {
+    for (const write of staged.filter(isNewFile)) {
       target = write.path;
       linkSync(write.temporary, target);
       undo.push(() => unlinkSync(write.path));
     }
-    for (const write of staged.filter(({ mode }) => mode === "append")) {
+    for (const write of staged.filter(isReplacement)) {
       renameSync(write.temporary, write.path);
       undo.push(restore(write.path, write.original));
     }
@@ -159,11 +189,27 @@ function install(vault: Vault, staged: Staged[]): void {
       unlinkSync(write.path);
       undo.push(restore(write.path, write.original));
     }
+    for (const write of staged.filter(isDeletion)) {
+      unlinkSync(write.path);
+      undo.push(restore(write.path, write.original));
+    }
   } catch (error) {
     for (const step of undo.reverse()) step();
     if (errnoCode(error) === "EEXIST") throw new NoteExistsError(`${vaultRelative(vault, target)} already exists`);
     throw new WriteFailedError(describeFsError(error));
   }
+}
+
+function isNewFile(write: Staged): boolean {
+  return write.mode === "create" || (write.mode === "revert" && write.left === null);
+}
+
+function isReplacement(write: Staged): boolean {
+  return write.mode === "append" || (write.mode === "revert" && write.left !== null && write.contents !== null);
+}
+
+function isDeletion(write: Staged): boolean {
+  return write.mode === "revert" && write.contents === null;
 }
 
 function describe(violation: Violation): string {

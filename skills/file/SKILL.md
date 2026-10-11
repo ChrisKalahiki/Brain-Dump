@@ -1,11 +1,13 @@
 ---
 name: file
-description: File the Inbox's Dumps into the Vault, one approved Filing Plan per Dump.
+description: File the Inbox's Dumps into the Vault, one approved Filing Plan per Dump, or undo a Filing.
 disable-model-invocation: true
 allowed-tools: Bash(brain-dump:*)
 ---
 
-Work through every unfiled **Dump** in the Vault's Inbox, oldest first. For each one, show a **Filing Plan**, take the user's reply, and hand the approved plan to the `brain-dump` helper, which does every write. Vocabulary (Dump, Item, Filing, Filing Plan, Weekly Note, Todo Group, Topic Note, Project Note, Route) follows the Brain-Dump glossary. Filing is append-only: the helper adds lines; nothing existing is rewritten.
+When the user asks to undo a Filing ("undo the last Filing"), skip to [Undo](#undo).
+
+Otherwise, work through every unfiled **Dump** in the Vault's Inbox, oldest first. For each one, show a **Filing Plan**, take the user's reply, and hand the approved plan to the `brain-dump` helper, which does every write. Vocabulary (Dump, Item, Filing, Filing Plan, Weekly Note, Todo Group, Topic Note, Project Note, Route) follows the Brain-Dump glossary. Filing is append-only: the helper adds lines; nothing existing is rewritten.
 
 ## 1. Load the Inbox and the Vault's map
 
@@ -126,3 +128,17 @@ PLAN
 - **`Filing Plan rejected: …`**: nothing was written. Tell the user the reason, then offer to adjust the plan or skip this Dump.
 
 Done when every Dump has been applied, skipped, or the user cancelled, and the user has a one-line summary of the run.
+
+## Undo
+
+Each `apply` is one **Run**, and undo reverts a whole Run, exactly, or nothing.
+
+1. Run `brain-dump runs`: the 20 latest Runs, newest first, each with `id`, `time`, `command`, `label` (the Dump's title for an `apply`), `files` and `status`. "The last Filing" is the first Run with `command` `apply` and `status` `applied`, or `pending` (a Filing that crashed partway, still undoable); when the user names a Dump, match its `label`. If none fits, say so and stop.
+2. Run `brain-dump undo <id>`. Without `--confirm` it writes nothing and prints `files`: each Vault file with its `action`, `restore` (back to its copy from before the Run), `delete` (a file the Run created) or `skip` (already as before). Show the user the Run's `label` and `time` and every file with its action, and ask whether to undo it.
+3. Only on an explicit yes, run `brain-dump undo <id> --confirm`. It prints the same report with `run`, the id of the undo's own Run; undoing that Run redoes the Filing. Anything but a yes writes nothing.
+
+When undo refuses, nothing was written. Tell the user its reason:
+
+- **`cannot undo run <id>, because files changed since it:`** with each file and its cause. For `undo run <later id> first`, offer to undo that later Run first, starting again at step 2. For `changed outside Brain-Dump since <time>`, the user edited the file (or Sync changed it); undo can't revert it without losing that edit.
+- **`it was made in the Vault at …`**: the Run belongs to another Vault, so it can't be undone here.
+- **`nothing to undo`**: the Run is already undone.
