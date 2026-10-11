@@ -2,11 +2,12 @@ import { existsSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { expandHome, resolveVaultPath } from "./vault.ts";
 
-// The Vault guard, a Claude Code PreToolUse hook enforcing ADR 0007: agents reach the Vault only through brain-dump.
+// The Vault guard, a Claude Code and Codex PreToolUse hook enforcing ADR 0007: agents reach the Vault only through brain-dump.
 // It catches agents drifting off the helper, not determined evasion: the write gateway (ADR 0005) and undo (ADR 0006) are the safety net.
 
 const FILE_TOOLS = new Set(["Edit", "Write", "NotebookEdit", "MultiEdit", "Read", "Grep", "Glob"]);
 const SHELL_TOOLS = new Set(["Bash", "PowerShell"]);
+const PATCH_TOOL = "apply_patch";
 
 export type Verdict = { allow: true } | { allow: false; reason: string };
 
@@ -35,8 +36,12 @@ function decide(hookInput: string, projectDir: string | undefined): Verdict {
     const target = paths.find((path) => isInside(canonical(path), root));
     return target === undefined ? ALLOW : deny(tool, target);
   }
+  const command = typeof input.command === "string" ? input.command : "";
+  if (tool === PATCH_TOOL || SHELL_TOOLS.has(tool)) {
+    const target = patchPaths(command, cwd).find((path) => isInside(canonical(path), root));
+    if (target !== undefined) return deny(tool, target);
+  }
   if (SHELL_TOOLS.has(tool)) {
-    const command = typeof input.command === "string" ? input.command : "";
     const fromVault = isInside(canonical(cwd), root);
     if (!fromVault && !namesVault(command, [configured, root])) return ALLOW;
     return isSingleBrainDumpCall(command) ? ALLOW : deny(tool, fromVault ? cwd : "Vault mention in command");
@@ -60,6 +65,14 @@ function parseHookInput(text: string): HookInput {
 function filePaths(input: Record<string, unknown>, cwd: string): string[] {
   const named = [input.file_path, input.notebook_path, input.path].filter((value): value is string => typeof value === "string" && value !== "");
   return (named.length > 0 ? named : [cwd]).map((path) => resolve(cwd, expandHome(path)));
+}
+
+/** The paths on a Codex patch's marker lines, which may also arrive inside a Bash `apply_patch` heredoc. Codex trims markers and joins each path to `cwd` without expanding `~`. */
+function patchPaths(command: string, cwd: string): string[] {
+  return command.split("\n").flatMap((line) => {
+    const path = /^\*\*\* (?:Add File|Delete File|Update File|Move to): (.+)$/.exec(line.trim())?.[1]?.trim();
+    return path ? [resolve(cwd, path)] : [];
+  });
 }
 
 /** An absolute Glob pattern names its folder too: the segments before the first wildcard. */
