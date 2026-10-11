@@ -2,11 +2,12 @@ import { existsSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { expandHome, resolveVaultPath } from "./vault.ts";
 
-// The Vault guard, a Claude Code PreToolUse hook enforcing ADR 0007: agents reach the Vault only through brain-dump.
+// The Vault guard, a Claude Code and Codex PreToolUse hook enforcing ADR 0007: agents reach the Vault only through brain-dump.
 // It catches agents drifting off the helper, not determined evasion: the write gateway (ADR 0005) and undo (ADR 0006) are the safety net.
 
 const FILE_TOOLS = new Set(["Edit", "Write", "NotebookEdit", "MultiEdit", "Read", "Grep", "Glob"]);
 const SHELL_TOOLS = new Set(["Bash", "PowerShell"]);
+const PATCH_TOOL = "apply_patch";
 
 export type Verdict = { allow: true } | { allow: false; reason: string };
 
@@ -32,11 +33,15 @@ function decide(hookInput: string, projectDir: string | undefined): Verdict {
   if (projectDir !== undefined && projectDir !== "" && isInside(canonical(projectDir), root)) return ALLOW;
   if (FILE_TOOLS.has(tool)) {
     const paths = tool === "Glob" ? [...filePaths(input, cwd), ...globBase(input)] : filePaths(input, cwd);
-    const target = paths.find((path) => isInside(canonical(path), root));
+    const target = firstInside(paths, root);
     return target === undefined ? ALLOW : deny(tool, target);
   }
+  const command = typeof input.command === "string" ? input.command : "";
+  if (tool === PATCH_TOOL || SHELL_TOOLS.has(tool)) {
+    const target = firstInside(patchPaths(command, cwd), root);
+    if (target !== undefined) return deny(tool, target);
+  }
   if (SHELL_TOOLS.has(tool)) {
-    const command = typeof input.command === "string" ? input.command : "";
     const fromVault = isInside(canonical(cwd), root);
     if (!fromVault && !namesVault(command, [configured, root])) return ALLOW;
     return isSingleBrainDumpCall(command) ? ALLOW : deny(tool, fromVault ? cwd : "Vault mention in command");
@@ -60,6 +65,16 @@ function parseHookInput(text: string): HookInput {
 function filePaths(input: Record<string, unknown>, cwd: string): string[] {
   const named = [input.file_path, input.notebook_path, input.path].filter((value): value is string => typeof value === "string" && value !== "");
   return (named.length > 0 ? named : [cwd]).map((path) => resolve(cwd, expandHome(path)));
+}
+
+/** Codex trims patch markers and joins each path to `cwd`, or to the folder of a leading `cd <dir> &&` in a Bash heredoc, without expanding `~`. */
+function patchPaths(command: string, cwd: string): string[] {
+  const cd = /^cd\s+(?:'([^']*)'|"([^"]*)"|(\S+))\s*&&/.exec(command.trim());
+  const base = cd === null ? cwd : resolve(cwd, expandHome(cd[1] ?? cd[2] ?? cd[3] ?? ""));
+  return command.split("\n").flatMap((line) => {
+    const path = /^\*\*\* (?:Add File|Delete File|Update File|Move to): (.+)$/.exec(line.trim())?.[1]?.trim();
+    return path ? [resolve(base, path)] : [];
+  });
 }
 
 /** An absolute Glob pattern names its folder too: the segments before the first wildcard. */
@@ -147,6 +162,10 @@ function canonical(path: string): string {
     existing = dirname(existing);
   }
   return join(realpathSync.native(existing), ...missing);
+}
+
+function firstInside(paths: string[], root: string): string | undefined {
+  return paths.find((path) => isInside(canonical(path), root));
 }
 
 function isInside(path: string, root: string): boolean {

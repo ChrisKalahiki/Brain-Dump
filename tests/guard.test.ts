@@ -170,6 +170,79 @@ describe("guard on shell tools", () => {
   });
 });
 
+describe("guard on Codex apply_patch", () => {
+  const patch = (...lines: string[]) => ["*** Begin Patch", ...lines, "*** End Patch"].join("\n");
+
+  const denied: [string, (sandbox: Sandbox) => { command: string; cwd?: string; target: string }][] = [
+    ["an Add File into the Vault", ({ vault }) => ({ command: patch(`*** Add File: ${join(vault, "N.md")}`, "+x"), target: join(vault, "N.md") })],
+    ["a Delete File in the Vault", ({ vault }) => ({ command: patch(`*** Delete File: ${join(vault, "N.md")}`), target: join(vault, "N.md") })],
+    ["an Update File in the Vault", ({ vault }) => ({ command: patch(`*** Update File: ${join(vault, "N.md")}`, "@@", "-a", "+b"), target: join(vault, "N.md") })],
+    [
+      "a Move to into the Vault",
+      ({ home, vault }) => ({ command: patch(`*** Update File: ${join(home, "x.md")}`, `*** Move to: ${join(vault, "x.md")}`, "@@", "-a", "+b"), target: join(vault, "x.md") }),
+    ],
+    ["a marker line with surrounding whitespace", ({ vault }) => ({ command: patch(`  *** Add File: ${join(vault, "N.md")}  `, "+x"), target: join(vault, "N.md") })],
+    ["a path relative to cwd", ({ home, vault }) => ({ command: patch("*** Add File: Documents/The Vault/N.md", "+x"), cwd: home, target: join(vault, "N.md") })],
+    [
+      "a relative path through a symlink to the Vault",
+      ({ home }) => {
+        symlinkSync(join(home, "Documents", "The Vault"), join(home, "notes"));
+        return { command: patch("*** Add File: notes/N.md", "+x"), cwd: home, target: join(home, "notes", "N.md") };
+      },
+    ],
+  ];
+
+  test.each(denied)("denies %s", (_, setup) => {
+    // #given
+    const sandbox = makeSandbox();
+    const { command, cwd, target } = setup(sandbox);
+
+    // #when
+    const result = guard(sandbox, "apply_patch", { command }, cwd);
+
+    // #then
+    expect(result).toEqual(blocked("apply_patch", target));
+  });
+
+  test("denies a patch sent as a Bash heredoc", () => {
+    // #given
+    const sandbox = makeSandbox();
+    symlinkSync(sandbox.vault, join(sandbox.home, "notes"));
+    const command = `apply_patch <<'EOF'\n${patch("*** Update File: notes/N.md", "@@", "-a", "+b")}\nEOF`;
+
+    // #when
+    const result = guard(sandbox, "Bash", { command });
+
+    // #then
+    expect(result).toEqual(blocked("Bash", join(sandbox.home, "notes", "N.md")));
+  });
+
+  test("denies a Bash heredoc patch whose paths are relative to a leading cd", () => {
+    // #given
+    const sandbox = makeSandbox();
+    symlinkSync(sandbox.vault, join(sandbox.home, "notes"));
+    const command = `cd notes && apply_patch <<'EOF'\n${patch("*** Add File: N.md", "+x")}\nEOF`;
+
+    // #when
+    const result = guard(sandbox, "Bash", { command });
+
+    // #then
+    expect(result).toEqual(blocked("Bash", join(sandbox.home, "notes", "N.md")));
+  });
+
+  test("allows a patch outside the Vault", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const command = patch("*** Add File: Projects/x.ts", "+x", `*** Update File: ${join(sandbox.home, "y.ts")}`, "@@", "-a", "+b");
+
+    // #when
+    const result = guard(sandbox, "apply_patch", { command });
+
+    // #then
+    expect(result).toEqual(ALLOWED);
+  });
+});
+
 describe("guard stands down", () => {
   test("allows everything when the project was opened inside the Vault", () => {
     // #given
