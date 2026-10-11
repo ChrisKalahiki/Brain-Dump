@@ -5,6 +5,7 @@ import { writeDump } from "./dump.ts";
 import { BrainDumpError, DumpNotWrittenError, UsageError } from "./errors.ts";
 import { detectDevOrigin, isChatTool, isToolTag, TOOL_TAGS, type Origin } from "./origin.ts";
 import { applyFilingPlan, parseFilingPlan } from "./filing.ts";
+import { guard } from "./guard.ts";
 import { listUnfiledDumps, summarize } from "./inbox.ts";
 import { listNotes } from "./notes.ts";
 import { readRoutesNote } from "./routes.ts";
@@ -47,6 +48,12 @@ async function main(argv: string[]): Promise<number> {
     case "apply":
       writeJson(applyFilingPlan(locateVault(), parseFilingPlan(await Bun.stdin.text())));
       return 0;
+    case "guard": {
+      const verdict = guard(await Bun.stdin.text(), process.env.CLAUDE_PROJECT_DIR);
+      if (verdict.allow) return 0;
+      process.stderr.write(`${verdict.reason}\n`);
+      return 2;
+    }
     case "runs":
       writeJson(listRuns());
       return 0;
