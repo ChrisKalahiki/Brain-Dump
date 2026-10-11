@@ -12,19 +12,28 @@ const RETENTION_DAYS = 90;
 const LISTED_RUNS = 20;
 const RUN_ID = /^\d{8}-\d{6}-[0-9a-f]{4}$/;
 
+/** `revert` and `delete` are written only by undo. */
 export type Change =
   | { operation: "create"; path: string; after: string }
-  | { operation: "append" | "checkbox"; path: string; before: string; after: string }
+  | { operation: "delete"; path: string; before: string }
+  | { operation: "append" | "checkbox" | "revert"; path: string; before: string; after: string }
   | { operation: "move"; from: string; to: string; before: string; after: string };
 
-export type RunInfo = { command: "apply" | "write-dump"; label: string };
+/** `undoes` is the id of the Run an undo reverts. */
+export type RunInfo = { command: "apply" | "write-dump" | "undo"; label: string; undoes?: string };
+
+export type RunStatus = "pending" | "applied" | "undone";
 
 type JournalEntry =
   | { operation: "create"; path: string; before: null; after: string }
-  | { operation: "append" | "checkbox"; path: string; before: string; after: string }
+  | { operation: "delete"; path: string; before: string; after: null }
+  | { operation: "append" | "checkbox" | "revert"; path: string; before: string; after: string }
   | { operation: "move"; from: string; to: string; before: string; after: string };
 
-type Journal = RunInfo & { id: string; time: string; host: string; vault: string; status: "pending" | "applied"; files: JournalEntry[] };
+export type Journal = RunInfo & { id: string; time: string; host: string; vault: string; status: RunStatus; files: JournalEntry[] };
+
+/** One Vault file as a Run found and left it, by hash; `null` when it didn't exist. */
+export type FileState = { path: string; before: string | null; after: string | null };
 
 export type RunSummary = Pick<Journal, "id" | "time" | "command" | "label" | "status"> & { files: number };
 
@@ -67,12 +76,51 @@ export function discardRun({ folder }: PendingRun): void {
 }
 
 export function listRuns(): RunSummary[] {
+  return readRuns()
+    .slice(0, LISTED_RUNS)
+    .map(({ id, time, command, label, files, status }) => ({ id, time, command, label, files: files.length, status }));
+}
+
+/** Every journaled Run on this machine, newest first. */
+export function readRuns(): Journal[] {
   const journals = runIds().flatMap((id) => {
-    const path = join(runsFolder(), id, "run.json");
-    return existsSync(path) ? [JSON.parse(readFileSync(path, "utf8")) as Journal] : [];
+    const journal = readRun(id);
+    return journal === undefined ? [] : [journal];
   });
-  journals.sort((a, b) => b.time.localeCompare(a.time) || b.id.localeCompare(a.id));
-  return journals.slice(0, LISTED_RUNS).map(({ id, time, command, label, files, status }) => ({ id, time, command, label, files: files.length, status }));
+  return journals.sort((a, b) => b.time.localeCompare(a.time) || b.id.localeCompare(a.id));
+}
+
+export function readRun(id: string): Journal | undefined {
+  const path = join(runsFolder(), id, "run.json");
+  return RUN_ID.test(id) && existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as Journal) : undefined;
+}
+
+/** The copy of `path` taken before the Run, for a file that existed then. */
+export function readBeforeCopy(journal: Journal, path: string): string {
+  return readFileSync(join(runsFolder(), journal.id, "before", path), "utf8");
+}
+
+/** Each file a Run touched; a move touches two, the file it removed and the one it created. */
+export function fileStates(journal: Journal): FileState[] {
+  return journal.files.flatMap((entry): FileState[] =>
+    entry.operation === "move"
+      ? [
+          { path: entry.from, before: entry.before, after: null },
+          { path: entry.to, before: null, after: entry.after },
+        ]
+      : [{ path: entry.path, before: entry.before, after: entry.after }],
+  );
+}
+
+/** Undo has already changed the Vault by now, so like finishRun a failure here only warns; a Run that's gone was pruned. */
+export function markRun(id: string, status: RunStatus): void {
+  const journal = readRun(id);
+  if (journal === undefined) return;
+  try {
+    writeJournal(join(runsFolder(), id), { ...journal, status });
+  } catch (error) {
+    process.stderr.write(`brain-dump: warning: Run ${id} could not be marked ${status}: ${describeFsError(error)}\n`);
+  }
 }
 
 function pruneRuns(at: Date): void {
@@ -98,6 +146,7 @@ function makeRunFolder(at: Date): { id: string; folder: string } {
 
 function toEntry(change: Change): JournalEntry {
   if (change.operation === "create") return { ...change, before: null, after: sha256(change.after) };
+  if (change.operation === "delete") return { ...change, before: sha256(change.before), after: null };
   return { ...change, before: sha256(change.before), after: sha256(change.after) };
 }
 
@@ -152,7 +201,7 @@ function idStamp(at: Date): string {
   return `${at.getUTCFullYear()}${pad(at.getUTCMonth() + 1)}${pad(at.getUTCDate())}-${pad(at.getUTCHours())}${pad(at.getUTCMinutes())}${pad(at.getUTCSeconds())}`;
 }
 
-function sha256(contents: string): string {
+export function sha256(contents: string): string {
   return createHash("sha256").update(contents).digest("hex");
 }
 

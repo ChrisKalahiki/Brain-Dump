@@ -11,6 +11,7 @@ import { readRoutes } from "./routes.ts";
 import { listRuns } from "./runs.ts";
 import { readTodoGroups } from "./todo-groups.ts";
 import { locateVault } from "./vault.ts";
+import { undoRun } from "./undo.ts";
 import { findWeeklyNote } from "./weekly.ts";
 
 async function main(argv: string[]): Promise<number> {
@@ -49,6 +50,13 @@ async function main(argv: string[]): Promise<number> {
     case "runs":
       writeJson(listRuns());
       return 0;
+    case "undo": {
+      const [id, ...flags] = rest;
+      if (id === undefined || id.startsWith("-")) throw new UsageError("undo needs a run id");
+      const { confirm } = parseOptions(flags, { confirm: { type: "boolean" } });
+      writeJson(undoRun(locateVault(), id, { confirm }));
+      return 0;
+    }
     default:
       throw new UsageError(`unknown command ${command ?? "(none)"}`);
   }
