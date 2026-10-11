@@ -28,7 +28,8 @@ export function locateVault(): Vault {
   return { root, inbox };
 }
 
-function resolveVaultPath(): string {
+/** Where the Vault should be, from config or the default; it may not exist. */
+export function resolveVaultPath(): string {
   const configured = readConfiguredVault();
   return configured ?? join(homedir(), DEFAULT_VAULT);
 }
@@ -43,7 +44,7 @@ function readConfiguredVault(): string | undefined {
   return undefined;
 }
 
-function expandHome(path: string): string {
+export function expandHome(path: string): string {
   if (path === "~") return homedir();
   if (path.startsWith("~/")) return join(homedir(), path.slice(2));
   return path;
