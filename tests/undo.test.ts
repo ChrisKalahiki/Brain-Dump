@@ -123,6 +123,29 @@ describe("brain-dump undo", () => {
     });
   });
 
+  test("after an undo of a redo, the original Run is marked undone again", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const { before, id } = fileDump(sandbox);
+    const undone = undo(sandbox, id, "--confirm");
+    const redone = run(sandbox, ["undo", undone.report.run, "--confirm"], { now: "2026-10-05T22:00:00Z" });
+
+    // #when
+    const result = run(sandbox, ["undo", JSON.parse(redone.stdout).run, "--confirm"], { now: "2026-10-05T23:00:00Z" });
+
+    // #then
+    expect({ exitCode: result.exitCode, vault: vaultFiles(sandbox), statuses: listRuns(sandbox).map(({ command, status }) => [command, status]) }).toEqual({
+      exitCode: 0,
+      vault: before,
+      statuses: [
+        ["undo", "applied"],
+        ["undo", "undone"],
+        ["undo", "applied"],
+        ["apply", "undone"],
+      ],
+    });
+  });
+
   test("refuses, naming each file, when files changed since the Run", () => {
     // #given
     const sandbox = makeSandbox();

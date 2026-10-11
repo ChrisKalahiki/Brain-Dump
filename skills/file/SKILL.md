@@ -133,7 +133,7 @@ Done when every Dump has been applied, skipped, or the user cancelled, and the u
 
 Each `apply` is one **Run**, and undo reverts a whole Run, exactly, or nothing.
 
-1. Run `brain-dump runs`: the 20 latest Runs, newest first, each with `id`, `time`, `command`, `label` (the Dump's title for an `apply`), `files` and `status`. "The last Filing" is the first Run with `command` `apply` and `status` `applied`; when the user names a Dump, match its `label`. If none fits, say so and stop.
+1. Run `brain-dump runs`: the 20 latest Runs, newest first, each with `id`, `time`, `command`, `label` (the Dump's title for an `apply`), `files` and `status`. "The last Filing" is the first Run with `command` `apply` and `status` `applied`, or `pending` (a Filing that crashed partway, still undoable); when the user names a Dump, match its `label`. If none fits, say so and stop.
 2. Run `brain-dump undo <id>`. Without `--confirm` it writes nothing and prints `files`: each Vault file with its `action`, `restore` (back to its copy from before the Run), `delete` (a file the Run created) or `skip` (already as before). Show the user the Run's `label` and `time` and every file with its action, and ask whether to undo it.
 3. Only on an explicit yes, run `brain-dump undo <id> --confirm`. It prints the same report with `run`, the id of the undo's own Run; undoing that Run redoes the Filing. Anything but a yes writes nothing.
 

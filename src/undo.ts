@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { BrainDumpError } from "./errors.ts";
 import { commit, type Write } from "./gateway.ts";
-import { fileStates, markRun, readBeforeCopy, readRun, readRuns, sha256, type FileState, type Journal } from "./runs.ts";
+import { fileStates, markRun, readBeforeCopy, readRun, readRuns, sha256, type FileState, type Journal, type RunStatus } from "./runs.ts";
 import type { Vault } from "./vault.ts";
 
 // Reverts a whole Run, exactly, through the gateway's Revert mode, only while every file is still as the Run left it (ADR 0006).
@@ -29,9 +29,17 @@ export function undoRun(vault: Vault, id: string, { confirm = false } = {}): Und
   if (!confirm) return report;
   const writes = toRevert.map((state) => revertWrite(vault, journal, state));
   const run = commit(vault, "approved-plan", { command: "undo", label: `undo ${journal.label}`, undoes: id }, writes);
-  markRun(id, "undone");
-  if (journal.undoes !== undefined) markRun(journal.undoes, "applied");
+  markUndoChain(journal);
   return { ...report, run };
+}
+
+/** Undoing a Run flips the Run it undid back to applied, which flips that one's target to undone, down the chain of undos. */
+function markUndoChain(journal: Journal): void {
+  let status: RunStatus = "undone";
+  for (let target: Journal | undefined = journal; target !== undefined; target = target.undoes === undefined ? undefined : readRun(target.undoes)) {
+    markRun(target.id, status);
+    status = status === "undone" ? "applied" : "undone";
+  }
 }
 
 function actionFor(current: string | null, before: string | null): UndoAction {
@@ -45,7 +53,7 @@ function revertWrite(vault: Vault, journal: Journal, { path, before, after }: Fi
 
 /** Blames the latest later Run on this machine that touched the file, while the file is still as that Run left it. */
 function whyChanged(journal: Journal, path: string, current: string | null): string {
-  const later = readRuns().find((run) => run.status !== "undone" && isLater(run, journal) && fileStates(run).some((state) => state.path === path));
+  const later = readRuns().find((run) => run.vault === journal.vault && run.status !== "undone" && isLater(run, journal) && fileStates(run).some((state) => state.path === path));
   const leftByLater = later !== undefined && fileStates(later).some((state) => state.path === path && state.after === current);
   if (later !== undefined && leftByLater) return `undo run ${later.id} first`;
   return `changed outside Brain-Dump since ${(later ?? journal).time}`;
