@@ -36,20 +36,13 @@ link "$repo/skills/file" "$HOME/.claude/skills/file"
 guard_command="$HOME/.local/bin/brain-dump guard"
 settings="$HOME/.claude/settings.json"
 
-# Merges the Vault guard's PreToolUse entry into Claude Code's user settings, keeping every existing entry.
 install_guard() {
   GUARD_COMMAND="$guard_command" SETTINGS="$settings" bun -e '
     import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
     import { dirname } from "node:path";
     const { GUARD_COMMAND: command, SETTINGS: path } = process.env;
     const settings = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : {};
-    const hooks = (settings.hooks ??= {});
-    const entries = (hooks.PreToolUse ??= []);
-    if (entries.some((entry) => entry.hooks?.some((hook) => hook.command === command))) {
-      console.log(`Vault guard already in ${path}`);
-      process.exit(0);
-    }
-    entries.push({ matcher: "Edit|Write|NotebookEdit|MultiEdit|Read|Grep|Glob|Bash|PowerShell", hooks: [{ type: "command", command, timeout: 5 }] });
+    ((settings.hooks ??= {}).PreToolUse ??= []).push({ matcher: "Edit|Write|NotebookEdit|MultiEdit|Read|Grep|Glob|Bash|PowerShell", hooks: [{ type: "command", command, timeout: 5 }] });
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(`${path}.brain-dump-tmp`, `${JSON.stringify(settings, null, 2)}\n`);
     renameSync(`${path}.brain-dump-tmp`, path);
@@ -57,19 +50,17 @@ install_guard() {
   '
 }
 
+guard_removal="To remove it, delete the PreToolUse entry running \"$guard_command\" from $settings."
 if [[ -f "$settings" ]] && grep -qF "\"$guard_command\"" "$settings"; then
-  echo "Vault guard already in $settings"
+  echo "Vault guard already in $settings. $guard_removal"
 else
   echo
   echo "The Vault guard is a Claude Code hook that stops agents reaching the Vault except through brain-dump."
-  echo "It runs before every Edit, Write, Read, Grep, Glob and Bash call, in every project."
+  echo "It runs before every file-tool (Edit, Write, NotebookEdit, MultiEdit, Read, Grep, Glob) and shell (Bash, PowerShell) call, in every project."
+  echo "$guard_removal"
   read -r -p "Install it in $settings? [Y/n] " answer || answer=""
   if [[ ! "$answer" =~ ^[Nn] ]]; then
-    if install_guard; then
-      echo "To remove it, delete the PreToolUse entry running \"$guard_command\" from $settings."
-    else
-      echo "brain-dump install: could not update $settings; the Vault guard is not installed" >&2
-    fi
+    install_guard || echo "brain-dump install: could not update $settings; the Vault guard is not installed" >&2
   fi
 fi
 

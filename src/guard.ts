@@ -2,8 +2,8 @@ import { existsSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { expandHome, resolveVaultPath } from "./vault.ts";
 
-// The Vault guard, a Claude Code PreToolUse hook (issue #34). Exit 2 denies with the reason on stderr; anything else lets the call through.
-// It catches agents drifting off brain-dump, not determined evasion: the write gateway and undo are the safety net.
+// The Vault guard, a Claude Code PreToolUse hook enforcing ADR 0007: agents reach the Vault only through brain-dump.
+// It catches agents drifting off the helper, not determined evasion: the write gateway (ADR 0005) and undo (ADR 0006) are the safety net.
 
 const FILE_TOOLS = new Set(["Edit", "Write", "NotebookEdit", "MultiEdit", "Read", "Grep", "Glob"]);
 const SHELL_TOOLS = new Set(["Bash", "PowerShell"]);
@@ -31,7 +31,8 @@ function decide(hookInput: string, projectDir: string | undefined): Verdict {
   const root = canonical(configured);
   if (projectDir !== undefined && projectDir !== "" && isInside(canonical(projectDir), root)) return ALLOW;
   if (FILE_TOOLS.has(tool)) {
-    const target = [...filePaths(input, cwd), ...globBase(tool, input)].find((path) => isInside(canonical(path), root));
+    const paths = tool === "Glob" ? [...filePaths(input, cwd), ...globBase(input)] : filePaths(input, cwd);
+    const target = paths.find((path) => isInside(canonical(path), root));
     return target === undefined ? ALLOW : deny(tool, target);
   }
   if (SHELL_TOOLS.has(tool)) {
@@ -62,21 +63,21 @@ function filePaths(input: Record<string, unknown>, cwd: string): string[] {
 }
 
 /** An absolute Glob pattern names its folder too: the segments before the first wildcard. */
-function globBase(tool: string, input: Record<string, unknown>): string[] {
+function globBase(input: Record<string, unknown>): string[] {
   const pattern = typeof input.pattern === "string" ? expandHome(input.pattern) : "";
-  if (tool !== "Glob" || !isAbsolute(pattern)) return [];
+  if (!isAbsolute(pattern)) return [];
   const segments = pattern.split(sep);
   const wildcard = segments.findIndex((segment) => /[*?[{]/.test(segment));
   return [resolve(segments.slice(0, wildcard === -1 ? undefined : wildcard).join(sep) || sep)];
 }
 
-/** Whether `command` names the Vault folder in any common spelling: `The Vault`, `The\\ Vault`, `"The Vault"`, `The?Vault`, in any case. */
+/** Whether `command` names the Vault folder in any common spelling: `The Vault`, `The\\ Vault`, `"The Vault"`, `The?Vault`. Any case after a `/`, as on a case-insensitive disk; elsewhere only its own case, so prose like "the vault" passes. */
 function namesVault(command: string, roots: string[]): boolean {
   return roots.some((root) => {
     const words = basename(root).split(/\s+/).filter(Boolean).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     if (words.length === 0) return false;
-    const spelled = words.join(String.raw`(?:[\s\\?*'"]|%20)+`);
-    return new RegExp(String.raw`(?<![\p{L}\p{N}_-])${spelled}(?![\p{L}\p{N}_-])`, "iu").test(command);
+    const spelled = String.raw`${words.join(String.raw`(?:[\s\\?*'"]|%20)+`)}(?![\p{L}\p{N}_-])`;
+    return new RegExp(String.raw`(?<![\p{L}\p{N}_-])${spelled}`, "u").test(command) || new RegExp(`/${spelled}`, "iu").test(command);
   });
 }
 
@@ -92,7 +93,7 @@ function isSingleBrainDumpCall(command: string): boolean {
   return endsOnlyWithHeredoc(text.slice(line.end), line.heredoc);
 }
 
-/** Scans the first line of `text` outside quotes; `undefined` when anything there could run a second command, or when a newline comes with no heredoc to feed. */
+/** Scans the first line of `text` outside quotes; `undefined` when anything there could run a second command (Bash or zsh), or when a newline comes with no heredoc to feed. */
 function scanCommandLine(text: string): { end: number; heredoc?: Heredoc } | undefined {
   let quote: "'" | '"' | undefined;
   let heredoc: Heredoc | undefined;
@@ -106,11 +107,13 @@ function scanCommandLine(text: string): { end: number; heredoc?: Heredoc } | und
       i++;
       continue;
     }
-    if (char === "`" || (char === "$" && text[i + 1] === "(")) return undefined;
+    if (char === "`" || (char === "$" && "({".includes(text[i + 1] ?? ""))) return undefined;
     if (quote === '"') {
       if (char === '"') quote = undefined;
       continue;
     }
+    if (char === "$" && text[i + 1] === "'") return undefined;
+    if (char === "#" && (i === 0 || /\s/.test(text[i - 1] ?? ""))) return undefined;
     if (char === "'" || char === '"') {
       quote = char;
       continue;
@@ -123,7 +126,7 @@ function scanCommandLine(text: string): { end: number; heredoc?: Heredoc } | und
       i += match[0].length - 1;
       continue;
     }
-    if (";&|>".includes(char ?? "")) return undefined;
+    if (";&|>()".includes(char ?? "")) return undefined;
   }
   return quote === undefined && heredoc === undefined ? { end: text.length } : undefined;
 }

@@ -3,9 +3,12 @@ import { mkdirSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { makeSandbox, run, type Sandbox } from "./harness.ts";
 
-function guard(sandbox: Sandbox, tool: string, input: Record<string, unknown>, cwd = sandbox.home) {
-  const hookInput = { hook_event_name: "PreToolUse", tool_name: tool, tool_input: input, cwd };
-  const { exitCode, stderr } = run(sandbox, ["guard"], { stdin: JSON.stringify(hookInput) });
+function guard(sandbox: Sandbox, tool: string, input: Record<string, unknown>, cwd = sandbox.home, env: Record<string, string> = {}) {
+  return guardRaw(sandbox, JSON.stringify({ hook_event_name: "PreToolUse", tool_name: tool, tool_input: input, cwd }), env);
+}
+
+function guardRaw(sandbox: Sandbox, hookInput: string, env: Record<string, string> = {}) {
+  const { exitCode, stderr } = run(sandbox, ["guard"], { stdin: hookInput, env });
   return { exitCode, stderr };
 }
 
@@ -30,9 +33,9 @@ describe("guard on file tools", () => {
 
   const denied: [string, string, (sandbox: Sandbox) => { input: Record<string, unknown>; cwd?: string; target: string }][] = [
     ["Write to a new note in a new folder", "Write", ({ vault }) => ({ input: { file_path: join(vault, "New", "Deep", "N.md"), content: "x" }, target: join(vault, "New", "Deep", "N.md") })],
-    ["NotebookEdit", "NotebookEdit", ({ vault }) => ({ input: { notebook_path: join(vault, "n.ipynb"), new_source: "x" }, target: join(vault, "n.ipynb") })],
-    ["MultiEdit", "MultiEdit", ({ vault }) => ({ input: { file_path: join(vault, "N.md"), edits: [] }, target: join(vault, "N.md") })],
-    ["Read", "Read", ({ vault }) => ({ input: { file_path: join(vault, "N.md") }, target: join(vault, "N.md") })],
+    ["NotebookEdit on a notebook in the Vault", "NotebookEdit", ({ vault }) => ({ input: { notebook_path: join(vault, "n.ipynb"), new_source: "x" }, target: join(vault, "n.ipynb") })],
+    ["MultiEdit on a note in the Vault", "MultiEdit", ({ vault }) => ({ input: { file_path: join(vault, "N.md"), edits: [] }, target: join(vault, "N.md") })],
+    ["Read of a note in the Vault", "Read", ({ vault }) => ({ input: { file_path: join(vault, "N.md") }, target: join(vault, "N.md") })],
     ["Grep with a path", "Grep", ({ vault }) => ({ input: { pattern: "x", path: vault }, target: vault })],
     ["Grep with no path, run from inside the Vault", "Grep", ({ vault }) => ({ input: { pattern: "x" }, cwd: join(vault, "Inbox"), target: join(vault, "Inbox") })],
     ["Glob with no path, run from the Vault root", "Glob", ({ vault }) => ({ input: { pattern: "**/*.md" }, cwd: vault, target: vault })],
@@ -113,6 +116,11 @@ describe("guard on shell tools", () => {
     ["two heredocs", "Bash", "brain-dump apply <<'A' <<'B'\nThe Vault\nA\nx\nB"],
     ["a command after the heredoc's end", "Bash", `brain-dump apply <<'EOF'\n{}\nEOF\nrm ${NOTE}`],
     ["a heredoc that never ends", "Bash", "brain-dump apply <<'EOF'\nThe Vault"],
+    ["a second command hidden behind a quote in a comment", "Bash", `brain-dump show x #'\ncat ${NOTE}\n#'`],
+    ["a second command hidden behind an ANSI-C quote", "Bash", `brain-dump show $'\\''\ncat ${NOTE}\n'`],
+    ["a zsh process substitution", "Bash", `brain-dump show =(cp ${NOTE} /tmp/x)`],
+    ["a zsh glob qualifier", "Bash", `brain-dump show ${NOTE}(e:'rm -rf ~':)`],
+    ["a zsh evaluating expansion", "Bash", `brain-dump show "\${(e)x}" ${NOTE}`],
     ["a command that isn't brain-dump", "PowerShell", 'Get-Content "~/Documents/The Vault/N.md"'],
   ];
 
@@ -147,6 +155,7 @@ describe("guard on shell tools", () => {
     ["a brain-dump call with a quoted heredoc", "brain-dump write-dump --tool ClaudeCode --slug s <<'EOF'\n## Learnings\n- The Vault; $(x) | `y` > z\nEOF", true],
     ["a brain-dump call with a <<- double-quoted heredoc", 'brain-dump apply <<-"EOF"\n{"note": "The Vault"}\n\tEOF\n', false],
     ["a command that doesn't touch the Vault", "ls && cat notes.md | grep vault > out.txt", false],
+    ["a command that says \"the vault\" in prose", 'git commit -m "feat: the vault guard" && git push', false],
   ];
 
   test.each(allowed)("allows %s", (_, command, fromVault) => {
@@ -165,13 +174,12 @@ describe("guard stands down", () => {
   test("allows everything when the project was opened inside the Vault", () => {
     // #given
     const sandbox = makeSandbox();
-    const hookInput = { tool_name: "Edit", tool_input: { file_path: join(sandbox.vault, "N.md") }, cwd: sandbox.vault };
 
     // #when
-    const { exitCode, stderr } = run(sandbox, ["guard"], { stdin: JSON.stringify(hookInput), env: { CLAUDE_PROJECT_DIR: join(sandbox.vault, "Research") } });
+    const result = guard(sandbox, "Edit", { file_path: join(sandbox.vault, "N.md") }, sandbox.vault, { CLAUDE_PROJECT_DIR: join(sandbox.vault, "Research") });
 
     // #then
-    expect({ exitCode, stderr }).toEqual(ALLOWED);
+    expect(result).toEqual(ALLOWED);
   });
 });
 
@@ -181,10 +189,10 @@ describe("guard on input it can't read", () => {
     const sandbox = makeSandbox();
 
     // #when
-    const result = run(sandbox, ["guard"], { stdin: '{"tool_name": "Read", "tool_input": {"file_path": "~/Documents/The Vault/N.md"' });
+    const result = guardRaw(sandbox, '{"tool_input": {"file_path": "~/Documents/The Vault/N.md"}}');
 
     // #then
-    expect({ exitCode: result.exitCode, stderr: result.stderr.startsWith("Vault access goes through brain-dump only (recall, show, write-dump, file). Blocked: Read on ") }).toEqual({ exitCode: 2, stderr: true });
+    expect(result).toEqual(blocked("unknown tool", "Vault mention in hook input (guard error: hook input has no tool_name)"));
   });
 
   test("allows when the input doesn't mention the Vault", () => {
@@ -192,9 +200,9 @@ describe("guard on input it can't read", () => {
     const sandbox = makeSandbox();
 
     // #when
-    const { exitCode, stderr } = run(sandbox, ["guard"], { stdin: '{"tool_name": "Read", "tool_input": {"file_path": "/tmp/x"' });
+    const result = guardRaw(sandbox, '{"tool_name": "Read", "tool_input": {"file_path": "/tmp/x"');
 
     // #then
-    expect({ exitCode, stderr }).toEqual(ALLOWED);
+    expect(result).toEqual(ALLOWED);
   });
 });
