@@ -217,6 +217,19 @@ describe("guard on Codex apply_patch", () => {
     expect(result).toEqual(blocked("Bash", join(sandbox.home, "notes", "N.md")));
   });
 
+  test("denies a Bash heredoc patch whose paths are relative to a leading cd", () => {
+    // #given
+    const sandbox = makeSandbox();
+    symlinkSync(sandbox.vault, join(sandbox.home, "notes"));
+    const command = `cd notes && apply_patch <<'EOF'\n${patch("*** Add File: N.md", "+x")}\nEOF`;
+
+    // #when
+    const result = guard(sandbox, "Bash", { command });
+
+    // #then
+    expect(result).toEqual(blocked("Bash", join(sandbox.home, "notes", "N.md")));
+  });
+
   test("allows a patch outside the Vault", () => {
     // #given
     const sandbox = makeSandbox();
