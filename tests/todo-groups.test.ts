@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { makeSandbox, run, writeVaultFile } from "./harness.ts";
+import { makeSandbox, run, writeVaultFile, vaultFileHash } from "./harness.ts";
 
 const WEEKLY = "Research/Weekly Meetings";
 
@@ -41,6 +41,7 @@ describe("brain-dump todo-groups", () => {
       thisWeek: {
         note: `${WEEKLY}/10-05-26 Weekly Update.md`,
         exists: true,
+        hash: vaultFileHash(sandbox, `${WEEKLY}/10-05-26 Weekly Update.md`),
         groups: [
           { name: "SaTC", children: [] },
           { name: "Workshop papers", children: [] },
@@ -81,7 +82,7 @@ describe("brain-dump todo-groups", () => {
 
     // #then
     expect(JSON.parse(result.stdout)).toEqual({
-      thisWeek: { note: `${WEEKLY}/10-12-26 Weekly Update.md`, exists: false, groups: [] },
+      thisWeek: { note: `${WEEKLY}/10-12-26 Weekly Update.md`, exists: false, hash: null, groups: [] },
       lastWeek: {
         note: `${WEEKLY}/09-28-26 Weekly Update.md`,
         groups: [

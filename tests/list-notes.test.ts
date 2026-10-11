@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { makeSandbox, run, writeVaultFile } from "./harness.ts";
+import { makeSandbox, run, writeVaultFile, vaultFileHash } from "./harness.ts";
 
 describe("brain-dump list-notes", () => {
   test("lists notes with their title, folder and frontmatter tags, skipping the Inbox and .obsidian", () => {
@@ -15,8 +15,8 @@ describe("brain-dump list-notes", () => {
 
     // #then
     expect(JSON.parse(result.stdout)).toEqual([
-      { note: "Research/Main Notes/Context MCP/Context Bridge MCP Main Note.md", title: "Context Bridge MCP Main Note", folder: "Research/Main Notes/Context MCP", tags: ["MCP", "research"] },
-      { note: "Side Projects/Talky/Updates for Talky.md", title: "Updates for Talky", folder: "Side Projects/Talky", tags: [] },
+      { note: "Research/Main Notes/Context MCP/Context Bridge MCP Main Note.md", title: "Context Bridge MCP Main Note", folder: "Research/Main Notes/Context MCP", tags: ["MCP", "research"], hash: vaultFileHash(sandbox, "Research/Main Notes/Context MCP/Context Bridge MCP Main Note.md") },
+      { note: "Side Projects/Talky/Updates for Talky.md", title: "Updates for Talky", folder: "Side Projects/Talky", tags: [], hash: vaultFileHash(sandbox, "Side Projects/Talky/Updates for Talky.md") },
     ]);
   });
 

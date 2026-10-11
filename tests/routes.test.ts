@@ -15,7 +15,7 @@ describe("brain-dump routes", () => {
     const result = run(sandbox, ["routes"]);
 
     // #then
-    expect(JSON.parse(result.stdout)).toEqual([
+    expect(JSON.parse(result.stdout).routes).toEqual([
       { key: "context-bridge", title: "Context Bridge MCP Main Note" },
       { key: "Agent Skills", title: "Agent Skills" },
     ]);
@@ -29,7 +29,7 @@ describe("brain-dump routes", () => {
     const result = run(sandbox, ["routes"]);
 
     // #then
-    expect(JSON.parse(result.stdout)).toEqual([]);
+    expect(JSON.parse(result.stdout).routes).toEqual([]);
   });
 
   test("reads a Route to a Todo Group, telling it apart from a Route to a note", () => {
@@ -41,7 +41,7 @@ describe("brain-dump routes", () => {
     const result = run(sandbox, ["routes"]);
 
     // #then
-    expect(JSON.parse(result.stdout)).toEqual([
+    expect(JSON.parse(result.stdout).routes).toEqual([
       { key: "Brain-Dump", title: "Brain-Dump" },
       { key: "Byzantine Agents", group: ["Dissertation", "Agents"] },
     ]);
@@ -56,6 +56,6 @@ describe("brain-dump routes", () => {
     const result = run(sandbox, ["routes"]);
 
     // #then
-    expect(JSON.parse(result.stdout)).toEqual([{ key: "Brain-Dump", title: "Brain-Dump" }]);
+    expect(JSON.parse(result.stdout).routes).toEqual([{ key: "Brain-Dump", title: "Brain-Dump" }]);
   });
 });

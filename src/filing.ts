@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, normalize, relative } from "node:path";
 import type { ClosedMark } from "./append-only.ts";
+import { contentHash, readHashed } from "./content-hash.ts";
 import { STATE_MARKS } from "./dump-body.ts";
 import { BrainDumpError, UsageError } from "./errors.ts";
 import { commit, type Write } from "./gateway.ts";
@@ -23,6 +24,8 @@ export type NoteCreation = { note: string } & ({ from: "weekly-template" } | { t
 
 export type FilingPlan = {
   dump: string;
+  /** The hash each existing file the plan writes had when the agent read it, by Vault-relative path. */
+  expect: Record<string, string>;
   creates?: NoteCreation[];
   items: PlannedItem[];
   inserts: (Placement & { lines: string[] })[];
@@ -36,10 +39,12 @@ export type FilingResult = {
   dropped: number;
   skipped: number;
   movedTo: string | null;
+  /** The hash of every file the plan wrote, by Vault-relative path, for later plans in the same run to expect. */
+  hashes: Record<string, string>;
 };
 
 const PLAN_SHAPE =
-  'expected {"dump": string, "items": [{"index": number, "outcome": "filed", "note": string, "section"?: string, "group"?: string[], "lines": string[]} | {"index": number, "outcome": "dropped"|"skipped"}], "inserts": [{"note": string, "section"?: string, "lines": string[]}], "routes"?: [{"key": string, "title": string} | {"key": string, "group": string[]}], "creates"?: [{"note": string, "from": "weekly-template"} | {"note": string, "tags": string[]}], "createGroups"?: string[][], "confirmLarge"?: boolean}';
+  'expected {"dump": string, "expect": {[path: string]: string}, "items": [{"index": number, "outcome": "filed", "note": string, "section"?: string, "group"?: string[], "lines": string[]} | {"index": number, "outcome": "dropped"|"skipped"}], "inserts": [{"note": string, "section"?: string, "lines": string[]}], "routes"?: [{"key": string, "title": string} | {"key": string, "group": string[]}], "creates"?: [{"note": string, "from": "weekly-template"} | {"note": string, "tags": string[]}], "createGroups"?: string[][], "confirmLarge"?: boolean}';
 const CLOSED_MARKS: Record<"filed" | "dropped", ClosedMark> = { filed: "x", dropped: "-" };
 const PLACEHOLDER = /^- (\[ \] ?)?$/;
 const TAG = /^[^\s#]+$/;
@@ -59,6 +64,8 @@ export function parseFilingPlan(text: string): FilingPlan {
 export function applyFilingPlan(vault: Vault, plan: FilingPlan): FilingResult {
   const dumpPath = resolveInVault(vault, plan.dump);
   if (dirname(dumpPath) !== vault.inbox) reject(`${plan.dump} is not an unfiled Dump in the Inbox`);
+  const newRoutes = unknownRoutes(vault, plan.routes ?? []);
+  checkFresh(vault, plan, newRoutes.length > 0);
   const dump = readDump(vault, dumpPath);
   const dumpLines = markItems(dump, plan.items);
   const notes = new NoteEdits(vault);
@@ -70,7 +77,6 @@ export function applyFilingPlan(vault: Vault, plan: FilingPlan): FilingResult {
     else notes.insertInGroup(item, item.group, item.lines, groups);
   }
   for (const insert of plan.inserts) notes.insert(insert, insert.lines);
-  const newRoutes = unknownRoutes(vault, plan.routes ?? []);
   if (newRoutes.length > 0) notes.insert({ note: ROUTES_NOTE }, newRoutes.map(renderRoute), { create: true });
   notes.requireCreatedNotesUsed();
 
@@ -87,9 +93,33 @@ export function applyFilingPlan(vault: Vault, plan: FilingPlan): FilingResult {
     }),
   );
   const filedDump: Write = { mode: "file-dump", path: dumpPath, contents: dumpLines.join(dump.eol), planned, moveTo: finished ? filedPath : undefined };
-  commit(vault, "approved-plan", { command: "apply", label: dump.title }, [...notes.writes(), filedDump], { confirmLarge: plan.confirmLarge });
+  const writes = [...notes.writes(), filedDump];
+  commit(vault, "approved-plan", { command: "apply", label: dump.title }, writes, { confirmLarge: plan.confirmLarge });
   const count = (outcome: PlannedItem["outcome"]): number => plan.items.filter((item) => item.outcome === outcome).length;
-  return { filed: count("filed"), dropped: count("dropped"), skipped: count("skipped"), movedTo: finished ? relative(vault.root, filedPath) : null };
+  const hashes = Object.fromEntries(writes.map((write) => [relative(vault.root, (write.mode === "file-dump" && write.moveTo) || write.path), contentHash(write.contents)]));
+  return { filed: count("filed"), dropped: count("dropped"), skipped: count("skipped"), movedTo: finished ? relative(vault.root, filedPath) : null, hashes };
+}
+
+/** Every existing file the plan writes needs the hash it had when the agent read it; if any changed since, the whole plan is refused before anything is staged. */
+function checkFresh(vault: Vault, plan: FilingPlan, writesRoutes: boolean): void {
+  const expected = new Map(Object.entries(plan.expect).map(([note, hash]) => [resolveInVault(vault, note), hash]));
+  const created = new Set((plan.creates ?? []).map(({ note }) => resolveInVault(vault, note)));
+  const filed = plan.items.flatMap((item) => (item.outcome === "filed" ? [item.note] : []));
+  const notes = [plan.dump, ...filed, ...plan.inserts.map(({ note }) => note), ...(writesRoutes ? [ROUTES_NOTE] : [])];
+  const written = new Map(notes.map((note) => [resolveInVault(vault, note), note]));
+  const routesPath = resolveInVault(vault, ROUTES_NOTE);
+  const stale: string[] = [];
+  const unpinned: string[] = [];
+  for (const [path, note] of written) {
+    if (created.has(path)) continue;
+    const current = existsSync(path) ? readHashed(path).hash : undefined;
+    const hash = expected.get(path);
+    // The Routes note is created on demand, so having no hash for it means it didn't exist when the agent read it.
+    if (hash === undefined && current !== undefined) (path === routesPath ? stale : unpinned).push(note);
+    if (hash !== undefined && hash !== current) stale.push(note);
+  }
+  if (stale.length > 0) throw new BrainDumpError(`Filing Plan stale: ${listInEnglish(stale)} changed since it was read`);
+  if (unpinned.length > 0) reject(`expect has no hash for ${listInEnglish(unpinned)}`);
 }
 
 /** The Todo Groups the plan may create: each `createGroups` path and every group along it. Rejects a path no filed Todo goes into. */
@@ -216,7 +246,7 @@ class NoteEdits {
     }
   }
 
-  writes(): Write[] {
+  writes(): Extract<Write, { mode: "create" | "append" }>[] {
     return [...this.notes].map(([path, { lines, eol, isNew }]) => ({ mode: isNew ? "create" : "append", path, contents: lines.join(eol) }));
   }
 
@@ -261,11 +291,12 @@ function resolveInVault(vault: Vault, relativePath: string): string {
 
 function isFilingPlan(value: unknown): value is FilingPlan {
   if (!isRecord(value) || typeof value.dump !== "string") return false;
+  const expectOk = isRecord(value.expect) && Object.values(value.expect).every((hash) => typeof hash === "string");
   const createsOk = value.creates === undefined || (Array.isArray(value.creates) && value.creates.every(isNoteCreation));
   const routesOk = value.routes === undefined || (Array.isArray(value.routes) && value.routes.every(isRoute));
   const groupsOk = value.createGroups === undefined || (Array.isArray(value.createGroups) && value.createGroups.every(isGroupPath));
   const confirmLargeOk = value.confirmLarge === undefined || typeof value.confirmLarge === "boolean";
-  return Array.isArray(value.items) && value.items.every(isPlannedItem) && Array.isArray(value.inserts) && value.inserts.every(hasPlacedLines) && routesOk && createsOk && groupsOk && confirmLargeOk;
+  return expectOk && Array.isArray(value.items) && value.items.every(isPlannedItem) && Array.isArray(value.inserts) && value.inserts.every(hasPlacedLines) && routesOk && createsOk && groupsOk && confirmLargeOk;
 }
 
 function isNoteCreation(value: unknown): boolean {

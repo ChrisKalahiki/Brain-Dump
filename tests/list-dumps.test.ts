@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DEV_ORIGIN as ORIGIN, dumpFile, makeSandbox, run, writeVaultFile } from "./harness.ts";
+import { DEV_ORIGIN as ORIGIN, dumpFile, makeSandbox, run, writeVaultFile, vaultFileHash } from "./harness.ts";
 
 
 describe("brain-dump list-dumps", () => {
@@ -29,6 +29,7 @@ describe("brain-dump list-dumps", () => {
         title: "2026-10-05 1940 Brain-Dump - filing",
         date: "2026-10-05",
         project: "Brain-Dump",
+        hash: vaultFileHash(sandbox, "Inbox/2026-10-05 1940 Brain-Dump - filing.md"),
         items: [
           { index: 1, kind: "Learning", text: "Bun runs TypeScript directly.", rationale: null, state: "filed" },
           { index: 2, kind: "Decision", text: "Filing is append-only.", rationale: "protect curated notes.", state: "open" },

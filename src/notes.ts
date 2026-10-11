@@ -1,5 +1,6 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
+import { readHashed } from "./content-hash.ts";
 import { INBOX, WRITE_ALLOWLIST } from "./layout.ts";
 import type { Vault } from "./vault.ts";
 
@@ -8,6 +9,7 @@ export type NoteSummary = {
   title: string;
   folder: string;
   tags: string[];
+  hash: string;
 };
 
 /** Every note in the write allowlist outside the Inbox, so Filing never proposes a private note or a Dump. */
@@ -19,7 +21,8 @@ export function listNotes(vault: Vault): NoteSummary[] {
     .sort()
     .map((path) => {
       const note = relative(vault.root, path);
-      return { note, title: basename(note, ".md"), folder: dirname(note), tags: frontmatterTags(readFileSync(path, "utf8")) };
+      const { contents, hash } = readHashed(path);
+      return { note, title: basename(note, ".md"), folder: dirname(note), tags: frontmatterTags(contents), hash };
     });
 }
 

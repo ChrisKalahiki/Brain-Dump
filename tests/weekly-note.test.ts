@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { makeSandbox, run, writeVaultFile } from "./harness.ts";
+import { makeSandbox, run, writeVaultFile, vaultFileHash } from "./harness.ts";
 
 const WEEKLY = "Research/Weekly Meetings";
 
@@ -15,7 +15,7 @@ describe("brain-dump weekly-note", () => {
     const result = run(sandbox, ["weekly-note", "--date", "2026-10-08"]);
 
     // #then
-    expect(JSON.parse(result.stdout)).toEqual({ exists: true, note: `${WEEKLY}/10-06-26 Weekly Update.md` });
+    expect(JSON.parse(result.stdout)).toEqual({ exists: true, note: `${WEEKLY}/10-06-26 Weekly Update.md`, hash: vaultFileHash(sandbox, `${WEEKLY}/10-06-26 Weekly Update.md`) });
   });
 
   test("reports the Monday-named note that would be created when the week has none", () => {
@@ -27,7 +27,7 @@ describe("brain-dump weekly-note", () => {
     const result = run(sandbox, ["weekly-note", "--date", "2026-10-14"]);
 
     // #then
-    expect(JSON.parse(result.stdout)).toEqual({ exists: false, note: `${WEEKLY}/10-12-26 Weekly Update.md` });
+    expect(JSON.parse(result.stdout)).toEqual({ exists: false, note: `${WEEKLY}/10-12-26 Weekly Update.md`, hash: null });
   });
 
   test("rejects a date that is not YYYY-MM-DD", () => {

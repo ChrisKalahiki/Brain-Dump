@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { DEV_ORIGIN as ORIGIN, dumpFile, makeSandbox, readVaultFile, run, WEEKLY_TEMPLATE, writeVaultFile, type Sandbox } from "./harness.ts";
+import { DEV_ORIGIN as ORIGIN, dumpFile, makeSandbox, readVaultFile, run, WEEKLY_TEMPLATE, writeVaultFile, type Sandbox, pinned } from "./harness.ts";
 
 const DUMP = "Inbox/2026-10-12 0900 Brain-Dump - new week.md";
 const TEMPLATE = "Research/Other/Templates/XX-XX-XX Weekly Update.md";
 const NEW_WEEK = "Research/Weekly Meetings/10-12-26 Weekly Update.md";
 
 function apply(sandbox: Sandbox, plan: unknown) {
-  return run(sandbox, ["apply"], { stdin: JSON.stringify(plan) });
+  return run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, plan)) });
 }
 
 describe("brain-dump apply creating notes", () => {

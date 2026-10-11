@@ -7,7 +7,7 @@ import { detectDevOrigin, isChatTool, isToolTag, TOOL_TAGS, type Origin } from "
 import { applyFilingPlan, parseFilingPlan } from "./filing.ts";
 import { listUnfiledDumps, summarize } from "./inbox.ts";
 import { listNotes } from "./notes.ts";
-import { readRoutes } from "./routes.ts";
+import { readRoutesNote } from "./routes.ts";
 import { listRuns } from "./runs.ts";
 import { readTodoGroups } from "./todo-groups.ts";
 import { locateVault } from "./vault.ts";
@@ -30,7 +30,7 @@ async function main(argv: string[]): Promise<number> {
       writeJson(listNotes(locateVault()));
       return 0;
     case "routes":
-      writeJson(readRoutes(locateVault()));
+      writeJson(readRoutesNote(locateVault()));
       return 0;
     case "weekly-note": {
       const { date } = parseOptions(rest, { date: { type: "string" } });
