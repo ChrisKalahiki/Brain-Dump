@@ -1,7 +1,7 @@
 import { basename, isAbsolute, join, normalize, relative } from "node:path";
 import { readHashed } from "./content-hash.ts";
 import { BrainDumpError } from "./errors.ts";
-import { noteFiles } from "./notes.ts";
+import { linkTarget, noteFiles } from "./notes.ts";
 import type { Vault } from "./vault.ts";
 
 const TEXT_CAP = 60_000;
@@ -21,7 +21,7 @@ export function showNote(vault: Vault, name: string, { full = false } = {}): Sho
 
 /** `name` is a Vault-relative path, a title, or a `[[wikilink]]`; only notes in the write allowlist can be shown (ADR 0007). */
 function findNote(vault: Vault, name: string): string {
-  const link = name.replace(/^\[\[|\]\]$/g, "").split("|")[0]?.split("#")[0]?.trim() ?? "";
+  const link = linkTarget(name);
   const notes = noteFiles(vault);
   const byPath = link.includes("/") || link.endsWith(".md");
   const matches = byPath

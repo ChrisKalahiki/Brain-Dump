@@ -30,6 +30,11 @@ export function noteFiles(vault: Vault, trees: readonly string[] = WRITE_ALLOWLI
     .sort();
 }
 
+/** The note a wikilink or bare name points at, without its brackets, alias or heading: `[[A/Note#H|alias]]` → `A/Note`. */
+export function linkTarget(link: string): string {
+  return link.replace(/^\[\[|\]\]$/g, "").split("|")[0]?.split("#")[0]?.trim() ?? "";
+}
+
 function markdownFiles(folder: string): string[] {
   return readdirSync(folder, { withFileTypes: true }).flatMap((entry) => {
     const path = join(folder, entry.name);

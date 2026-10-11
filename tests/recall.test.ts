@@ -17,7 +17,7 @@ function seedVault(sandbox: Sandbox): void {
     GUARD_DUMP,
     dumpFile(GUARD_ORIGIN, "## Learnings\n- [x] Codex hooks need a trust step.\n\n## Decisions\n- [x] The guard fails closed.\n\t- Why: a hook bug must not open the Vault.\n\n## Todos\n- [x] #todo Ship the Codex guard.\n- [-] #todo Port the guard to Cursor.\n", "Codex"),
   );
-  writeVaultFile(sandbox, TOPIC, `# Brain-Dump\n- Codex hooks need a trust step.\n${FROM_GUARD}\n- The guard fails closed.\n\t- Why: a hook bug must not open the Vault.\n${FROM_GUARD}\n- A hand-written guard thought.\n`);
+  writeVaultFile(sandbox, TOPIC, `# Brain-Dump\n- Codex hooks need a trust step.\n${FROM_GUARD}\n- The guard fails closed.\n\t- Why: a hook bug must not open the Vault.\n${FROM_GUARD}\n- A hand-written guard thought.\n- Keep the guard in one binary.\n\t- Why: one install step.\n`);
   writeVaultFile(sandbox, WEEK, "# To-Do: #todo\n- Brain Dump\n\t- [ ] Ship the Codex guard. #todo\n");
   writeVaultFile(sandbox, RECALL_DUMP, dumpFile(DEV_ORIGIN, "## Learnings\n- [ ] Recall ranks guard hits by count, guard first.\n- [-] Recall could use an index for the guard.\n"));
   writeVaultFile(sandbox, CHRONOS_DUMP, dumpFile(CHRONOS_ORIGIN, "## Learnings\n- [ ] Job queues need a guard against double runs.\n"));
@@ -26,7 +26,8 @@ function seedVault(sandbox: Sandbox): void {
 
 const GUARD_LEARNING = { note: TOPIC, kind: "learning", text: "Codex hooks need a trust step.", why: null, unfiled: false, dump: GUARD_DUMP, origin: GUARD_ORIGIN };
 const GUARD_DECISION = { note: TOPIC, kind: "decision", text: "The guard fails closed.", why: "a hook bug must not open the Vault.", unfiled: false, dump: GUARD_DUMP, origin: GUARD_ORIGIN };
-const GUARD_TODO = { note: WEEK, kind: "todo", text: "Ship the Codex guard. #todo", why: null, unfiled: false, dump: GUARD_DUMP, origin: GUARD_ORIGIN };
+const GUARD_TODO = { note: WEEK, kind: "todo", text: "[ ] Ship the Codex guard. #todo", why: null, unfiled: false, dump: GUARD_DUMP, origin: GUARD_ORIGIN };
+const HAND_DECISION = { note: TOPIC, kind: "decision", text: "Keep the guard in one binary.", why: "one install step.", unfiled: false, dump: null, origin: null };
 const RECALL_LEARNING = { note: RECALL_DUMP, kind: "learning", text: "Recall ranks guard hits by count, guard first.", why: null, unfiled: true, dump: RECALL_DUMP, origin: DEV_ORIGIN };
 const CHRONOS_LEARNING = { note: CHRONOS_DUMP, kind: "learning", text: "Job queues need a guard against double runs.", why: null, unfiled: true, dump: CHRONOS_DUMP, origin: CHRONOS_ORIGIN };
 
@@ -45,19 +46,20 @@ describe("brain-dump recall <terms…>", () => {
     const result = recall(sandbox, ["GUARD"]);
 
     // #then
-    expect(result).toEqual({ results: [RECALL_LEARNING, CHRONOS_LEARNING, GUARD_TODO, GUARD_DECISION], more: 0 });
+    expect(result).toEqual({ results: [RECALL_LEARNING, CHRONOS_LEARNING, GUARD_TODO, GUARD_DECISION, HAND_DECISION], more: 0 });
   });
 
-  test("counts hits for every term, in the text and the Why", () => {
+  test("counts a hit for each term found, in the text or the Why, not for repeats", () => {
     // #given
     const sandbox = makeSandbox();
     seedVault(sandbox);
+    writeVaultFile(sandbox, RECALL_DUMP, dumpFile(DEV_ORIGIN, "## Learnings\n- [ ] A hook, a hook, a hook.\n"));
 
     // #when
     const result = recall(sandbox, ["hook", "trust"]);
 
     // #then
-    expect(result).toEqual({ results: [GUARD_LEARNING, GUARD_DECISION], more: 0 });
+    expect(result).toEqual({ results: [GUARD_LEARNING, { ...RECALL_LEARNING, text: "A hook, a hook, a hook." }, GUARD_DECISION], more: 0 });
   });
 
   test("caps results at 20 and counts the rest in more", () => {
@@ -71,6 +73,21 @@ describe("brain-dump recall <terms…>", () => {
 
     // #then
     expect([result.results.length, result.more]).toEqual([20, 3]);
+  });
+});
+
+describe("brain-dump recall provenance", () => {
+  test("leaves a filed Todo's Dump out when two Dumps filed the same text", () => {
+    // #given
+    const sandbox = makeSandbox();
+    seedVault(sandbox);
+    writeVaultFile(sandbox, "Inbox/Filed/2026-10-02 0900 Brain-Dump - again.md", dumpFile(GUARD_ORIGIN, "## Todos\n- [x] #todo Ship the Codex guard.\n", "Codex"));
+
+    // #when
+    const result = recall(sandbox, ["Ship"]);
+
+    // #then
+    expect(result).toEqual({ results: [{ ...GUARD_TODO, dump: null, origin: null }], more: 0 });
   });
 });
 

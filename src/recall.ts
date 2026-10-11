@@ -3,14 +3,14 @@ import { basename, dirname, relative } from "node:path";
 import { BrainDumpError, UsageError } from "./errors.ts";
 import { isDumpFile, readDump, type StoredDump } from "./inbox.ts";
 import { FILED_FOLDER, INBOX } from "./layout.ts";
-import { noteFiles } from "./notes.ts";
+import { linkTarget, noteFiles } from "./notes.ts";
 import type { Vault } from "./vault.ts";
 
 // Recall (ADR 0007): agents look up the Items the Vault holds through the helper, never with their own file tools.
 
 const RESULT_CAP = 20;
 const TODO_TAG = /(^|\s)#todo(?=\s|$)/;
-const BULLET = /^(\s*)- (?:\[.\] )?(.+)$/;
+const BULLET = /^(\s*)- (.+)$/;
 const WHY_LINE = /^- Why: (.+)$/;
 const FROM_LINE = /^- From \[\[([^\]|#]+)/;
 const PROJECT_LINK = / · \[\[([^\]]+)\]\]$/;
@@ -45,7 +45,7 @@ export function recall(vault: Vault, query: RecallQuery): Recall {
   if (query.mode === "project") return capped(items.filter((item) => item.dumpInfo?.project === query.name).sort(byRecency));
   const terms = query.terms.map((term) => term.toLowerCase());
   const scored = items
-    .map((item) => ({ item, hits: countHits(`${item.text}\n${item.why ?? ""}`.toLowerCase(), terms) }))
+    .map((item) => ({ item, hits: countHits(`${item.text}\n${item.why ?? ""}`, terms) }))
     .filter(({ hits }) => hits > 0)
     .sort((a, b) => b.hits - a.hits || byRecency(a.item, b.item));
   return capped(scored.map(({ item }) => item));
@@ -67,39 +67,61 @@ function byRecency(a: FoundItem, b: FoundItem): number {
   return stamp || a.note.localeCompare(b.note) || a.position - b.position;
 }
 
+/** One hit per distinct term found, so an Item matching every term outranks one repeating a single term. */
 function countHits(text: string, terms: string[]): number {
-  return terms.reduce((hits, term) => hits + (term === "" ? 0 : text.split(term).length - 1), 0);
+  const haystack = text.toLowerCase();
+  return new Set(terms.filter((term) => term !== "" && haystack.includes(term))).size;
 }
 
-/** Open Items still in Inbox Dumps, plus filed Items in curated notes: a bullet with a `From [[dump]]` line, or a `#todo` bullet. Dropped Items stay behind in their Dumps. */
+/** Open Items still in Inbox Dumps, plus filed Items in curated notes: a bullet with a `From [[dump]]` or `Why:` line, or a `#todo` bullet. Dropped Items stay behind in their Dumps. */
 function collectItems(vault: Vault): FoundItem[] {
   const files = noteFiles(vault);
-  const dumps = files.filter((path) => isDumpInInbox(vault, path)).flatMap((path) => readableDump(vault, path)).map((dump) => ({ dump, info: describeDump(dump) }));
+  const dumps = files
+    .filter((path) => isStoredDump(vault, path))
+    .flatMap((path) => readableDump(vault, path))
+    .map((dump) => ({ dump, info: describeDump(dump) }));
   const dumpsByTitle = new Map(dumps.map(({ dump, info }) => [dump.title, info]));
-  const filedTodos = new Map(
-    dumps.flatMap(({ dump, info }) => dump.items.filter((item) => item.kind === "Todo" && item.state === "filed").map((item): [string, DumpInfo] => [todoKey(item.text), info])),
-  );
+  const filedTodos = filedTodoDumps(dumps);
   const unfiled = dumps
     .filter(({ dump }) => dirname(dump.file) === INBOX)
-    .flatMap(({ dump, info }) => dump.items.filter((item) => item.state === "open").map((item) => found(dump.file, item.text, item.rationale, true, info, item.line)));
+    .flatMap(({ dump, info }) =>
+      dump.items
+        .filter((item) => item.state === "open")
+        .map((item) => toFoundItem({ note: dump.file, text: item.text, why: item.rationale, unfiled: true, dumpInfo: info, position: item.line })),
+    );
   const curated = files
     .filter((path) => !relative(vault.root, path).startsWith(`${INBOX}/`))
-    .flatMap((path) => {
-      const note = relative(vault.root, path);
-      return curatedBullets(readFileSync(path, "utf8").split(/\r?\n/)).map(({ text, why, from, line }) => {
-        const info = from === undefined ? filedTodos.get(todoKey(text)) : dumpsByTitle.get(from);
-        return found(note, text, why, false, info, line);
-      });
-    });
+    .flatMap((path) =>
+      curatedBullets(readFileSync(path, "utf8").split(/\r?\n/)).map(({ text, why, from, line }) => {
+        const dumpInfo = from === undefined ? (filedTodos.get(todoKey(text)) ?? undefined) : dumpsByTitle.get(from);
+        return toFoundItem({ note: relative(vault.root, path), text, why, unfiled: false, dumpInfo, position: line });
+      }),
+    );
   return [...unfiled, ...curated];
 }
 
-function found(note: string, text: string, why: string | null | undefined, unfiled: boolean, dumpInfo: DumpInfo | undefined, position: number): FoundItem {
+/** A filed Todo has no backlink, so its Dump is the one Dump that filed the same text; `null` when several did. */
+function filedTodoDumps(dumps: { dump: StoredDump; info: DumpInfo }[]): Map<string, DumpInfo | null> {
+  const byText = new Map<string, DumpInfo | null>();
+  for (const { dump, info } of dumps) {
+    for (const item of dump.items) {
+      if (item.kind !== "Todo" || item.state !== "filed") continue;
+      const key = todoKey(item.text);
+      byText.set(key, byText.has(key) && byText.get(key)?.file !== info.file ? null : info);
+    }
+  }
+  return byText;
+}
+
+type ItemSource = { note: string; text: string; why: string | null | undefined; unfiled: boolean; dumpInfo: DumpInfo | undefined; position: number };
+
+function toFoundItem({ note, text, why, unfiled, dumpInfo, position }: ItemSource): FoundItem {
   const kind = why ? "decision" : TODO_TAG.test(text) ? "todo" : "learning";
   return { note, kind, text, why: why ?? null, unfiled, dump: dumpInfo?.file ?? null, origin: dumpInfo?.origin ?? null, dumpInfo, position };
 }
 
-function isDumpInInbox(vault: Vault, path: string): boolean {
+/** A Dump in the Inbox or, once finished, in Inbox/Filed. */
+function isStoredDump(vault: Vault, path: string): boolean {
   const folder = relative(vault.root, dirname(path));
   return isDumpFile(path) && (folder === INBOX || folder === FILED_FOLDER);
 }
@@ -120,9 +142,9 @@ function describeDump(dump: StoredDump): DumpInfo {
   return { file: dump.file, stamp: dump.title.slice(0, "YYYY-MM-DD HHMM".length), origin, project };
 }
 
-/** A filed Todo moves its `#todo` to the end, so compare without it. */
+/** A filed Todo gains a checkbox and moves its `#todo` to the end, so compare without either. */
 function todoKey(text: string): string {
-  return text.replace(TODO_TAG, " ").replace(/\s+/g, " ").trim().toLowerCase();
+  return text.replace(/^\[.\] /, "").replace(TODO_TAG, " ").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 type CuratedBullet = { text: string; why: string | undefined; from: string | undefined; line: number };
@@ -136,7 +158,7 @@ function curatedBullets(lines: string[]): CuratedBullet[] {
     const why = children.map((child) => WHY_LINE.exec(child)?.[1]).find(Boolean);
     const from = children.map((child) => FROM_LINE.exec(child)?.[1]?.trim()).find(Boolean);
     const text = bullet[2];
-    if (from === undefined && !TODO_TAG.test(text)) return [];
+    if (from === undefined && why === undefined && !TODO_TAG.test(text)) return [];
     return [{ text, why, from, line: index }];
   });
 }
@@ -156,7 +178,7 @@ function childLines(lines: string[], index: number, indent: number): string[] {
 
 /** Every line in the allowlist with a wikilink to `note`, whatever its folder, alias or heading. */
 function findLinks(vault: Vault, note: string): { note: string; line: string }[] {
-  const wanted = linkTitle(note.replace(/^\[\[|\]\]$/g, ""));
+  const wanted = linkTitle(note);
   return noteFiles(vault).flatMap((path) =>
     readFileSync(path, "utf8")
       .split(/\r?\n/)
@@ -166,6 +188,5 @@ function findLinks(vault: Vault, note: string): { note: string; line: string }[]
 }
 
 function linkTitle(link: string): string {
-  const target = link.split("|")[0]?.split("#")[0]?.trim() ?? "";
-  return basename(target, ".md").toLowerCase();
+  return basename(linkTarget(link), ".md").toLowerCase();
 }

@@ -11,14 +11,14 @@ Answer from the Obsidian Vault through the `brain-dump` helper only. Never read 
 Run exactly one of these per call. Each prints JSON.
 
 - `brain-dump recall --project` — this repo's Items, newest first. Add a name (`--project chronos`) for another project.
-- `brain-dump recall <terms…>` — Items matching any term, case-insensitive, ranked by hits then recency. Use a few distinctive words, not a sentence.
+- `brain-dump recall <terms…>` — Items matching any term, case-insensitive, ranked by how many of the terms each matches, then recency. Use a few distinctive words, not a sentence.
 - `brain-dump recall --links "[[Note]]"` — every line that links to a note, as `{"links": [{"note", "line"}]}`.
 
 Item results come as `{"results": [...], "more": N}`, at most 20 at a time. Each result has:
 
 - `note`: where the Item lives now. For an `unfiled` Item it is the Dump itself, still in the Inbox and not yet settled.
-- `kind`: `decision` (with its Rationale in `why`), `learning` or `todo`.
-- `dump` and `origin`: the Dump it came from and that Dump's Session line (tool, repo, branch, time). Both are `null` for an Item written by hand.
+- `kind`: `decision` (with its Rationale in `why`), `learning` or `todo`. A filed Todo's `text` keeps its checkbox: `[ ]` open, `[x]` done.
+- `dump` and `origin`: the Dump it came from and that Dump's Session line (tool, repo, branch, time). Both are `null` when the helper can't trace the Item to one Dump: it was written by hand, or it is a Todo reworded when filed or filed with the same text from several Dumps.
 
 When `more` is above 0, narrow the terms rather than paging.
 
