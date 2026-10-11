@@ -87,7 +87,7 @@ export function applyFilingPlan(vault: Vault, plan: FilingPlan): FilingResult {
     }),
   );
   const filedDump: Write = { mode: "file-dump", path: dumpPath, contents: dumpLines.join(dump.eol), planned, moveTo: finished ? filedPath : undefined };
-  commit(vault, "approved-plan", [...notes.writes(), filedDump], { confirmLarge: plan.confirmLarge });
+  commit(vault, "approved-plan", { command: "apply", label: dump.title }, [...notes.writes(), filedDump], { confirmLarge: plan.confirmLarge });
   const count = (outcome: PlannedItem["outcome"]): number => plan.items.filter((item) => item.outcome === outcome).length;
   return { filed: count("filed"), dropped: count("dropped"), skipped: count("skipped"), movedTo: finished ? relative(vault.root, filedPath) : null };
 }

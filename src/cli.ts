@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { parseArgs, type ParseArgsConfig } from "node:util";
+import { now } from "./clock.ts";
 import { writeDump } from "./dump.ts";
 import { BrainDumpError, DumpNotWrittenError, UsageError } from "./errors.ts";
 import { detectDevOrigin, isChatTool, isToolTag, TOOL_TAGS, type Origin } from "./origin.ts";
@@ -7,6 +8,7 @@ import { applyFilingPlan, parseFilingPlan } from "./filing.ts";
 import { listUnfiledDumps, summarize } from "./inbox.ts";
 import { listNotes } from "./notes.ts";
 import { readRoutes } from "./routes.ts";
+import { listRuns } from "./runs.ts";
 import { readTodoGroups } from "./todo-groups.ts";
 import { locateVault } from "./vault.ts";
 import { findWeeklyNote } from "./weekly.ts";
@@ -44,6 +46,9 @@ async function main(argv: string[]): Promise<number> {
     case "apply":
       writeJson(applyFilingPlan(locateVault(), parseFilingPlan(await Bun.stdin.text())));
       return 0;
+    case "runs":
+      writeJson(listRuns());
+      return 0;
     default:
       throw new UsageError(`unknown command ${command ?? "(none)"}`);
   }
@@ -61,7 +66,7 @@ async function runWriteDump(args: string[]): Promise<string> {
     throw new UsageError(`--tool must be one of ${TOOL_TAGS.join(", ")}`);
   }
   if (values.slug === undefined) throw new UsageError("--slug is required");
-  const at = values.at === undefined ? new Date() : new Date(values.at);
+  const at = values.at === undefined ? now() : new Date(values.at);
   if (Number.isNaN(at.getTime())) throw new UsageError(`--at "${values.at}" is not a date and time`);
   const hasChatOptions = values["chat-url"] !== undefined || values.project !== undefined;
   if (hasChatOptions && !isChatTool(values.tool)) {
