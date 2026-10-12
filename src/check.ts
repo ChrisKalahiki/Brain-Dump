@@ -3,7 +3,7 @@ import { now } from "./clock.ts";
 import { BACKLINK_LINE, curatedBullets, curatedNotes, FROM_LINE, itemKey, type CuratedNote } from "./curated.ts";
 import { isStoredDump, readDumpOrProblem, type MalformedDump, type StoredDump } from "./inbox.ts";
 import { INBOX, ROUTES_NOTE, WEEKLY_FOLDER } from "./layout.ts";
-import { linkTarget, noteFiles } from "./notes.ts";
+import { linkTarget, noteFiles, titleKey } from "./notes.ts";
 import { datePart } from "./origin.ts";
 import { readRoutes, renderRoute } from "./routes.ts";
 import type { Vault } from "./vault.ts";
@@ -56,9 +56,9 @@ function brokenBacklinks({ note, lines }: CuratedNote, dumpTitles: Set<string>):
 
 /** Routes to a note whose title no note in the allowlist has; Routes to a Todo Group are created on demand, so never dead. */
 function deadRoutes(vault: Vault, files: string[]): Finding[] {
-  const titles = new Set(files.map((path) => basename(path, ".md").toLowerCase()));
+  const titles = new Set(files.map(titleKey));
   return readRoutes(vault).flatMap((route) =>
-    "title" in route && !titles.has(basename(linkTarget(route.title)).toLowerCase())
+    "title" in route && !titles.has(titleKey(route.title))
       ? [{ kind: "Dead Route" as const, note: ROUTES_NOTE, detail: `${renderRoute(route)} targets no note`, fix: "edit the Routes note" }]
       : [],
   );

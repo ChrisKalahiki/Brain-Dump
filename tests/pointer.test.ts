@@ -11,8 +11,7 @@ const FROM_OTHER = "\t- From [[2026-10-02 1000 Brain-Dump - guard|dump 10-02-26]
 const DONE_BODY = "## Learnings\n- [x] Filed.\n";
 const OPEN_BODY = "## Learnings\n- [ ] Not filed yet.\n";
 
-function filedItems(count: number, from = FROM_FILED): string {
-  const label = from === FROM_FILED ? "chronos fact" : "Brain-Dump fact";
+function filedItems(count: number, label = "A chronos Learning", from = FROM_FILED): string {
   return Array.from({ length: count }, (_, n) => `- ${label} ${n}.\n${from}\n`).join("");
 }
 
@@ -21,10 +20,10 @@ function seedVault(sandbox: Sandbox): void {
   writeVaultFile(sandbox, FILED_DUMP, dumpFile(ORIGIN, DONE_BODY));
   writeVaultFile(sandbox, OTHER_DUMP, dumpFile(OTHER_ORIGIN, DONE_BODY, "Codex"));
   writeVaultFile(sandbox, "Side Projects/Scheduling.md", `# Scheduling\n${filedItems(5)}`);
-  writeVaultFile(sandbox, "Research/Main Notes/Job Queues.md", `# Job Queues\n${filedItems(2)}${filedItems(4, FROM_OTHER)}`);
+  writeVaultFile(sandbox, "Research/Main Notes/Job Queues.md", `# Job Queues\n${filedItems(2)}${filedItems(4, "A Brain-Dump Learning", FROM_OTHER)}`);
   writeVaultFile(sandbox, "Resources/Retries.md", `# Retries\n${filedItems(3)}`);
   writeVaultFile(sandbox, "Resources/Backoff.md", `# Backoff\n${filedItems(1)}`);
-  writeVaultFile(sandbox, "Side Projects/Brain-Dump.md", `# Brain-Dump\n${filedItems(9, FROM_OTHER)}`);
+  writeVaultFile(sandbox, "Side Projects/Brain-Dump.md", `# Brain-Dump\n${filedItems(9, "A Brain-Dump Learning", FROM_OTHER)}`);
 }
 
 function pointer(sandbox: Sandbox, cwd: string, env: Record<string, string> = {}) {
@@ -38,7 +37,7 @@ describe("brain-dump pointer", () => {
     const sandbox = makeSandbox();
     seedVault(sandbox);
     writeVaultFile(sandbox, "Side Projects/Chronos Main Note.md", "# Chronos\n");
-    writeVaultFile(sandbox, ROUTES_NOTE, "- chronos → [[Chronos Main Note]]\n");
+    writeVaultFile(sandbox, ROUTES_NOTE, "- Chronos → [[Chronos Main Note]]\n");
     writeVaultFile(sandbox, "Inbox/2026-10-05 1200 chronos - locks.md", dumpFile(ORIGIN, OPEN_BODY));
     writeVaultFile(sandbox, "Inbox/2026-10-06 1200 chronos - leases.md", dumpFile(ORIGIN, OPEN_BODY));
     writeVaultFile(sandbox, "Inbox/2026-10-06 1300 Brain-Dump - undo.md", dumpFile(OTHER_ORIGIN, OPEN_BODY, "Codex"));

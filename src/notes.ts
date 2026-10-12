@@ -35,6 +35,11 @@ export function linkTarget(link: string): string {
   return link.replace(/^\[\[|\]\]$/g, "").split("|")[0]?.split("#")[0]?.trim() ?? "";
 }
 
+/** What two links, or a link and a note's title, share when they name the same note: Obsidian matches titles ignoring case and folder. */
+export function titleKey(link: string): string {
+  return basename(linkTarget(link), ".md").toLowerCase();
+}
+
 function markdownFiles(folder: string): string[] {
   return readdirSync(folder, { withFileTypes: true }).flatMap((entry) => {
     const path = join(folder, entry.name);
