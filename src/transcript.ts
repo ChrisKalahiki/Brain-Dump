@@ -14,7 +14,7 @@ export type Transcript = {
   /** The latest timestamp of any record, or the file's modification time when no record has one. */
   lastRecord: Date;
   messages: SessionMessage[];
-  /** A `compact_boundary` comes before any message, so what came before it is gone from the file. */
+  /** The log was cut at a compaction before its first message, so what came before is gone from the file. */
   startsAfterCompaction: boolean;
 };
 
@@ -35,4 +35,13 @@ export function parseRow(line: string): Record<string, unknown> | undefined {
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** The trimmed, non-empty text of a message's content blocks whose type is `text` in any case; tool calls, tool results and thinking are left out. */
+export function textBlocks(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .flatMap((block) => (isRecord(block) && typeof block.type === "string" && block.type.toLowerCase() === "text" && typeof block.text === "string" ? [block.text.trim()] : []))
+    .filter((text) => text !== "")
+    .join("\n\n");
 }

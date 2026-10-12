@@ -34,7 +34,9 @@ const AGENT_VARIABLE = "BRAIN_DUMP_DRAFT_AGENT";
 const OPT_OUT_SETTING = "sweep-opt-out";
 
 /** One per tool: its Session logs, and how to read one; a reader gives `undefined` for a log the Sweep never drafts. */
-const READERS: { files: () => string[]; read: (file: string) => Transcript | undefined }[] = [
+type SessionReader = { files: () => string[]; read: (file: string) => Transcript | undefined };
+
+const READERS: SessionReader[] = [
   { files: claudeSessionFiles, read: readClaudeSession },
   { files: codexSessionFiles, read: readCodexSession },
 ];
@@ -130,7 +132,8 @@ function findCandidates(vault: Vault, at: Date, state: SweepState | undefined, s
   const covered = mergeCovered(coveredSessions(vault), readLedger());
   const excluded = [vault.root, ...optOutPaths()].map(canonical);
   const candidates: Candidate[] = [];
-  for (const { file, read } of READERS.flatMap(({ files, read }) => files().map((file) => ({ file, read })))) {
+  const logs = READERS.flatMap(({ files, read }) => files().map((file) => ({ file, read })));
+  for (const { file, read } of logs) {
     const floor = retry.has(file) ? oldest : since;
     const transcript = readIfChanged(file, floor, read);
     if (transcript === undefined) continue;
@@ -148,11 +151,21 @@ function findCandidates(vault: Vault, at: Date, state: SweepState | undefined, s
     if (messages.filter(({ role }) => role === "user").length < MIN_USER_MESSAGES) continue;
     candidates.push({ transcript: { ...transcript, cwd }, messages });
   }
-  return candidates.sort((a, b) => b.transcript.lastRecord.getTime() - a.transcript.lastRecord.getTime());
+  return newestPerSession(candidates).sort((a, b) => b.transcript.lastRecord.getTime() - a.transcript.lastRecord.getTime());
+}
+
+/** A reverted Codex Session goes on in a new rollout under the same id; only the newest log of a Session is drafted. */
+function newestPerSession(candidates: Candidate[]): Candidate[] {
+  const newest = new Map<string, Candidate>();
+  for (const candidate of candidates) {
+    const kept = newest.get(candidate.transcript.session);
+    if (kept === undefined || candidate.transcript.lastRecord > kept.transcript.lastRecord) newest.set(candidate.transcript.session, candidate);
+  }
+  return [...newest.values()];
 }
 
 /** The log, unless it hasn't changed since `floor`; a log its tool removed meanwhile is passed over. */
-function readIfChanged(file: string, floor: number, read: (file: string) => Transcript | undefined): Transcript | undefined {
+function readIfChanged(file: string, floor: number, read: SessionReader["read"]): Transcript | undefined {
   try {
     return statSync(file).mtime.getTime() <= floor ? undefined : read(file);
   } catch (error) {

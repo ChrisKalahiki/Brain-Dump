@@ -1,9 +1,10 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import { isRecord, parseRow, parseTime, type SessionMessage, type Transcript } from "./transcript.ts";
+import { isRecord, parseRow, parseTime, textBlocks, type SessionMessage, type Transcript } from "./transcript.ts";
 
-// Reads Claude Code's Session logs, `~/.claude/projects/<encoded cwd>/<session>.jsonl`. Their format is internal to Claude Code and changes between versions.
+// Reads Claude Code's Session logs, `~/.claude/projects/<encoded cwd>/<session>.jsonl`. Their format is internal to Claude Code and changes between
+// versions; `compact_boundary` marks a compaction.
 
 /** Set-aside earlier copies of a transcript, which Claude Code keeps beside the live one. */
 const SET_ASIDE = /\.(?:orphaned|superseded)-/;
@@ -59,14 +60,8 @@ export function readClaudeSession(file: string): Transcript {
   };
 }
 
-/** A message's own text: a plain string, or its text blocks; tool calls, tool results and thinking are left out. */
+/** A message's own text: a plain string, or its text blocks. */
 function messageText(message: unknown): string {
   if (!isRecord(message)) return "";
-  const { content } = message;
-  if (typeof content === "string") return content.trim();
-  if (!Array.isArray(content)) return "";
-  return content
-    .flatMap((block) => (isRecord(block) && block.type === "text" && typeof block.text === "string" ? [block.text.trim()] : []))
-    .filter((text) => text !== "")
-    .join("\n\n");
+  return typeof message.content === "string" ? message.content.trim() : textBlocks(message.content);
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { makeRepo, makeSandbox, run, writeConfig, writeDumpArgs, type Sandbox } from "./harness.ts";
 
@@ -655,7 +655,7 @@ function writeCodexLog(sandbox: Sandbox, thread: string, cwd: string, start: str
 }
 
 describe("sweep drafts Codex Sessions too", () => {
-  test("writes one swept Codex Dump, with the thread id, cwd and branch from the Session's metadata", () => {
+  test("writes one swept Codex Dump, with the Session id, cwd and branch from the Session's metadata", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
@@ -708,7 +708,7 @@ describe("sweep drafts Codex Sessions too", () => {
     );
   });
 
-  test("skips a Codex sub-agent thread without drafting it or reporting it", () => {
+  test("skips a Codex sub-agent Session without drafting it or reporting it", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
@@ -756,5 +756,41 @@ describe("sweep drafts Codex Sessions too", () => {
       second: [{ file }],
       prompts: [],
     });
+  });
+
+  test("drafts a reverted Codex Session once, from its newest rollout", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const repo = makeRepo(sandbox, "Brain-Dump", "main");
+    const session = "01a13167-81a4-7843-abad-34ec9c7270cf";
+    writeCodexLog(sandbox, session, repo, "2026-10-11T15:00:00Z");
+    const reverted = writeCodexSession(sandbox, session, "2026-10-11T18:00:00Z", [codexMeta(session, repo, "2026-10-11T18:00:00Z"), ...exchanges("2026-10-11T18:00:00Z", 3, "Reverted").map(codexTurn)]);
+    renameSync(reverted, reverted.replace(".jsonl", "_01a13190-0000-7000-8000-000000000000.jsonl"));
+
+    // #when
+    const result = sweep(sandbox, stubAgent(sandbox, `Slug: s\n${BODY}`));
+
+    // #then
+    expect({ written: result.summary.written, drafted: prompts(sandbox).map((prompt) => prompt.includes("Reverted 1")) }).toEqual({
+      written: [{ session, dump: "Inbox/2026-10-11 1805 Brain-Dump - s.md" }],
+      drafted: [true],
+    });
+  });
+
+  test("drafts a Codex Session dumped by hand, under CODEX_THREAD_ID, only from the records after its Dump's through", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const repo = makeRepo(sandbox, "Brain-Dump", "main");
+    const session = "01a13167-81a4-7843-abad-34ec9c7270cf";
+    const turns = [...exchanges("2026-10-11T15:00:00Z", 3, "Early"), ...exchanges("2026-10-11T18:00:00Z", 3, "Later")].map(codexTurn);
+    writeCodexSession(sandbox, session, "2026-10-11T15:00:00Z", [codexMeta(session, repo, "2026-10-11T15:00:00Z"), ...turns]);
+    run(sandbox, [...writeDumpArgs("manual", "Codex"), "--through", "2026-10-11T15:05:00Z"], { stdin: BODY, cwd: repo, env: { CODEX_THREAD_ID: session } });
+
+    // #when
+    const result = sweep(sandbox, stubAgent(sandbox, `Slug: s\n${BODY}`));
+
+    // #then
+    const prompt = prompts(sandbox)[0] ?? "";
+    expect({ written: result.summary.written.map(({ session }) => session), early: prompt.includes("Early 1"), later: prompt.includes("Later 1") }).toEqual({ written: [session], early: false, later: true });
   });
 });
