@@ -3,7 +3,7 @@ import { parseArgs, type ParseArgsConfig } from "node:util";
 import { checkVault, renderFinding, type Finding } from "./check.ts";
 import { now } from "./clock.ts";
 import { writeDump } from "./dump.ts";
-import { BrainDumpError, DumpNotWrittenError, UsageError } from "./errors.ts";
+import { BrainDumpError, describeFsError, DumpNotWrittenError, errnoCode, UsageError } from "./errors.ts";
 import { detectDevOrigin, isChatTool, isToolTag, projectOf, TOOL_TAGS, type Origin } from "./origin.ts";
 import { applyFilingPlan, parseFilingPlan } from "./filing.ts";
 import { guard } from "./guard.ts";
@@ -114,13 +114,20 @@ function runCheck(args: string[]): number {
   try {
     findings = checkVault(findVault());
   } catch (error) {
-    if (!(error instanceof BrainDumpError)) throw error;
-    process.stderr.write(`brain-dump: ${error.message}\n`);
+    const reason = error instanceof BrainDumpError ? error.message : unreadable(error);
+    if (reason === undefined) throw error;
+    process.stderr.write(`brain-dump: ${reason}\n`);
     return 2;
   }
   if (json) writeJson(findings);
   else process.stdout.write(findings.length === 0 ? "No Vault findings.\n" : `${findings.map(renderFinding).join("\n")}\n`);
   return findings.length === 0 ? 0 : 1;
+}
+
+function unreadable(error: unknown): string | undefined {
+  if (errnoCode(error) === undefined) return undefined;
+  const path = error instanceof Error && "path" in error && typeof error.path === "string" ? ` ${error.path}` : "";
+  return `cannot read${path}: ${describeFsError(error)}`;
 }
 
 function writeJson(value: unknown): void {

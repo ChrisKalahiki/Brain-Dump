@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { basename, dirname, relative } from "node:path";
-import { BrainDumpError, UsageError } from "./errors.ts";
-import { curatedBullets, itemKey, TODO_TAG } from "./curated.ts";
-import { isStoredDump, readDump, type StoredDump } from "./inbox.ts";
+import { curatedBullets, curatedNotes, itemKey, TODO_TAG } from "./curated.ts";
+import { UsageError } from "./errors.ts";
+import { isStoredDump, readDumpOrProblem, type StoredDump } from "./inbox.ts";
 import { INBOX } from "./layout.ts";
 import { linkTarget, noteFiles } from "./notes.ts";
 import type { Vault } from "./vault.ts";
@@ -72,10 +72,12 @@ function countHits(text: string, terms: string[]): number {
 
 /** Open Items still in Inbox Dumps, plus filed Items in curated notes. Dropped Items stay behind in their Dumps. */
 function collectItems(vault: Vault): FoundItem[] {
-  const files = noteFiles(vault);
-  const dumps = files
+  const dumps = noteFiles(vault)
     .filter((path) => isStoredDump(vault, path))
-    .flatMap((path) => readableDump(vault, path))
+    .flatMap((path) => {
+      const dump = readDumpOrProblem(vault, path);
+      return "problem" in dump ? [] : [dump];
+    })
     .map((dump) => ({ dump, info: describeDump(dump) }));
   const dumpsByTitle = new Map(dumps.map(({ dump, info }) => [dump.title, info]));
   const filedTodos = filedTodoDumps(dumps);
@@ -86,14 +88,12 @@ function collectItems(vault: Vault): FoundItem[] {
         .filter((item) => item.state === "open")
         .map((item) => toFoundItem({ note: dump.file, text: item.text, why: item.rationale, unfiled: true, dumpInfo: info, position: item.line })),
     );
-  const curated = files
-    .filter((path) => !relative(vault.root, path).startsWith(`${INBOX}/`))
-    .flatMap((path) =>
-      curatedBullets(readFileSync(path, "utf8").split(/\r?\n/)).map(({ text, why, from, line }) => {
-        const dumpInfo = from === undefined ? (filedTodos.get(itemKey(text)) ?? undefined) : dumpsByTitle.get(from);
-        return toFoundItem({ note: relative(vault.root, path), text, why, unfiled: false, dumpInfo, position: line });
-      }),
-    );
+  const curated = curatedNotes(vault).flatMap(({ note, lines }) =>
+    curatedBullets(lines).map(({ text, why, from, line }) => {
+      const dumpInfo = from === undefined ? (filedTodos.get(itemKey(text)) ?? undefined) : dumpsByTitle.get(from);
+      return toFoundItem({ note, text, why, unfiled: false, dumpInfo, position: line });
+    }),
+  );
   return [...unfiled, ...curated];
 }
 
@@ -115,16 +115,6 @@ type ItemSource = { note: string; text: string; why: string | null | undefined; 
 function toFoundItem({ note, text, why, unfiled, dumpInfo, position }: ItemSource): FoundItem {
   const kind = why ? "decision" : TODO_TAG.test(text) ? "todo" : "learning";
   return { note, kind, text, why: why ?? null, unfiled, dump: dumpInfo?.file ?? null, origin: dumpInfo?.origin ?? null, dumpInfo, position };
-}
-
-/** A malformed Dump is left for `check` to report, not allowed to break recall. */
-function readableDump(vault: Vault, path: string): StoredDump[] {
-  try {
-    return [readDump(vault, path)];
-  } catch (error) {
-    if (error instanceof BrainDumpError) return [];
-    throw error;
-  }
 }
 
 function describeDump(dump: StoredDump): DumpInfo {

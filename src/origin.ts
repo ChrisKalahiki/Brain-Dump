@@ -83,7 +83,8 @@ function displayStamp(at: Date): string {
   return `${datePart(at)} ${pad(at.getHours())}:${pad(at.getMinutes())}`;
 }
 
-function datePart(at: Date): string {
+/** The local date as YYYY-MM-DD. */
+export function datePart(at: Date): string {
   return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
 }
 

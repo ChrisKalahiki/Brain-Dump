@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DEV_ORIGIN, dumpFile, makeSandbox, ROUTES_NOTE, run, writeConfig, writeVaultFile, type Sandbox } from "./harness.ts";
 
@@ -161,6 +161,19 @@ describe("brain-dump check findings", () => {
     expect(result).toEqual([]);
   });
 
+  test("reports a Decision filed twice even when its two Whys differ", () => {
+    // #given
+    const sandbox = makeSandbox();
+    seedHealthyVault(sandbox);
+    writeVaultFile(sandbox, TOPIC, `# Agent Skills\n- Fail closed.\n\t- Why: safety.\n${FROM_FILED}\n- Fail closed.\n\t- Why: simpler.\n${FROM_FILED}\n`);
+
+    // #when
+    const result = findings(sandbox);
+
+    // #then
+    expect(result).toEqual([{ kind: "Duplicate Item", note: TOPIC, detail: '"Fail closed." appears 2 times', fix: "remove by hand, or leave for the next Digest" }]);
+  });
+
   test("reports Items repeated within one note, ignoring case, spacing, checkbox, #todo and the backlink", () => {
     // #given
     const sandbox = makeSandbox();
@@ -255,6 +268,18 @@ describe("brain-dump check output", () => {
 
     // #then
     expect([result.exitCode, result.stderr, existsSync(join(sandbox.home, "Nowhere"))]).toEqual([2, `brain-dump: Vault not found at ${join(sandbox.home, "Nowhere")}\n`, false]);
+  });
+
+  test("exits 2 with the reason when a note can't be read", () => {
+    // #given
+    const sandbox = makeSandbox();
+    chmodSync(writeVaultFile(sandbox, TOPIC, "# Agent Skills\n"), 0o000);
+
+    // #when
+    const result = check(sandbox);
+
+    // #then
+    expect([result.exitCode, result.stderr]).toEqual([2, `brain-dump: cannot read ${join(sandbox.vault, TOPIC)}: permission denied\n`]);
   });
 
   test("exits 2 on an unknown option", () => {
