@@ -2,7 +2,8 @@ import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, stat
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { countOf } from "./check.ts";
-import { claudeSessionFiles, readClaudeSession, type SessionMessage, type Transcript } from "./claude-sessions.ts";
+import { claudeSessionFiles, readClaudeSession } from "./claude-sessions.ts";
+import { codexSessionFiles, readCodexSession } from "./codex-sessions.ts";
 import { now } from "./clock.ts";
 import { prepareDump, SecretRefusedError, writeDumps, type PreparedDump } from "./dump.ts";
 import { BrainDumpError, errnoCode } from "./errors.ts";
@@ -12,6 +13,7 @@ import { INBOX } from "./layout.ts";
 import { datePart, detectDevOrigin, type DevOrigin } from "./origin.ts";
 import { NO_ITEMS_REPLY, sweepDraftPrompt } from "./prompts.ts";
 import { stateFolder } from "./runs.ts";
+import type { SessionMessage, Transcript } from "./transcript.ts";
 import { expandHome, readSetting, type Vault } from "./vault.ts";
 
 // The Sweep (ADR 0009): drafts one Dump per recent uncaptured Session, each through its own tool-less, unsaved agent run, and writes them all as one Run.
@@ -30,6 +32,12 @@ const DRAFTING_COMMAND = ["claude", "-p", "--no-session-persistence", "--model",
 /** A shell command run in place of the drafting agent, so tests substitute a stub. It gets the prompt on stdin like the agent. */
 const AGENT_VARIABLE = "BRAIN_DUMP_DRAFT_AGENT";
 const OPT_OUT_SETTING = "sweep-opt-out";
+
+/** One per tool: its Session logs, and how to read one; a reader gives `undefined` for a log the Sweep never drafts. */
+const READERS: { files: () => string[]; read: (file: string) => Transcript | undefined }[] = [
+  { files: claudeSessionFiles, read: readClaudeSession },
+  { files: codexSessionFiles, read: readCodexSession },
+];
 
 export type SweepSummary = {
   time: string;
@@ -122,9 +130,9 @@ function findCandidates(vault: Vault, at: Date, state: SweepState | undefined, s
   const covered = mergeCovered(coveredSessions(vault), readLedger());
   const excluded = [vault.root, ...optOutPaths()].map(canonical);
   const candidates: Candidate[] = [];
-  for (const file of claudeSessionFiles()) {
+  for (const { file, read } of READERS.flatMap(({ files, read }) => files().map((file) => ({ file, read })))) {
     const floor = retry.has(file) ? oldest : since;
-    const transcript = readIfChanged(file, floor);
+    const transcript = readIfChanged(file, floor, read);
     if (transcript === undefined) continue;
     const last = transcript.lastRecord.getTime();
     if (last <= floor || last > activeCutoff) continue;
@@ -143,10 +151,10 @@ function findCandidates(vault: Vault, at: Date, state: SweepState | undefined, s
   return candidates.sort((a, b) => b.transcript.lastRecord.getTime() - a.transcript.lastRecord.getTime());
 }
 
-/** The log, unless it hasn't changed since `floor`; a log Claude Code removed meanwhile is passed over. */
-function readIfChanged(file: string, floor: number): Transcript | undefined {
+/** The log, unless it hasn't changed since `floor`; a log its tool removed meanwhile is passed over. */
+function readIfChanged(file: string, floor: number, read: (file: string) => Transcript | undefined): Transcript | undefined {
   try {
-    return statSync(file).mtime.getTime() <= floor ? undefined : readClaudeSession(file);
+    return statSync(file).mtime.getTime() <= floor ? undefined : read(file);
   } catch (error) {
     if (errnoCode(error) === "ENOENT") return undefined;
     throw error;
@@ -179,9 +187,9 @@ function draft({ transcript, messages }: Candidate): DraftOutcome {
 }
 
 /** The Session's own place and branch, at its last record; a folder that is gone since is named as it was. */
-function sessionOrigin({ cwd, branch, lastRecord }: Candidate["transcript"]): Omit<DevOrigin, "swept"> {
-  if (!existsSync(cwd)) return { kind: "dev", tool: "ClaudeCode", project: basename(cwd), location: cwd, branch, at: lastRecord };
-  return { ...detectDevOrigin("ClaudeCode", cwd, lastRecord), branch };
+function sessionOrigin({ tool, cwd, branch, lastRecord }: Candidate["transcript"]): Omit<DevOrigin, "swept"> {
+  if (!existsSync(cwd)) return { kind: "dev", tool, project: basename(cwd), location: cwd, branch, at: lastRecord };
+  return { ...detectDevOrigin(tool, cwd, lastRecord), branch };
 }
 
 /** User and assistant text in order; over the cap, the head and the tail are kept. */

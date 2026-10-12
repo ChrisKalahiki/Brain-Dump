@@ -1,26 +1,12 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
+import { isRecord, parseRow, parseTime, type SessionMessage, type Transcript } from "./transcript.ts";
 
-// Reads Claude Code's Session logs, `~/.claude/projects/<encoded cwd>/<session>.jsonl`. Their format is internal to Claude Code and changes between
-// versions, so the reader takes only user and assistant text, timestamps, `cwd` and branch, and ignores every record it doesn't recognise.
+// Reads Claude Code's Session logs, `~/.claude/projects/<encoded cwd>/<session>.jsonl`. Their format is internal to Claude Code and changes between versions.
 
 /** Set-aside earlier copies of a transcript, which Claude Code keeps beside the live one. */
 const SET_ASIDE = /\.(?:orphaned|superseded)-/;
-
-export type SessionMessage = { role: "user" | "assistant"; text: string; at: Date };
-
-export type Transcript = {
-  session: string;
-  file: string;
-  cwd: string | undefined;
-  branch: string | undefined;
-  /** The latest timestamp of any record, or the file's modification time when no record has one. */
-  lastRecord: Date;
-  messages: SessionMessage[];
-  /** A `compact_boundary` comes before any message, so what came before it is gone from the file. */
-  startsAfterCompaction: boolean;
-};
 
 /** Every top-level Session log, leaving out subagent transcripts (in per-Session subfolders, or `agent-*.jsonl` in older versions) and set-aside copies. */
 export function claudeSessionFiles(): string[] {
@@ -62,6 +48,7 @@ export function readClaudeSession(file: string): Transcript {
     if (text !== "" && at !== undefined) messages.push({ role, text, at });
   }
   return {
+    tool: "ClaudeCode",
     session: basename(file, ".jsonl"),
     file,
     cwd,
@@ -70,21 +57,6 @@ export function readClaudeSession(file: string): Transcript {
     messages,
     startsAfterCompaction,
   };
-}
-
-function parseTime(timestamp: unknown): Date | undefined {
-  const at = typeof timestamp === "string" ? new Date(timestamp) : undefined;
-  return at === undefined || Number.isNaN(at.getTime()) ? undefined : at;
-}
-
-function parseRow(line: string): Record<string, unknown> | undefined {
-  if (line.trim() === "") return undefined;
-  try {
-    const row: unknown = JSON.parse(line);
-    return isRecord(row) ? row : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 /** A message's own text: a plain string, or its text blocks; tool calls, tool results and thinking are left out. */
@@ -97,8 +69,4 @@ function messageText(message: unknown): string {
     .flatMap((block) => (isRecord(block) && block.type === "text" && typeof block.text === "string" ? [block.text.trim()] : []))
     .filter((text) => text !== "")
     .join("\n\n");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
