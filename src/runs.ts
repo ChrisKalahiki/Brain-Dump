@@ -20,7 +20,7 @@ export type Change =
   | { operation: "move"; from: string; to: string; before: string; after: string };
 
 /** `undoes` is the id of the Run an undo reverts. */
-export type RunInfo = { command: "apply" | "write-dump" | "undo"; label: string; undoes?: string };
+export type RunInfo = { command: "apply" | "write-dump" | "consolidate" | "undo"; label: string; undoes?: string };
 
 export type RunStatus = "pending" | "applied" | "undone";
 

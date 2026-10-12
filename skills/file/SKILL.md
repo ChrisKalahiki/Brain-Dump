@@ -5,13 +5,13 @@ disable-model-invocation: true
 allowed-tools: Bash(brain-dump:*)
 ---
 
-When the user asks to undo a Filing ("undo the last Filing"), skip to [Undo](#undo).
+When the user asks to undo a Filing or a Consolidation ("undo the last Filing"), skip to [Undo](#undo).
 
 Otherwise, work through every unfiled **Dump** in the Vault's Inbox, oldest first. For each one, show a **Filing Plan**, take the user's reply, and hand the approved plan to the `brain-dump` helper, which does every write. Vocabulary (Dump, Item, Filing, Filing Plan, Weekly Note, Todo Group, Topic Note, Project Note, Route) follows the Brain-Dump glossary. Filing is append-only: the helper adds lines; nothing existing is rewritten.
 
 ## 1. Load the Inbox and the Vault's map
 
-First run `brain-dump check --json`, which reports Vault problems and writes nothing: a list of `{kind, note, detail, fix}`, exiting 1 when there are findings. Show one line before anything else: `Vault check: N findings (<count> <kind>, …); run brain-dump check for details`, or `Vault check: clean`. Don't act on the findings; Filing goes on either way. If it exits 2, say `Vault check failed: <its error>` and go on.
+First run `brain-dump check --json`, which reports Vault problems and writes nothing: a list of `{kind, note, detail, fix}`, exiting 1 when there are findings. Show one line before anything else: `Vault check: N findings (<count> <kind>, …); run brain-dump check for details`, or `Vault check: clean`. Don't act on the findings; Filing goes on either way. Remember the notes with an `Oversized note` finding for the end of the run. If it exits 2, say `Vault check failed: <its error>` and go on.
 
 Then run these once per run:
 
@@ -162,13 +162,15 @@ PLAN
 - **`Filing Plan rejected: Item N claims Route …`**: nothing was written. You marked Item N as a Routine Item when it isn't one. Show the plan again with Item N in the table, and wait for a fresh `ok`. When the reason is `…, but it nearly duplicates "<text>" in [[<note>]]` (an earlier Filing in this run added the match), mark Item N `≈` with that line too.
 - **`Filing Plan rejected: …`** (anything else): nothing was written. Tell the user the reason, then offer to adjust the plan or skip this Dump.
 
+Once every Dump is done, and unless the user cancelled, offer one line, once per run, for the oversized notes from step 1, e.g. `[[Agent Skills]] and [[Brain-Dump]] are long: /consolidate [[Note]] adds a Digest.` Don't run it yourself.
+
 Done when every Dump has been applied, skipped, or the user cancelled, and the user has a one-line summary of the run.
 
 ## Undo
 
 Each `apply` is one **Run**, and undo reverts a whole Run, exactly, or nothing.
 
-1. Run `brain-dump runs`: the 20 latest Runs, newest first, each with `id`, `time`, `command`, `label` (the Dump's title for an `apply`), `files` and `status`. "The last Filing" is the first Run with `command` `apply` and `status` `applied`, or `pending` (a Filing that crashed partway, still undoable); when the user names a Dump, match its `label`. If none fits, say so and stop.
+1. Run `brain-dump runs`: the 20 latest Runs, newest first, each with `id`, `time`, `command`, `label` (the Dump's title for an `apply`), `files` and `status`. "The last Filing" is the first Run with `command` `apply` and `status` `applied`, or `pending` (a Filing that crashed partway, still undoable); when the user names a Dump, match its `label`. "The last Consolidation" is the first `applied` Run with `command` `consolidate`, whose `label` is the note's title. If none fits, say so and stop.
 2. Run `brain-dump undo <id>`. Without `--confirm` it writes nothing and prints `files`: each Vault file with its `action`, `restore` (back to its copy from before the Run), `delete` (a file the Run created) or `skip` (already as before). Show the user the Run's `label` and `time` and every file with its action, and ask whether to undo it.
 3. Only on an explicit yes, run `brain-dump undo <id> --confirm`. It prints the same report with `run`, the id of the undo's own Run; undoing that Run redoes the Filing. Anything but a yes writes nothing.
 

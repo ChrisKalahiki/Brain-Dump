@@ -1,6 +1,7 @@
 import { basename, dirname } from "node:path";
 import { now } from "./clock.ts";
-import { BACKLINK_LINE, curatedBullets, curatedNotes, FROM_LINE, itemKey, type CuratedNote } from "./curated.ts";
+import { BACKLINK_LINE, curatedBullets, curatedNotes, itemKey, type CuratedNote } from "./curated.ts";
+import { sinceLatestDigest } from "./digest.ts";
 import { isStoredDump, readDumpOrProblem, type MalformedDump, type StoredDump } from "./inbox.ts";
 import { INBOX, ROUTES_NOTE, WEEKLY_FOLDER } from "./layout.ts";
 import { linkTarget, noteFiles, titleKey } from "./notes.ts";
@@ -13,7 +14,6 @@ import type { Vault } from "./vault.ts";
 const STALE_AFTER_DAYS = 14;
 const OVERSIZED_AT = 40;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const DIGEST_ID = /^\^digest-\d{6}(?:-\d+)?\s*$/;
 
 export const FINDING_KINDS = ["Broken backlink", "Dead Route", "Stale Dump", "Stuck Dump", "Oversized note", "Duplicate Item", "Malformed Dump"] as const;
 
@@ -82,10 +82,9 @@ function stuckDump(dump: StoredDump): Finding[] {
 
 /** A Digest covers everything above its `^digest-…` line (ADR 0008), so only filed Items after the last one count. */
 function oversizedNote({ note, lines }: CuratedNote): Finding[] {
-  const digest = lines.findLastIndex((line) => DIGEST_ID.test(line.trim()));
-  const filed = lines.slice(digest + 1).filter((line) => FROM_LINE.test(line.trim())).length;
+  const { latest, filed } = sinceLatestDigest(lines);
   if (filed < OVERSIZED_AT) return [];
-  const detail = digest === -1 ? `${filed} filed Items and no Digest` : `${filed} filed Items since its latest Digest`;
+  const detail = latest === undefined ? `${filed} filed Items and no Digest` : `${filed} filed Items since its latest Digest`;
   return [{ kind: "Oversized note", note, detail, fix: `/consolidate [[${basename(note, ".md")}]]` }];
 }
 
