@@ -27,7 +27,7 @@ const CASES: SweepCase[] = [
     expected: {
       items: { Learnings: [1, 3], Decisions: [0, 2], Todos: [1, 3] },
       mentions: [/sandbox|test mode/i, /rotat/i],
-      never: [/sk-test-FAKEf4k3K3yN0tR3alD0NotUse0000/],
+      never: [/sk-test-\w{6,}/],
     },
   },
   {
@@ -47,7 +47,8 @@ const SESSION = { id: "fixture", through: ORIGIN.at };
 export const SWEEP_EVAL: Eval = {
   name: "sweep",
   model: DRAFTING_MODEL,
-  inputs: ["src/prompts.ts", "skills/dump/item-rules.md", "evals/sweep.ts", "evals/assertions.ts", ...CASES.map(({ fixture }) => `${FIXTURES}/${fixture}`)],
+  // The drafting call, its parsing and the `write-dump` checks are inputs too: a change to any of them changes what the eval scores.
+  inputs: ["src/prompts.ts", "skills/dump/item-rules.md", "src/sweep.ts", "src/dump.ts", "src/dump-body.ts", "src/secrets.ts", "evals/sweep.ts", "evals/assertions.ts", ...CASES.map(({ fixture }) => `${FIXTURES}/${fixture}`)],
   cases: CASES.map((sweepCase) => ({ name: sweepCase.fixture.replace(/\.txt$/, ""), run: () => runCase(sweepCase) })),
 };
 

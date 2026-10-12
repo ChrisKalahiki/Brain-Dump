@@ -25,7 +25,7 @@ export type CaseResult = { failures: string[]; grade?: Grade };
 
 export type PassRecord = { hash: string; date: string; model: string };
 
-export type Passed = Record<string, PassRecord>;
+export type PassRecords = Record<string, PassRecord>;
 
 export function inputHash({ model, inputs }: EvalInputs): string {
   const hashed = inputs.map((path) => [path, contentHash(readFileSync(resolve(ROOT, path)))]);
@@ -33,7 +33,7 @@ export function inputHash({ model, inputs }: EvalInputs): string {
 }
 
 /** One line per eval whose inputs differ from its last recorded pass. */
-export function staleEvals(evals: (EvalInputs & { name: string })[], passed: Passed = readPassed()): string[] {
+export function staleEvals(evals: Omit<Eval, "cases">[], passed: PassRecords = readPassed()): string[] {
   return evals.flatMap((declared) => {
     const record = passed[declared.name];
     const rerun = `run \`bun run eval ${declared.name}\``;
@@ -49,6 +49,6 @@ export function recordPass(declared: Eval, date: string): PassRecord {
   return record;
 }
 
-function readPassed(): Passed {
-  return existsSync(PASSED_PATH) ? (JSON.parse(readFileSync(PASSED_PATH, "utf8")) as Passed) : {};
+function readPassed(): PassRecords {
+  return existsSync(PASSED_PATH) ? (JSON.parse(readFileSync(PASSED_PATH, "utf8")) as PassRecords) : {};
 }
