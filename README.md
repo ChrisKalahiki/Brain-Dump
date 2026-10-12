@@ -22,3 +22,13 @@ The Codex guard is best effort. It reads `apply_patch` patches and Bash commands
 ## Vault pointer
 
 `install.sh` also offers `brain-dump pointer`, a SessionStart hook in the same two files. When a Session starts it names up to three Vault notes for the repo (its Route target, then the notes holding the most Items from its Dumps) with its unfiled-Dump count, and the number of `brain-dump check` findings. It prints nothing when there is nothing to say, and skips whatever doesn't fit in about a second.
+
+## Sweep
+
+`brain-dump sweep` drafts a Dump from each recent Claude Code Session you never dumped, so nothing is lost when Claude Code deletes its logs after 30 days. Each Session is drafted by its own `claude -p` run with no tools and no saved transcript, and the Dumps land only in the Inbox, tagged `dump/swept`, for normal Filing. It prints a summary of what it wrote, skipped, couldn't read and carried over; `brain-dump sweep --last` prints it again, and `brain-dump undo <run>` removes everything one Sweep wrote.
+
+It leaves out Sessions in the Vault, still active in the last 2 hours, with fewer than 3 user messages, or already covered by a Dump. To keep a repo out, list it in `~/.config/brain-dump/config`:
+
+```
+sweep-opt-out = ~/Projects/client-work, ~/Projects/secret
+```

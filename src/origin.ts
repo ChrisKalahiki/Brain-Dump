@@ -34,6 +34,8 @@ export type DevOrigin = {
   at: Date;
   /** Drafted by the Sweep rather than by the user's own `dump`. */
   swept?: boolean;
+  /** What the origin line should warn about the draft, e.g. "truncated". */
+  notes?: string[];
 };
 
 export type ChatOrigin = {
@@ -73,6 +75,7 @@ export function renderOriginLine(origin: Origin): string {
     segments.push(origin.chatUrl);
   }
   segments.push(displayStamp(origin.at));
+  if (origin.kind === "dev") segments.push(...(origin.notes ?? []).map((note) => `(${note})`));
   if (origin.project !== undefined) segments.push(`[[${origin.project}]]`);
   return segments.join(" · ");
 }

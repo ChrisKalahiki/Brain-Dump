@@ -20,7 +20,7 @@ export type Change =
   | { operation: "move"; from: string; to: string; before: string; after: string };
 
 /** `undoes` is the id of the Run an undo reverts. */
-export type RunInfo = { command: "apply" | "write-dump" | "consolidate" | "undo"; label: string; undoes?: string };
+export type RunInfo = { command: "apply" | "write-dump" | "consolidate" | "sweep" | "undo"; label: string; undoes?: string };
 
 export type RunStatus = "pending" | "applied" | "undone";
 
@@ -206,5 +206,10 @@ export function sha256(contents: string): string {
 }
 
 function runsFolder(): string {
-  return join(homedir(), ".local", "state", "brain-dump", "runs");
+  return join(stateFolder(), "runs");
+}
+
+/** This machine's Brain-Dump state, outside the synced Vault: the run store and the Sweep's state beside it. */
+export function stateFolder(): string {
+  return join(homedir(), ".local", "state", "brain-dump");
 }

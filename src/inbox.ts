@@ -1,4 +1,4 @@
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { readHashed } from "./content-hash.ts";
 import { parseDumpBody, SECTIONS, type ItemState, type SectionName } from "./dump-body.ts";
@@ -89,4 +89,20 @@ export type DumpSummary = Omit<StoredDump, "lines" | "items" | "eol"> & { items:
 
 export function summarize({ lines, items, eol, ...dump }: StoredDump): DumpSummary {
   return { ...dump, items: items.map(({ line, ...item }) => item) };
+}
+
+/** Each Session a Dump in `Inbox/` or `Inbox/Filed/` covers, through the latest `through` among its Dumps. */
+export function coveredSessions(vault: Vault): Map<string, Date> {
+  const covered = new Map<string, Date>();
+  for (const folder of [INBOX, FILED_FOLDER].map((name) => join(vault.root, name))) {
+    if (!existsSync(folder)) continue;
+    for (const name of readdirSync(folder).filter(isDumpFile)) {
+      const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(readFileSync(join(folder, name), "utf8"))?.[1] ?? "";
+      const session = /^session: (\S+)$/m.exec(frontmatter)?.[1];
+      const through = new Date(/^through: (\S+)$/m.exec(frontmatter)?.[1] ?? "");
+      const known = session === undefined ? undefined : covered.get(session);
+      if (session !== undefined && !Number.isNaN(through.getTime()) && (known === undefined || through > known)) covered.set(session, through);
+    }
+  }
+  return covered;
 }

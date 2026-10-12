@@ -40,11 +40,17 @@ export function resolveVaultPath(): string {
 }
 
 function readConfiguredVault(): string | undefined {
+  const configured = readSetting("vault");
+  return configured === undefined ? undefined : expandHome(configured);
+}
+
+/** A `name = value` line's value from `~/.config/brain-dump/config`, the first one when it is repeated. */
+export function readSetting(name: string): string | undefined {
   const configPath = join(homedir(), ".config", "brain-dump", "config");
   if (!existsSync(configPath)) return undefined;
   for (const line of readFileSync(configPath, "utf8").split("\n")) {
-    const match = /^\s*vault\s*=\s*(.+?)\s*$/.exec(line);
-    if (match?.[1]) return expandHome(match[1]);
+    const match = /^\s*([\w-]+)\s*=\s*(.+?)\s*$/.exec(line);
+    if (match?.[1] === name && match[2]) return match[2];
   }
   return undefined;
 }
