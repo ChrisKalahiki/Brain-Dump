@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { basename } from "node:path";
+import { basename, dirname } from "node:path";
 
 const TOOLS = {
   ClaudeCode: { name: "Claude Code", kind: "dev" },
@@ -47,7 +47,14 @@ export type Origin = DevOrigin | ChatOrigin;
 export function detectDevOrigin(tool: DevToolTag, cwd: string, at: Date): DevOrigin {
   const root = git(cwd, "rev-parse", "--show-toplevel") ?? cwd;
   const branch = git(cwd, "branch", "--show-current") || undefined;
-  return { kind: "dev", tool, project: basename(root), location: root, branch, at };
+  return { kind: "dev", tool, project: projectOf(cwd), location: root, branch, at };
+}
+
+/** The main worktree's folder name, so linked worktrees don't split a project; outside a repo, the directory's own name. */
+export function projectOf(cwd: string): string {
+  const commonDir = git(cwd, "rev-parse", "--path-format=absolute", "--git-common-dir");
+  if (commonDir !== undefined && basename(commonDir) === ".git") return basename(dirname(commonDir));
+  return basename(git(cwd, "rev-parse", "--show-toplevel") ?? cwd);
 }
 
 export function dumpStem(origin: Origin): string {

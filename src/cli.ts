@@ -3,13 +3,15 @@ import { parseArgs, type ParseArgsConfig } from "node:util";
 import { now } from "./clock.ts";
 import { writeDump } from "./dump.ts";
 import { BrainDumpError, DumpNotWrittenError, UsageError } from "./errors.ts";
-import { detectDevOrigin, isChatTool, isToolTag, TOOL_TAGS, type Origin } from "./origin.ts";
+import { detectDevOrigin, isChatTool, isToolTag, projectOf, TOOL_TAGS, type Origin } from "./origin.ts";
 import { applyFilingPlan, parseFilingPlan } from "./filing.ts";
 import { guard } from "./guard.ts";
 import { listUnfiledDumps, summarize } from "./inbox.ts";
 import { listNotes } from "./notes.ts";
+import { parseRecallQuery, recall } from "./recall.ts";
 import { readRoutesNote } from "./routes.ts";
 import { listRuns } from "./runs.ts";
+import { showNote } from "./show.ts";
 import { readTodoGroups } from "./todo-groups.ts";
 import { locateVault } from "./vault.ts";
 import { undoRun } from "./undo.ts";
@@ -30,6 +32,15 @@ async function main(argv: string[]): Promise<number> {
     case "list-notes":
       writeJson(listNotes(locateVault()));
       return 0;
+    case "recall":
+      writeJson(recall(locateVault(), parseRecallQuery(rest, () => projectOf(process.cwd()))));
+      return 0;
+    case "show": {
+      const notes = rest.filter((arg) => arg !== "--full");
+      if (notes.length !== 1 || notes[0]?.startsWith("--")) throw new UsageError("show takes one note and optionally --full");
+      writeJson(showNote(locateVault(), notes[0] ?? "", { full: rest.includes("--full") }));
+      return 0;
+    }
     case "routes":
       writeJson(readRoutesNote(locateVault()));
       return 0;

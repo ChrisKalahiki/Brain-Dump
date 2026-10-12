@@ -30,9 +30,13 @@ export type StoredDump = {
   hash: string;
 };
 
+export function isDumpFile(path: string): boolean {
+  return DUMP_FILENAME.test(basename(path));
+}
+
 export function listUnfiledDumps(vault: Vault): StoredDump[] {
   return readdirSync(vault.inbox)
-    .filter((name) => DUMP_FILENAME.test(name))
+    .filter(isDumpFile)
     .sort()
     .map((name) => readDump(vault, join(vault.inbox, name)))
     .filter((dump) => dump.items.some((item) => item.state === "open"));

@@ -1,0 +1,5 @@
+interface:
+  display_name: "Recall"
+  short_description: "Look up what the Vault holds about this project or a subject"
+policy:
+  allow_implicit_invocation: true
