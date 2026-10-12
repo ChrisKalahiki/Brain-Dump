@@ -3,11 +3,12 @@ import { parseArgs, type ParseArgsConfig } from "node:util";
 import { checkVault, renderFinding, type Finding } from "./check.ts";
 import { now } from "./clock.ts";
 import { writeDump } from "./dump.ts";
+import { listDumps } from "./duplicates.ts";
 import { BrainDumpError, describeFsError, DumpNotWrittenError, errnoCode, UsageError } from "./errors.ts";
 import { detectDevOrigin, isChatTool, isToolTag, projectOf, TOOL_TAGS, type Origin } from "./origin.ts";
 import { applyFilingPlan, parseFilingPlan } from "./filing.ts";
 import { guard } from "./guard.ts";
-import { listUnfiledDumps, summarize } from "./inbox.ts";
+import { listUnfiledDumps } from "./inbox.ts";
 import { listNotes } from "./notes.ts";
 import { pointerLines } from "./pointer.ts";
 import { parseRecallQuery, recall } from "./recall.ts";
@@ -28,9 +29,11 @@ async function main(argv: string[]): Promise<number> {
     case "write-dump":
       process.stdout.write(`${await runWriteDump(rest)}\n`);
       return 0;
-    case "list-dumps":
-      writeJson(listUnfiledDumps(locateVault()).map(summarize));
+    case "list-dumps": {
+      const vault = locateVault();
+      writeJson(listDumps(vault, listUnfiledDumps(vault)));
       return 0;
+    }
     case "list-notes":
       writeJson(listNotes(locateVault()));
       return 0;
