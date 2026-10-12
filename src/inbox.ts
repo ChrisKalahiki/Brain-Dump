@@ -1,8 +1,9 @@
 import { readdirSync } from "node:fs";
-import { basename, join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { readHashed } from "./content-hash.ts";
 import { parseDumpBody, SECTIONS, type ItemState, type SectionName } from "./dump-body.ts";
 import { BrainDumpError } from "./errors.ts";
+import { FILED_FOLDER, INBOX } from "./layout.ts";
 import type { Vault } from "./vault.ts";
 
 export type ItemKind = "Learning" | "Decision" | "Todo";
@@ -32,6 +33,12 @@ export type StoredDump = {
 
 export function isDumpFile(path: string): boolean {
   return DUMP_FILENAME.test(basename(path));
+}
+
+/** A Dump in the Inbox or, once finished, in Inbox/Filed. */
+export function isStoredDump(vault: Vault, path: string): boolean {
+  const folder = relative(vault.root, dirname(path));
+  return isDumpFile(path) && (folder === INBOX || folder === FILED_FOLDER);
 }
 
 export function listUnfiledDumps(vault: Vault): StoredDump[] {

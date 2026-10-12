@@ -1,18 +1,15 @@
 import { readFileSync } from "node:fs";
 import { basename, dirname, relative } from "node:path";
 import { BrainDumpError, UsageError } from "./errors.ts";
-import { isDumpFile, readDump, type StoredDump } from "./inbox.ts";
-import { FILED_FOLDER, INBOX } from "./layout.ts";
+import { curatedBullets, itemKey, TODO_TAG } from "./curated.ts";
+import { isStoredDump, readDump, type StoredDump } from "./inbox.ts";
+import { INBOX } from "./layout.ts";
 import { linkTarget, noteFiles } from "./notes.ts";
 import type { Vault } from "./vault.ts";
 
 // Recall (ADR 0007): agents look up the Items the Vault holds through the helper, never with their own file tools.
 
 const RESULT_CAP = 20;
-const TODO_TAG = /(^|\s)#todo(?=\s|$)/;
-const BULLET = /^(\s*)- (.+)$/;
-const WHY_LINE = /^- Why: (.+)$/;
-const FROM_LINE = /^- From \[\[([^\]|#]+)/;
 const PROJECT_LINK = / · \[\[([^\]]+)\]\]$/;
 
 export type RecallQuery = { mode: "terms"; terms: string[] } | { mode: "project"; name: string } | { mode: "links"; note: string };
@@ -73,7 +70,7 @@ function countHits(text: string, terms: string[]): number {
   return new Set(terms.filter((term) => term !== "" && haystack.includes(term))).size;
 }
 
-/** Open Items still in Inbox Dumps, plus filed Items in curated notes: a bullet with a `From [[dump]]` or `Why:` line, or a `#todo` bullet. Dropped Items stay behind in their Dumps. */
+/** Open Items still in Inbox Dumps, plus filed Items in curated notes. Dropped Items stay behind in their Dumps. */
 function collectItems(vault: Vault): FoundItem[] {
   const files = noteFiles(vault);
   const dumps = files
@@ -93,7 +90,7 @@ function collectItems(vault: Vault): FoundItem[] {
     .filter((path) => !relative(vault.root, path).startsWith(`${INBOX}/`))
     .flatMap((path) =>
       curatedBullets(readFileSync(path, "utf8").split(/\r?\n/)).map(({ text, why, from, line }) => {
-        const dumpInfo = from === undefined ? (filedTodos.get(todoKey(text)) ?? undefined) : dumpsByTitle.get(from);
+        const dumpInfo = from === undefined ? (filedTodos.get(itemKey(text)) ?? undefined) : dumpsByTitle.get(from);
         return toFoundItem({ note: relative(vault.root, path), text, why, unfiled: false, dumpInfo, position: line });
       }),
     );
@@ -106,7 +103,7 @@ function filedTodoDumps(dumps: { dump: StoredDump; info: DumpInfo }[]): Map<stri
   for (const { dump, info } of dumps) {
     for (const item of dump.items) {
       if (item.kind !== "Todo" || item.state !== "filed") continue;
-      const key = todoKey(item.text);
+      const key = itemKey(item.text);
       byText.set(key, byText.has(key) && byText.get(key)?.file !== info.file ? null : info);
     }
   }
@@ -118,12 +115,6 @@ type ItemSource = { note: string; text: string; why: string | null | undefined; 
 function toFoundItem({ note, text, why, unfiled, dumpInfo, position }: ItemSource): FoundItem {
   const kind = why ? "decision" : TODO_TAG.test(text) ? "todo" : "learning";
   return { note, kind, text, why: why ?? null, unfiled, dump: dumpInfo?.file ?? null, origin: dumpInfo?.origin ?? null, dumpInfo, position };
-}
-
-/** A Dump in the Inbox or, once finished, in Inbox/Filed. */
-function isStoredDump(vault: Vault, path: string): boolean {
-  const folder = relative(vault.root, dirname(path));
-  return isDumpFile(path) && (folder === INBOX || folder === FILED_FOLDER);
 }
 
 /** A malformed Dump is left for `check` to report, not allowed to break recall. */
@@ -140,40 +131,6 @@ function describeDump(dump: StoredDump): DumpInfo {
   const origin = dump.lines.find((line) => line.startsWith("Session: ")) ?? null;
   const project = origin === null ? undefined : PROJECT_LINK.exec(origin)?.[1];
   return { file: dump.file, stamp: dump.title.slice(0, "YYYY-MM-DD HHMM".length), origin, project };
-}
-
-/** A filed Todo gains a checkbox and moves its `#todo` to the end, so compare without either. */
-function todoKey(text: string): string {
-  return text.replace(/^\[.\] /, "").replace(TODO_TAG, " ").replace(/\s+/g, " ").trim().toLowerCase();
-}
-
-type CuratedBullet = { text: string; why: string | undefined; from: string | undefined; line: number };
-
-function curatedBullets(lines: string[]): CuratedBullet[] {
-  return lines.flatMap((line, index) => {
-    const bullet = BULLET.exec(line);
-    if (!bullet?.[2] || WHY_LINE.test(line.trim()) || FROM_LINE.test(line.trim())) return [];
-    const indent = bullet[1]?.length ?? 0;
-    const children = childLines(lines, index, indent);
-    const why = children.map((child) => WHY_LINE.exec(child)?.[1]).find(Boolean);
-    const from = children.map((child) => FROM_LINE.exec(child)?.[1]?.trim()).find(Boolean);
-    const text = bullet[2];
-    if (from === undefined && why === undefined && !TODO_TAG.test(text)) return [];
-    return [{ text, why, from, line: index }];
-  });
-}
-
-/** The bullet's direct children, trimmed: the indented lines right under it at the first child's depth. */
-function childLines(lines: string[], index: number, indent: number): string[] {
-  const children: string[] = [];
-  let depth: number | undefined;
-  for (const line of lines.slice(index + 1)) {
-    const lineIndent = /^\s*/.exec(line)?.[0].length ?? 0;
-    if (line.trim() === "" || lineIndent <= indent) break;
-    depth ??= lineIndent;
-    if (lineIndent === depth) children.push(line.trim());
-  }
-  return children;
 }
 
 /** Every line in the allowlist with a wikilink to `note`, whatever its folder, alias or heading. */

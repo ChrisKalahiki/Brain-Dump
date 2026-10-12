@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { parseArgs, type ParseArgsConfig } from "node:util";
+import { checkVault, renderFinding, type Finding } from "./check.ts";
 import { now } from "./clock.ts";
 import { writeDump } from "./dump.ts";
 import { BrainDumpError, DumpNotWrittenError, UsageError } from "./errors.ts";
@@ -13,7 +14,7 @@ import { readRoutesNote } from "./routes.ts";
 import { listRuns } from "./runs.ts";
 import { showNote } from "./show.ts";
 import { readTodoGroups } from "./todo-groups.ts";
-import { locateVault } from "./vault.ts";
+import { findVault, locateVault } from "./vault.ts";
 import { undoRun } from "./undo.ts";
 import { findWeeklyNote } from "./weekly.ts";
 
@@ -65,6 +66,8 @@ async function main(argv: string[]): Promise<number> {
       process.stderr.write(`${verdict.reason}\n`);
       return 2;
     }
+    case "check":
+      return runCheck(rest);
     case "runs":
       writeJson(listRuns());
       return 0;
@@ -102,6 +105,22 @@ async function runWriteDump(args: string[]): Promise<string> {
     ? { kind: "chat", tool: values.tool, chatUrl: values["chat-url"], project: values.project, at }
     : detectDevOrigin(values.tool, process.cwd(), at);
   return writeDump(origin, values.slug, await Bun.stdin.text());
+}
+
+/** Exit 1 means findings, so a Vault that can't be checked exits 2. */
+function runCheck(args: string[]): number {
+  const { json } = parseOptions(args, { json: { type: "boolean" } });
+  let findings: Finding[];
+  try {
+    findings = checkVault(findVault());
+  } catch (error) {
+    if (!(error instanceof BrainDumpError)) throw error;
+    process.stderr.write(`brain-dump: ${error.message}\n`);
+    return 2;
+  }
+  if (json) writeJson(findings);
+  else process.stdout.write(findings.length === 0 ? "No Vault findings.\n" : `${findings.map(renderFinding).join("\n")}\n`);
+  return findings.length === 0 ? 0 : 1;
 }
 
 function writeJson(value: unknown): void {
