@@ -37,4 +37,19 @@ sweep-opt-out = ~/Projects/client-work, ~/Projects/secret
 
 ## Prompt evals
 
-A change to a prompt is scored before it ships: `bun run eval [name]` runs each eval's committed synthetic fixtures on the pinned model, three runs each (`--runs N` to change), and needs every run to pass its deterministic checks; a pass with fewer than three runs is not recorded. A rubric grade from the same model is printed beside the result but never gates. A passing run records the eval's input hash in `evals/passed.json`; `bun test` fails while any eval's prompts, shared rules, fixtures, checks or model have changed since. The `sweep` eval runs the Sweep's own drafting step on `evals/fixtures/sweep`.
+A change to a prompt is scored before it ships: `bun run eval [name]` runs each eval's committed synthetic fixtures on the pinned model, three runs each (`--runs N` to change), and needs every run to pass its deterministic checks; a pass with fewer than three runs is not recorded. A rubric grade from the same model is printed beside the result but never gates. A passing run records the eval's input hash in `evals/passed.json`; `bun test` fails while any eval's prompts, shared rules, fixtures, checks or model have changed since. The evals:
+
+- `sweep`: the Sweep's own drafting step on `evals/fixtures/sweep`.
+- `dump`: `/dump` at the end of a synthetic Session (`evals/fixtures/dump`), with and without a focus, writing through the helper into a sandbox Vault.
+- `chat-dump`: `prompts/chat-dump.md` as a chat's instructions, then "dump", on synthetic chats (`evals/fixtures/chat-dump`); the reply is read as `dump --paste` reads it.
+- `file`: `/file` with only `Bash(brain-dump:*)` on a fixture Vault (`evals/fixtures/file`), one Dump per case: a Routine plan, a NEW note, a NEW Todo Group, a `≈` match, and a link line to a NEW Weekly Note. No reply is sent; each Item's destination and marks are read from the plan, and any change to the Vault fails the run.
+
+`dump`, `chat-dump` and `file` run Claude Code headless with only the repo's skills (`--setting-sources project`). `dump` and `chat-dump` resume their synthetic Session from a log written to `~/.claude/projects` and removed after the run.
+
+### Hand checks
+
+These have no automated eval; check them by hand when their prompts change:
+
+- **`consolidate`**: run `/consolidate [[Note]]` on a long Topic Note. The Digest it proposes should cover the note's Items without inventing any, and nothing is written until you approve its full text.
+- **`recall` triggering**: in a repo whose project the Vault knows, ask "what did we decide about …?" and start a task that touches an earlier Decision. `recall` should run on its own both times, and not for questions the repo itself answers.
+- **`chat-dump` in ChatGPT and Gemini**: paste `prompts/chat-dump.md` into each, hold a short chat, say "dump", and run `/dump --paste` on the reply. It should be a `Slug:` line and one `markdown` block that `write-dump` takes without a fix.

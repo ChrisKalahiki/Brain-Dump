@@ -97,7 +97,7 @@ Routine (3)
 + · Link line → `10-05-26 Weekly Update` · `# Notes:`
 ```
 
-The link line is routine too, listed as `+`, unless its Weekly Note is NEW. When every row is routine, show only the Routine list and the replies: no table, and no New notes, groups or tags lines. Routine Items are approved like every other row, by the same `ok`; nothing is written without one.
+The link line is routine too, listed as `+`, unless its Weekly Note is NEW. A table that holds only a NEW link line still leaves every Routine Item in the Routine list. When every row is routine, show only the Routine list and the replies: no table, and no New notes, groups or tags lines. Routine Items are approved like every other row, by the same `ok`; nothing is written without one.
 
 Then:
 
