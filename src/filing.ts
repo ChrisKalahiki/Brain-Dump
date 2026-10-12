@@ -140,7 +140,7 @@ function checkRoutineItems(vault: Vault, items: PlannedItem[]): void {
 
 function routesTo(route: Route, { note, group }: { note: string; group?: GroupPath }): boolean {
   if ("title" in route) return group === undefined && titleKey(route.title) === titleKey(note);
-  return group !== undefined && pathKey(route.group) === pathKey(group);
+  return group !== undefined && isMondayWeeklyNote(note) && pathKey(route.group) === pathKey(group);
 }
 
 /** Judged against the Vault as read, so a note or group this plan creates counts as new. A missing section or ambiguous group is left to the edit, which names it precisely. */
