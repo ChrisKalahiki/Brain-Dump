@@ -15,7 +15,7 @@ First run `brain-dump check --json`, which reports Vault problems and writes not
 
 Then run these once per run:
 
-- `brain-dump list-dumps`: each unfiled Dump's `file`, `title`, `date`, `project`, `hash`, and `items` (`index`, `kind`, `text`, `rationale`, `state`). Only `open` Items are filed.
+- `brain-dump list-dumps`: each unfiled Dump's `file`, `title`, `date`, `project`, `hash`, and `items` (`index`, `kind`, `text`, `rationale`, `state`). Only `open` Items are filed. An open Item that nearly duplicates one already in the Vault or in another unfiled Dump also has `similar`: `{note, text, score, done}`, its best match, where `note` is the path of the note or Dump holding it (a Dump when it starts with `Inbox/`), `text` the existing Item's text, and `done` true when that Item is a ticked Todo.
 - `brain-dump list-notes`: every note's `note` (path), `title`, `folder`, `tags` and `hash`.
 - `brain-dump routes`: `{hash, routes}`, the Routes note's `hash` (`null` when it doesn't exist yet) and the user's **Routes**, mapping a project or subject to where it belongs: `{key, title}` for a note's title, `{key, group}` for a Todo Group path.
 
@@ -52,7 +52,7 @@ To pick a Todo's group, decide per Todo, not per Dump: one chat Dump can hold To
 - When no group fits, propose a **NEW** group or subgroup, at any depth, e.g. **NEW** `IRB` inside an existing `Dissertation`.
 - A Todo goes ungrouped (top level of `# To-Do:`) only when the user says so.
 
-An Item is a **Routine Item** when its destination came from a Route (a note Route, or for a Todo a group Route into this week's Weekly Note) and that destination already exists: the note, and for a Todo every level of its group path. Remember the Route's `key` for each Routine Item. An Item whose destination is NEW, or that you placed by matching titles, folders, tags or group names, is not routine.
+An Item is a **Routine Item** when its destination came from a Route (a note Route, or for a Todo a group Route into this week's Weekly Note) and that destination already exists: the note, and for a Todo every level of its group path. Remember the Route's `key` for each Routine Item. An Item whose destination is NEW, that you placed by matching titles, folders, tags or group names, or that has `similar`, is not routine.
 
 Done when every open Item has a destination note, existing or NEW, every Todo a group, existing, NEW or ungrouped, and you know which are Routine Items.
 
@@ -75,6 +75,16 @@ What each row appends:
 - **Link line** → the Session's week, section `# Notes:`, as `- Filed [[<title>|<project> <slug>]]`, where `<slug>` is the part of the title after ` - `. Add it only when this plan finishes the Dump (no Item left open) and at least one of its Items is filed, now or in an earlier run; that way each Dump gets exactly one. Show it as a row marked `+`.
 
 Mark every destination that doesn't exist yet with **NEW**, including each new level of a group path. Anything NEW always goes in the table, never in the Routine list.
+
+Mark the `#` of every Item with `similar` as `≈` (e.g. `≈ 3`), and below the table list one line per marked Item, in `index` order, with the existing text as `similar` gives it:
+
+```
+≈ 3 ~ [[Agent Skills]]: "Codex reads skills from ~/.agents/skills"
+≈ 5 ~ [[2026-10-06 0900 Brain-Dump - sweep]] (unfiled): "Finish the IRB application"
+≈ 6 ~ [[10-05-26 Weekly Update]] (done): "[x] Ship the file skill. #todo"
+```
+
+`[[…]]` is the title of `similar.note`; add `(unfiled)` when it is a Dump in `Inbox/`, `(done)` when `done` is true. The match only advises: a marked Item still files as planned unless the user replies `drop N` or `skip N`. It always goes in the table, never in the Routine list.
 
 Below the table, list the Routine Items compactly, in `index` order, headed `Routine (N)` with N the number of entries, one line each with its index, kind, a short excerpt, and where it goes:
 
@@ -144,12 +154,12 @@ brain-dump apply <<'PLAN'
 PLAN
 ```
 
-`expect` maps every existing file the plan writes to its `hash`: the Dump, each existing note an Item or the link line goes into, and the Routes note when the plan adds Routes to it. Use the hash from your latest read, or from an earlier `apply` in this run that wrote the file (its `hashes`). NEW notes and a Routes note that doesn't exist yet need none; the helper refuses a plan missing any other. `creates` lists every NEW note still in the plan, each once; a NEW note nothing is filed into any more (its Items skipped or redirected) is left out, and the helper rejects one left in. Every open Item appears once in `items`, in table order: `filed` with its note path, its `section` only for Weekly Note sections, and the exact lines from its row; `dropped` for a `drop`; `skipped` for everything else. A grouped Todo carries its `group` path, unindented `lines` (the helper indents them), and no `group` when ungrouped. `createGroups` lists each NEW group path once, its full path; every missing level along it is created, and the helper rejects a path a Todo names that neither exists nor is listed, a listed path that already exists, one no Todo is filed into, and a path matching two bullets. Each Routine Item carries `"route"`, the `key` of the Route its destination came from; the helper refuses the whole plan if that Route isn't in the Routes note, doesn't point at the Item's note or Todo Group, or points at one that doesn't exist yet. Items that aren't routine carry no `route`. `inserts` holds only the link line, when the plan has one; `routes` only the Routes the user accepted (ones already in the Routes note are skipped). `"confirmLarge": true` goes in only after the user's separate yes to a plan over 8 notes (step 5); never set it otherwise.
+`expect` maps every existing file the plan writes to its `hash`: the Dump, each existing note an Item or the link line goes into, and the Routes note when the plan adds Routes to it. Use the hash from your latest read, or from an earlier `apply` in this run that wrote the file (its `hashes`). NEW notes and a Routes note that doesn't exist yet need none; the helper refuses a plan missing any other. `creates` lists every NEW note still in the plan, each once; a NEW note nothing is filed into any more (its Items skipped or redirected) is left out, and the helper rejects one left in. Every open Item appears once in `items`, in table order: `filed` with its note path, its `section` only for Weekly Note sections, and the exact lines from its row; `dropped` for a `drop`; `skipped` for everything else. A grouped Todo carries its `group` path, unindented `lines` (the helper indents them), and no `group` when ungrouped. `createGroups` lists each NEW group path once, its full path; every missing level along it is created, and the helper rejects a path a Todo names that neither exists nor is listed, a listed path that already exists, one no Todo is filed into, and a path matching two bullets. Each Routine Item carries `"route"`, the `key` of the Route its destination came from; the helper refuses the whole plan if that Route isn't in the Routes note, doesn't point at the Item's note or Todo Group, points at one that doesn't exist yet, or the Item nearly duplicates another. Items that aren't routine carry no `route`. `inserts` holds only the link line, when the plan has one; `routes` only the Routes the user accepted (ones already in the Routes note are skipped). `"confirmLarge": true` goes in only after the user's separate yes to a plan over 8 notes (step 5); never set it otherwise.
 
 - **Exit 0**: it prints `filed`, `dropped`, `skipped`, `movedTo` (set when the Dump is finished and moved to `Inbox/Filed/`) and `hashes`, the new hash of every file it wrote. Swap those into your hashes for the later plans in this run. Report the counts, then go to the next Dump.
 - **`Filing Plan stale: <note> changed since it was read`** (one or more notes): nothing was written; the user or Sync changed those files after you read them. Re-run the reads from steps 1 and 2, rebuild this Dump's plan from what's there now, and show it again headed `Re-planned: [[X]] changed since you last saw it` (each changed note's title). Carry over the user's earlier replies (redirects, drops, edits, accepted Routes and tags) where they still apply, and wait for a fresh `ok`; the earlier `ok` no longer counts.
 - **`write refused: the plan writes N notes, more than 8, so it needs confirmLarge`**: nothing was written. Ask the separate question from step 5; on a yes, apply again with `confirmLarge`.
-- **`Filing Plan rejected: Item N claims Route …`**: nothing was written. You marked Item N as a Routine Item when it isn't one. Show the plan again with Item N in the table, and wait for a fresh `ok`.
+- **`Filing Plan rejected: Item N claims Route …`**: nothing was written. You marked Item N as a Routine Item when it isn't one. Show the plan again with Item N in the table, and wait for a fresh `ok`. When the reason is `…, but it nearly duplicates "<text>" in [[<note>]]` (an earlier Filing in this run added the match), mark Item N `≈` with that line too.
 - **`Filing Plan rejected: …`** (anything else): nothing was written. Tell the user the reason, then offer to adjust the plan or skip this Dump.
 
 Done when every Dump has been applied, skipped, or the user cancelled, and the user has a one-line summary of the run.

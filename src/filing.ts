@@ -5,7 +5,8 @@ import { contentHash, readHashed } from "./content-hash.ts";
 import { STATE_MARKS } from "./dump-body.ts";
 import { BrainDumpError, UsageError } from "./errors.ts";
 import { commit, type Write } from "./gateway.ts";
-import { readDump, type StoredDump } from "./inbox.ts";
+import { nearDuplicateFinder } from "./duplicates.ts";
+import { listUnfiledDumps, readDump, type StoredDump } from "./inbox.ts";
 import { FILED_FOLDER, ROUTES_NOTE, WEEKLY_FOLDER, WEEKLY_TEMPLATE_NOTE } from "./layout.ts";
 import { titleKey } from "./notes.ts";
 import { readRoutes, renderRoute, routeIdentity, type Route } from "./routes.ts";
@@ -67,8 +68,8 @@ export function applyFilingPlan(vault: Vault, plan: FilingPlan): FilingResult {
   if (dirname(dumpPath) !== vault.inbox) reject(`${plan.dump} is not an unfiled Dump in the Inbox`);
   const newRoutes = unknownRoutes(vault, plan.routes ?? []);
   checkFresh(vault, plan, newRoutes.length > 0);
-  checkRoutineItems(vault, plan.items);
   const dump = readDump(vault, dumpPath);
+  checkRoutineItems(vault, dump, plan.items);
   const dumpLines = markItems(dump, plan.items);
   const notes = new NoteEdits(vault);
   const groups = plannedGroups(plan);
@@ -124,9 +125,10 @@ function checkFresh(vault: Vault, plan: FilingPlan, writesRoutes: boolean): void
   if (unpinned.length > 0) reject(`expect has no hash for ${listInEnglish(unpinned)}`);
 }
 
-/** A Routine Item's destination must come from a Route already in the Routes note and already exist; anything else is a skill mislabelling an Item as routine. */
-function checkRoutineItems(vault: Vault, items: PlannedItem[]): void {
+/** A Routine Item's destination must come from a Route already in the Routes note and already exist, and the Item must have no near-duplicate; anything else is a skill mislabelling an Item as routine. */
+function checkRoutineItems(vault: Vault, dump: StoredDump, items: PlannedItem[]): void {
   const routes = readRoutes(vault);
+  let nearest: ReturnType<typeof nearDuplicateFinder> | undefined;
   for (const item of items) {
     if (item.outcome !== "filed" || item.route === undefined) continue;
     const claim = `Item ${item.index} claims Route "${item.route}"`;
@@ -135,6 +137,10 @@ function checkRoutineItems(vault: Vault, items: PlannedItem[]): void {
     const destination = item.group === undefined ? `[[${basename(item.note, ".md")}]]` : `To-Do › ${formatGroupPath(item.group)}`;
     if (!keyed.some((route) => routesTo(route, item))) reject(`${claim}, which doesn't point at ${destination}`);
     if (isNewDestination(vault, item)) reject(`${claim}, but ${destination} doesn't exist yet${item.group === undefined ? "" : ` in ${item.note}`}`);
+    const stored = dump.items.find(({ index }) => index === item.index);
+    nearest ??= nearDuplicateFinder(vault, listUnfiledDumps(vault));
+    const similar = stored && nearest(dump, stored);
+    if (similar) reject(`${claim}, but it nearly duplicates "${similar.text}" in [[${basename(similar.note, ".md")}]]`);
   }
 }
 
