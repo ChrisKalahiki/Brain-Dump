@@ -11,7 +11,9 @@ Otherwise, work through every unfiled **Dump** in the Vault's Inbox, oldest firs
 
 ## 1. Load the Inbox and the Vault's map
 
-First run `brain-dump check --json`, which reports Vault problems and writes nothing: a list of `{kind, note, detail, fix}`, exiting 1 when there are findings. Show one line before anything else: `Vault check: N findings (<count> <kind>, …); run brain-dump check for details`, or `Vault check: clean`. Don't act on the findings; Filing goes on either way. Remember the notes with an `Oversized note` finding for the end of the run. If it exits 2, say `Vault check failed: <its error>` and go on.
+First run `brain-dump sweep --last`, which prints this machine's last **Sweep** summary as JSON: `time`, and lists `written`, `skipped`, `unreadable`, `secretRefused`, `carriedOver` and `errors`. Show one line: `Last Sweep <its time, local>: <count> Dumps written, …`, naming only the non-empty lists (as Dumps written, skipped, unreadable logs, refused for a secret, carried over, errors), or `Last Sweep <time>: nothing new` when all are empty; add `; run brain-dump sweep --last for details` when any of `unreadable`, `secretRefused` or `errors` is non-empty. Swept Dumps sit in the Inbox like any other and are filed in this run. If it exits 1 saying no Sweep has run on this machine, show nothing; any other failure, say `Last Sweep: unreadable (<its error>)` and go on.
+
+Then run `brain-dump check --json`, which reports Vault problems and writes nothing: a list of `{kind, note, detail, fix}`, exiting 1 when there are findings. Show one line before anything else: `Vault check: N findings (<count> <kind>, …); run brain-dump check for details`, or `Vault check: clean`. Don't act on the findings; Filing goes on either way. Remember the notes with an `Oversized note` finding for the end of the run. If it exits 2, say `Vault check failed: <its error>` and go on.
 
 Then run these once per run:
 
