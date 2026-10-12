@@ -1,5 +1,6 @@
 import { basename, dirname } from "node:path";
 import { checkVault, countOf } from "./check.ts";
+import { now } from "./clock.ts";
 import { curatedBullets, curatedNotes } from "./curated.ts";
 import { BrainDumpError, errnoCode } from "./errors.ts";
 import { isStoredDump, readDumpOrProblem, type StoredDump } from "./inbox.ts";
@@ -7,15 +8,16 @@ import { INBOX } from "./layout.ts";
 import { noteFiles, titleKey } from "./notes.ts";
 import { describeDump } from "./recall.ts";
 import { readRoutes, type Route } from "./routes.ts";
+import { sweepLine } from "./sweep.ts";
 import { findVault, type Vault } from "./vault.ts";
 
-// The SessionStart pointer: at most a line naming this project's Vault notes and a line with the `check` count, so a Session knows the Vault has context.
+// The SessionStart pointer: at most a line naming this project's Vault notes, a line on the last Sweep and a line with the `check` count, so a Session knows the Vault has context.
 
 const DEADLINE_MS = 1000;
 const DEADLINE_VARIABLE = "BRAIN_DUMP_POINTER_DEADLINE_MS";
 const NOTE_CAP = 3;
 
-/** The notes line first, then the `check` line only if time remains; anything that fails or ends past the deadline is left out. */
+/** The notes line first, then the Sweep line, then the `check` line only if time remains; anything that fails or ends past the deadline is left out. */
 export function pointerLines(project: string): string[] {
   const deadline = pointerDeadline();
   const inTime = (): boolean => performance.now() <= deadline;
@@ -24,6 +26,8 @@ export function pointerLines(project: string): string[] {
   const lines: string[] = [];
   const notesLine = quietly(() => projectLine(vault, project));
   if (notesLine !== undefined && inTime()) lines.push(notesLine);
+  const sweptLine = quietly(() => sweepLine(now()));
+  if (sweptLine !== undefined && inTime()) lines.push(sweptLine);
   if (!inTime()) return lines;
   const findings = quietly(() => checkVault(vault).length);
   if (findings && inTime()) lines.push(`brain-dump: ${countOf(findings, "Vault finding")} (run brain-dump check)`);

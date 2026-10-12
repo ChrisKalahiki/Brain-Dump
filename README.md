@@ -27,6 +27,8 @@ The Codex guard is best effort. It reads `apply_patch` patches and Bash commands
 
 `brain-dump sweep` drafts a Dump from each recent Claude Code or Codex Session you never dumped, so nothing is lost when Claude Code deletes its logs after 30 days. It reads Codex rollouts from `~/.codex/sessions` (or `$CODEX_HOME/sessions`), including compressed `.jsonl.zst` ones, and leaves out sub-agent Sessions. Each Session is drafted by its own `claude -p` run with no tools and no saved transcript, and the Dumps land only in the Inbox, tagged `dump/swept`, for normal Filing. It prints a summary of what it wrote, skipped, couldn't read and carried over; `brain-dump sweep --last` prints it again, and `brain-dump undo <run>` removes everything one Sweep wrote.
 
+`install.sh` offers to run the Sweep daily at 04:00 on each machine: a launchd agent on macOS, a systemd user timer on Linux. A missed day is caught up by the next Sweep, which reads every Session since the last one. It prints how to turn it off. For a day after a Sweep that wrote Dumps or hit a problem, the Vault pointer adds a line saying so, and `file` shows the last Sweep's summary when it starts.
+
 It leaves out Sessions in the Vault, still active in the last 2 hours, with fewer than 3 user messages, or already covered by a Dump. To keep a repo out, list it in `~/.config/brain-dump/config`:
 
 ```

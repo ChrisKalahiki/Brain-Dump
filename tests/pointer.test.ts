@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { dumpFile, makeRepo, makeSandbox, ROUTES_NOTE, run, writeConfig, writeVaultFile, type Sandbox } from "./harness.ts";
 
 const NOW = "2026-10-12T09:00";
@@ -24,6 +26,26 @@ function seedVault(sandbox: Sandbox): void {
   writeVaultFile(sandbox, "Resources/Retries.md", `# Retries\n${filedItems(3)}`);
   writeVaultFile(sandbox, "Resources/Backoff.md", `# Backoff\n${filedItems(1)}`);
   writeVaultFile(sandbox, "Side Projects/Brain-Dump.md", `# Brain-Dump\n${filedItems(9, "A Brain-Dump Learning", FROM_OTHER)}`);
+}
+
+type LastSweep = { time: string; written?: number; skipped?: number; unreadable?: number; secretRefused?: number; carriedOver?: number; errors?: number };
+
+/** The run-store file a finished Sweep leaves, holding its summary. */
+function writeLastSweep(sandbox: Sandbox, { time, written = 0, skipped = 0, unreadable = 0, secretRefused = 0, carriedOver = 0, errors = 0 }: LastSweep): void {
+  const many = <T>(count: number, make: (n: number) => T): T[] => Array.from({ length: count }, (_, n) => make(n));
+  const last = {
+    time,
+    run: written > 0 ? "20261012-040000" : null,
+    written: many(written, (n) => ({ session: `w-${n}`, dump: `Inbox/2026-10-11 1500 chronos - w${n}.md` })),
+    skipped: many(skipped, (n) => ({ session: `s-${n}` })),
+    unreadable: many(unreadable, (n) => ({ file: `${sandbox.home}/.claude/projects/u-${n}.jsonl` })),
+    secretRefused: many(secretRefused, (n) => ({ session: `r-${n}`, line: 2, kind: "GitHub token" })),
+    carriedOver: many(carriedOver, (n) => ({ session: `c-${n}` })),
+    errors: many(errors, (n) => ({ session: `e-${n}`, error: "drafting agent failed (exit 1)" })),
+  };
+  const folder = join(sandbox.home, ".local", "state", "brain-dump");
+  mkdirSync(folder, { recursive: true });
+  writeFileSync(join(folder, "sweep.json"), JSON.stringify({ last, retry: [] }));
 }
 
 function pointer(sandbox: Sandbox, cwd: string, env: Record<string, string> = {}) {
@@ -144,11 +166,72 @@ describe("brain-dump pointer", () => {
     expect(result).toEqual([0, "", ""]);
   });
 
+  test("adds the last Sweep's line between the notes line and the check count when it wrote Dumps or hit problems in the last 24 hours", () => {
+    // #given
+    const sandbox = makeSandbox();
+    seedVault(sandbox);
+    writeVaultFile(sandbox, ROUTES_NOTE, "- chronos → [[Gone]]\n");
+    writeLastSweep(sandbox, { time: "2026-10-11T09:30:00.000Z", written: 2, skipped: 4, unreadable: 1, secretRefused: 1, carriedOver: 3, errors: 1 });
+    const repo = makeRepo(sandbox, "chronos", "main");
+
+    // #when
+    const result = pointer(sandbox, repo);
+
+    // #then
+    expect(result).toEqual([
+      0,
+      "brain-dump: Vault notes for chronos: [[Scheduling]] (5 Items), [[Retries]] (3 Items), [[Job Queues]] (2 Items) · use the recall skill for more\n" +
+        "brain-dump: last Sweep: 2 Dumps written to the Inbox, 1 unreadable log, 1 draft refused for a secret, 3 carried over, 1 error (run brain-dump sweep --last)\n" +
+        "brain-dump: 1 Vault finding (run brain-dump check)\n",
+      "",
+    ]);
+  });
+
+  test("names a Sweep that only hit a problem, in a repo the Vault knows nothing about", () => {
+    // #given
+    const sandbox = makeSandbox();
+    writeLastSweep(sandbox, { time: "2026-10-12T04:00:00.000Z", skipped: 2, unreadable: 2 });
+    const repo = makeRepo(sandbox, "unrelated", "main");
+
+    // #when
+    const result = pointer(sandbox, repo);
+
+    // #then
+    expect(result).toEqual([0, "brain-dump: last Sweep: 2 unreadable logs (run brain-dump sweep --last)\n", ""]);
+  });
+
+  test("says nothing of a Sweep that wrote nothing and hit no problem", () => {
+    // #given
+    const sandbox = makeSandbox();
+    writeLastSweep(sandbox, { time: "2026-10-12T04:00:00.000Z", skipped: 3 });
+    const repo = makeRepo(sandbox, "unrelated", "main");
+
+    // #when
+    const result = pointer(sandbox, repo);
+
+    // #then
+    expect(result).toEqual([0, "", ""]);
+  });
+
+  test("says nothing of a Sweep more than 24 hours old", () => {
+    // #given
+    const sandbox = makeSandbox();
+    writeLastSweep(sandbox, { time: "2026-10-11T08:59:00.000Z", written: 2, errors: 1 });
+    const repo = makeRepo(sandbox, "unrelated", "main");
+
+    // #when
+    const result = pointer(sandbox, repo);
+
+    // #then
+    expect(result).toEqual([0, "", ""]);
+  });
+
   test("skips whatever misses the deadline, silently", () => {
     // #given
     const sandbox = makeSandbox();
     seedVault(sandbox);
     writeVaultFile(sandbox, ROUTES_NOTE, "- chronos → [[Gone]]\n");
+    writeLastSweep(sandbox, { time: "2026-10-12T04:00:00.000Z", written: 1, errors: 1 });
     const repo = makeRepo(sandbox, "chronos", "main");
 
     // #when

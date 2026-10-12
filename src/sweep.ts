@@ -25,6 +25,8 @@ const SESSION_CAP = 25;
 const TEXT_CAP = 150_000;
 const AGENT_TIMEOUT_MS = 10 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
+/** How long the pointer keeps naming a Sweep. */
+const REPORT_HOURS = 24;
 
 /** The pinned model every Session is drafted with. */
 const DRAFTING_MODEL = "claude-sonnet-5-5";
@@ -121,6 +123,26 @@ export function lastSweep(): SweepSummary {
   const state = readState();
   if (state === undefined) throw new BrainDumpError("no Sweep has run on this machine");
   return state.last;
+}
+
+/** The pointer's line on the last Sweep: only when it ran in the 24 hours before `at` and wrote a Dump or hit a problem. */
+export function sweepLine(at: Date): string | undefined {
+  const last = readState()?.last;
+  if (last === undefined) return undefined;
+  const age = at.getTime() - new Date(last.time).getTime();
+  if (!(age >= 0 && age <= REPORT_HOURS * HOUR_MS)) return undefined;
+  const problems = [
+    ...(last.unreadable.length > 0 ? [countOf(last.unreadable.length, "unreadable log")] : []),
+    ...(last.secretRefused.length > 0 ? [`${countOf(last.secretRefused.length, "draft")} refused for a secret`] : []),
+  ];
+  if (last.written.length === 0 && problems.length === 0 && last.errors.length === 0) return undefined;
+  const segments = [
+    ...(last.written.length > 0 ? [`${countOf(last.written.length, "Dump")} written to the Inbox`] : []),
+    ...problems,
+    ...(last.carriedOver.length > 0 ? [`${last.carriedOver.length} carried over`] : []),
+    ...(last.errors.length > 0 ? [countOf(last.errors.length, "error")] : []),
+  ];
+  return `brain-dump: last Sweep: ${segments.join(", ")} (run brain-dump sweep --last)`;
 }
 
 /** Sessions with records since the last successful Sweep and no newer than the active cutoff, at most 28 days back, newest first. */
