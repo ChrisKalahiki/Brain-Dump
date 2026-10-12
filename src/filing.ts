@@ -7,6 +7,7 @@ import { BrainDumpError, UsageError } from "./errors.ts";
 import { commit, type Write } from "./gateway.ts";
 import { readDump, type StoredDump } from "./inbox.ts";
 import { FILED_FOLDER, ROUTES_NOTE, WEEKLY_FOLDER, WEEKLY_TEMPLATE_NOTE } from "./layout.ts";
+import { titleKey } from "./notes.ts";
 import { readRoutes, renderRoute, routeIdentity, type Route } from "./routes.ts";
 import { findSection } from "./sections.ts";
 import { formatGroupPath, parseTodoGroups, pathKey, resolveGroupPath, type GroupNode, type GroupPath } from "./todo-groups.ts";
@@ -17,7 +18,7 @@ import type { Vault } from "./vault.ts";
 type Placement = { note: string; section?: string };
 
 export type PlannedItem =
-  | ({ index: number; outcome: "filed"; lines: string[]; group?: GroupPath } & Placement)
+  | ({ index: number; outcome: "filed"; lines: string[]; group?: GroupPath; /** The key of the Route a Routine Item's destination came from. */ route?: string } & Placement)
   | { index: number; outcome: "dropped" | "skipped" };
 
 export type NoteCreation = { note: string } & ({ from: "weekly-template" } | { tags: string[] });
@@ -44,7 +45,7 @@ export type FilingResult = {
 };
 
 const PLAN_SHAPE =
-  'expected {"dump": string, "expect": {[path: string]: string}, "items": [{"index": number, "outcome": "filed", "note": string, "section"?: string, "group"?: string[], "lines": string[]} | {"index": number, "outcome": "dropped"|"skipped"}], "inserts": [{"note": string, "section"?: string, "lines": string[]}], "routes"?: [{"key": string, "title": string} | {"key": string, "group": string[]}], "creates"?: [{"note": string, "from": "weekly-template"} | {"note": string, "tags": string[]}], "createGroups"?: string[][], "confirmLarge"?: boolean}';
+  'expected {"dump": string, "expect": {[path: string]: string}, "items": [{"index": number, "outcome": "filed", "note": string, "section"?: string, "group"?: string[], "lines": string[], "route"?: string} | {"index": number, "outcome": "dropped"|"skipped"}], "inserts": [{"note": string, "section"?: string, "lines": string[]}], "routes"?: [{"key": string, "title": string} | {"key": string, "group": string[]}], "creates"?: [{"note": string, "from": "weekly-template"} | {"note": string, "tags": string[]}], "createGroups"?: string[][], "confirmLarge"?: boolean}';
 const CLOSED_MARKS: Record<"filed" | "dropped", ClosedMark> = { filed: "x", dropped: "-" };
 const PLACEHOLDER = /^- (\[ \] ?)?$/;
 const TAG = /^[^\s#]+$/;
@@ -66,6 +67,7 @@ export function applyFilingPlan(vault: Vault, plan: FilingPlan): FilingResult {
   if (dirname(dumpPath) !== vault.inbox) reject(`${plan.dump} is not an unfiled Dump in the Inbox`);
   const newRoutes = unknownRoutes(vault, plan.routes ?? []);
   checkFresh(vault, plan, newRoutes.length > 0);
+  checkRoutineItems(vault, plan.items);
   const dump = readDump(vault, dumpPath);
   const dumpLines = markItems(dump, plan.items);
   const notes = new NoteEdits(vault);
@@ -120,6 +122,35 @@ function checkFresh(vault: Vault, plan: FilingPlan, writesRoutes: boolean): void
   }
   if (stale.length > 0) throw new BrainDumpError(`Filing Plan stale: ${listInEnglish(stale)} changed since it was read`);
   if (unpinned.length > 0) reject(`expect has no hash for ${listInEnglish(unpinned)}`);
+}
+
+/** A Routine Item's destination must come from a Route already in the Routes note and already exist; anything else is a skill mislabelling an Item as routine. */
+function checkRoutineItems(vault: Vault, items: PlannedItem[]): void {
+  const routes = readRoutes(vault);
+  for (const item of items) {
+    if (item.outcome !== "filed" || item.route === undefined) continue;
+    const claim = `Item ${item.index} claims Route "${item.route}"`;
+    const keyed = routes.filter(({ key }) => key === item.route);
+    if (keyed.length === 0) reject(`${claim}, which the Routes note doesn't have`);
+    const destination = item.group === undefined ? `[[${basename(item.note, ".md")}]]` : `To-Do › ${formatGroupPath(item.group)}`;
+    if (!keyed.some((route) => routesTo(route, item))) reject(`${claim}, which doesn't point at ${destination}`);
+    if (isNewDestination(vault, item)) reject(`${claim}, but ${destination} doesn't exist yet${item.group === undefined ? "" : ` in ${item.note}`}`);
+  }
+}
+
+function routesTo(route: Route, { note, group }: { note: string; group?: GroupPath }): boolean {
+  if ("title" in route) return group === undefined && titleKey(route.title) === titleKey(note);
+  return group !== undefined && isMondayWeeklyNote(note) && pathKey(route.group) === pathKey(group);
+}
+
+/** Judged against the Vault as read, so a note or group this plan creates counts as new. A missing section or ambiguous group is left to the edit, which names it precisely. */
+function isNewDestination(vault: Vault, { note, section, group }: Placement & { group?: GroupPath }): boolean {
+  const path = resolveInVault(vault, note);
+  if (!existsSync(path)) return true;
+  if (group === undefined || section === undefined) return false;
+  const lines = readFileSync(path, "utf8").split(/\r?\n/);
+  const bounds = findSection(lines, section);
+  return bounds !== undefined && resolveGroupPath(parseTodoGroups(lines, bounds.start, bounds.end), group).kind === "missing";
 }
 
 /** The Todo Groups the plan may create: each `createGroups` path and every group along it. Rejects a path no filed Todo goes into. */
@@ -309,7 +340,8 @@ function isPlannedItem(value: unknown): boolean {
   if (!isRecord(value) || !Number.isInteger(value.index)) return false;
   if (value.outcome === "dropped" || value.outcome === "skipped") return true;
   const groupOk = value.group === undefined || (isGroupPath(value.group) && typeof value.section === "string");
-  return value.outcome === "filed" && hasPlacedLines(value) && groupOk;
+  const routeOk = value.route === undefined || (typeof value.route === "string" && value.route.trim() !== "");
+  return value.outcome === "filed" && hasPlacedLines(value) && groupOk && routeOk;
 }
 
 function isGroupPath(value: unknown): boolean {
