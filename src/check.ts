@@ -134,6 +134,6 @@ function openItems(dump: StoredDump): number {
   return dump.items.filter((item) => item.state === "open").length;
 }
 
-function countOf(count: number, noun: string): string {
+export function countOf(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }

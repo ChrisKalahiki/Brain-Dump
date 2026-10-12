@@ -117,7 +117,7 @@ function toFoundItem({ note, text, why, unfiled, dumpInfo, position }: ItemSourc
   return { note, kind, text, why: why ?? null, unfiled, dump: dumpInfo?.file ?? null, origin: dumpInfo?.origin ?? null, dumpInfo, position };
 }
 
-function describeDump(dump: StoredDump): DumpInfo {
+export function describeDump(dump: StoredDump): DumpInfo {
   const origin = dump.lines.find((line) => line.startsWith("Session: ")) ?? null;
   const project = origin === null ? undefined : PROJECT_LINK.exec(origin)?.[1];
   return { file: dump.file, stamp: dump.title.slice(0, "YYYY-MM-DD HHMM".length), origin, project };
