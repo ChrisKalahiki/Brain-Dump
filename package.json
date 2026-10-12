@@ -9,7 +9,8 @@
     "test": "bun test",
     "test:file": "bun test",
     "typecheck": "tsc --noEmit",
-    "prompts": "bun src/prompts.ts"
+    "prompts": "bun src/prompts.ts",
+    "eval": "bun evals/run.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",

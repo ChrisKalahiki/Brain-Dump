@@ -1,0 +1,28 @@
+[2026-10-01 16:20] User:
+Every call to the payments API from `harbor billing sync` returns 401 Unauthorized. It worked last week.
+
+[2026-10-01 16:22] Assistant:
+A 401 means the API rejected the credentials. Can you show me how the client is configured? Check `.env` and `src/billing/client.ts`.
+
+[2026-10-01 16:25] User:
+Here's .env:
+
+```
+PAYMENTS_BASE_URL=https://api.payments.example.com
+PAYMENTS_API_KEY=sk-test-FAKEf4k3K3yN0tR3alD0NotUse0000
+```
+
+[2026-10-01 16:27] Assistant:
+That key starts with `sk-test-`, so it's a sandbox (test mode) key, but `PAYMENTS_BASE_URL` points at the live API. The provider only accepts test keys at `https://sandbox.payments.example.com`, and the live API answers any test key with 401. Either point the base URL at the sandbox, or use a live key.
+
+[2026-10-01 16:31] User:
+Ah, I changed the base URL last week for the demo and never changed it back. Switching to the sandbox URL. Yes, works now.
+
+[2026-10-01 16:33] User:
+I also just pasted the key into this chat. It's only a test key but I'll rotate it anyway. And I don't want keys in .env any more: we'll keep them in 1Password and load them with `op run --env-file=.env.tpl -- bun run sync`, so .env.tpl only holds `op://` references.
+
+[2026-10-01 16:35] Assistant:
+Makes sense: with `op run`, the template is safe to commit and the secret never sits on disk in plain text. I've written `.env.tpl` with `PAYMENTS_API_KEY=op://Dev/Payments sandbox/credential` and added `.env` to `.gitignore`.
+
+[2026-10-01 16:36] User:
+Good. Rotate the sandbox key in the payments dashboard is still on me, I'll do it tonight.
