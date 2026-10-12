@@ -2,6 +2,7 @@
 import { parseArgs, type ParseArgsConfig } from "node:util";
 import { checkVault, renderFinding, type Finding } from "./check.ts";
 import { now } from "./clock.ts";
+import { consolidate, parseConsolidationPlan } from "./consolidate.ts";
 import { writeDump } from "./dump.ts";
 import { listDumps } from "./duplicates.ts";
 import { BrainDumpError, describeFsError, DumpNotWrittenError, errnoCode, UsageError } from "./errors.ts";
@@ -75,6 +76,13 @@ async function main(argv: string[]): Promise<number> {
     case "pointer": {
       const lines = pointerLines(projectOf(process.cwd()));
       if (lines.length > 0) process.stdout.write(`${lines.join("\n")}\n`);
+      return 0;
+    }
+    case "consolidate": {
+      const [note, ...flags] = rest;
+      if (note === undefined || note.startsWith("-")) throw new UsageError("consolidate needs a note");
+      const { confirm } = parseOptions(flags, { confirm: { type: "boolean" } });
+      writeJson(consolidate(locateVault(), note, parseConsolidationPlan(await Bun.stdin.text()), { confirm }));
       return 0;
     }
     case "runs":

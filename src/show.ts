@@ -20,7 +20,7 @@ export function showNote(vault: Vault, name: string, { full = false } = {}): Sho
 }
 
 /** `name` is a Vault-relative path, a title, or a `[[wikilink]]`; only notes in the write allowlist can be shown (ADR 0007). */
-function findNote(vault: Vault, name: string): string {
+export function findNote(vault: Vault, name: string): string {
   const link = linkTarget(name);
   const notes = noteFiles(vault);
   const byPath = link.includes("/") || link.endsWith(".md");
