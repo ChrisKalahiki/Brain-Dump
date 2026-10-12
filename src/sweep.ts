@@ -5,7 +5,7 @@ import { countOf } from "./check.ts";
 import { claudeSessionFiles, readClaudeSession } from "./claude-sessions.ts";
 import { codexSessionFiles, readCodexSession } from "./codex-sessions.ts";
 import { now } from "./clock.ts";
-import { prepareDump, SecretRefusedError, writeDumps, type PreparedDump } from "./dump.ts";
+import { prepareDump, SecretRefusedError, writeDumps, type CoveredSession, type PreparedDump } from "./dump.ts";
 import { BrainDumpError, errnoCode } from "./errors.ts";
 import { canonical, isInside } from "./guard.ts";
 import { coveredSessions } from "./inbox.ts";
@@ -27,10 +27,10 @@ const AGENT_TIMEOUT_MS = 10 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 
 /** The pinned model every Session is drafted with. */
-const DRAFTING_MODEL = "claude-sonnet-5-5";
+export const DRAFTING_MODEL = "claude-sonnet-5-5";
 const DRAFTING_COMMAND = ["claude", "-p", "--no-session-persistence", "--model", DRAFTING_MODEL, "--tools", "", "--strict-mcp-config", "--safe-mode"];
 /** A shell command run in place of the drafting agent, so tests substitute a stub. It gets the prompt on stdin like the agent. */
-const AGENT_VARIABLE = "BRAIN_DUMP_DRAFT_AGENT";
+export const AGENT_VARIABLE = "BRAIN_DUMP_DRAFT_AGENT";
 const OPT_OUT_SETTING = "sweep-opt-out";
 
 /** One per tool: its Session logs, and how to read one; a reader gives `undefined` for a log the Sweep never drafts. */
@@ -174,24 +174,29 @@ function readIfChanged(file: string, floor: number, read: SessionReader["read"])
   }
 }
 
-type DraftOutcome =
-  | { kind: "dump"; dump: PreparedDump }
+export type DraftOutcome =
+  | { kind: "dump"; slug: string; body: string; dump: PreparedDump }
   | { kind: "no-items" }
   | { kind: "secret"; line: number; secretKind: string }
   | { kind: "invalid"; error: string }
   | { kind: "agent-failed"; error: string };
 
 function draft({ transcript, messages }: Candidate): DraftOutcome {
-  const { text, truncated } = renderTranscript(messages);
-  const reply = runAgent(sweepDraftPrompt(text));
+  const origin: DevOrigin = { ...sessionOrigin(transcript), swept: true, notes: transcript.startsAfterCompaction ? ["earlier part missing"] : [] };
+  return draftText(renderTranscript(messages), origin, { id: transcript.session, through: transcript.lastRecord });
+}
+
+/** The drafting step on one Session's extracted text: capped, drafted by one agent run, the reply parsed and checked as `write-dump` checks it. The Sweep eval runs it on fixtures. */
+export function draftText(text: string, origin: DevOrigin, session: CoveredSession): DraftOutcome {
+  const { text: capped, truncated } = capText(text);
+  const reply = runAgent(sweepDraftPrompt(capped));
   if (!reply.ok) return { kind: "agent-failed", error: reply.error };
   const parsed = parseReply(reply.stdout);
   if (parsed.kind === "no-items") return parsed;
   if (parsed.kind === "off-contract") return { kind: "agent-failed", error: `drafting agent replied outside its output contract: ${parsed.firstLine}` };
-  const notes = [...(transcript.startsAfterCompaction ? ["earlier part missing"] : []), ...(truncated ? ["truncated"] : [])];
-  const origin: DevOrigin = { ...sessionOrigin(transcript), swept: true, notes };
+  const notes = [...(origin.notes ?? []), ...(truncated ? ["truncated"] : [])];
   try {
-    return { kind: "dump", dump: prepareDump(origin, parsed.slug, parsed.body, { id: transcript.session, through: transcript.lastRecord }) };
+    return { kind: "dump", slug: parsed.slug, body: parsed.body, dump: prepareDump({ ...origin, notes }, parsed.slug, parsed.body, session) };
   } catch (error) {
     if (error instanceof SecretRefusedError) return { kind: "secret", line: error.line, secretKind: error.kind };
     if (error instanceof BrainDumpError) return { kind: "invalid", error: `invalid draft: ${error.message}` };
@@ -205,15 +210,20 @@ function sessionOrigin({ tool, cwd, branch, lastRecord }: Candidate["transcript"
   return { ...detectDevOrigin(tool, cwd, lastRecord), branch };
 }
 
-/** User and assistant text in order; over the cap, the head and the tail are kept. */
-function renderTranscript(messages: SessionMessage[]): { text: string; truncated: boolean } {
-  const text = messages.map(({ role, text, at }) => `[${datePart(at)} ${at.toTimeString().slice(0, 5)}] ${role === "user" ? "User" : "Assistant"}:\n${text}`).join("\n\n");
+/** User and assistant text in order, the form fixtures for the Sweep eval take. */
+function renderTranscript(messages: SessionMessage[]): string {
+  return messages.map(({ role, text, at }) => `[${datePart(at)} ${at.toTimeString().slice(0, 5)}] ${role === "user" ? "User" : "Assistant"}:\n${text}`).join("\n\n");
+}
+
+/** Over the cap, the head and the tail are kept. */
+export function capText(text: string): { text: string; truncated: boolean } {
   if (text.length <= TEXT_CAP) return { text, truncated: false };
   const half = TEXT_CAP / 2;
   return { text: `${text.slice(0, half)}\n\n[… ${text.length - TEXT_CAP} characters left out …]\n\n${text.slice(-half)}`, truncated: true };
 }
 
-function runAgent(prompt: string): { ok: true; stdout: string } | { ok: false; error: string } {
+/** One tool-less, unsaved run of the pinned model, or the stub in `BRAIN_DUMP_DRAFT_AGENT`. */
+export function runAgent(prompt: string): { ok: true; stdout: string } | { ok: false; error: string } {
   const override = process.env[AGENT_VARIABLE];
   const command = override === undefined || override === "" ? DRAFTING_COMMAND : ["sh", "-c", override];
   try {

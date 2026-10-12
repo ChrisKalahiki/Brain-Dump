@@ -1,0 +1,69 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import type { DevOrigin } from "../src/origin.ts";
+import { capText, draftText, DRAFTING_MODEL } from "../src/sweep.ts";
+import { checkDraft, type DraftExpectation } from "./assertions.ts";
+import type { CaseResult, Eval } from "./eval.ts";
+import { DUMP_RUBRIC, grade } from "./rubric.ts";
+
+// The Sweep's drafting step, run through the helper's own call and parsing on synthetic extracted Session text.
+
+const FIXTURES = "evals/fixtures/sweep";
+
+type SweepCase = { fixture: string; expected: DraftExpectation | "no-items" };
+
+const CASES: SweepCase[] = [
+  {
+    fixture: "cache-backend.txt",
+    expected: {
+      items: { Learnings: [1, 4], Decisions: [1, 3], Todos: [1, 3] },
+      mentions: [/sqlite/i, /WAL/, /evict|expir|older than/i],
+      never: [/semicolon/i],
+    },
+  },
+  { fixture: "readme-typo.txt", expected: "no-items" },
+  {
+    fixture: "leaked-key.txt",
+    expected: {
+      items: { Learnings: [1, 3], Decisions: [0, 2], Todos: [1, 3] },
+      mentions: [/sandbox|test mode/i, /rotat/i],
+      never: [/sk-test-FAKEf4k3K3yN0tR3alD0NotUse0000/],
+    },
+  },
+  {
+    // Over the cap: a decision sits only in the middle the cap leaves out, so the draft can't hold it.
+    fixture: "over-cap.txt",
+    expected: {
+      items: { Learnings: [1, 4], Decisions: [1, 3], Todos: [1, 3] },
+      mentions: [/zstd/i, /retention|30[- ]day/i],
+      never: [/NATS/],
+    },
+  },
+];
+
+const ORIGIN: DevOrigin = { kind: "dev", tool: "ClaudeCode", project: "harbor", location: "/fixtures/harbor", branch: "main", at: new Date("2026-10-01T18:00:00Z"), swept: true, notes: [] };
+const SESSION = { id: "fixture", through: ORIGIN.at };
+
+export const SWEEP_EVAL: Eval = {
+  name: "sweep",
+  model: DRAFTING_MODEL,
+  inputs: ["src/prompts.ts", "skills/dump/item-rules.md", "evals/sweep.ts", "evals/assertions.ts", ...CASES.map(({ fixture }) => `${FIXTURES}/${fixture}`)],
+  cases: CASES.map((sweepCase) => ({ name: sweepCase.fixture.replace(/\.txt$/, ""), run: () => runCase(sweepCase) })),
+};
+
+function runCase({ fixture, expected }: SweepCase): CaseResult {
+  const text = readFileSync(join(import.meta.dir, "..", FIXTURES, fixture), "utf8");
+  const outcome = draftText(text, ORIGIN, SESSION);
+  switch (outcome.kind) {
+    case "no-items":
+      return { failures: expected === "no-items" ? [] : ["drafted no Items"] };
+    case "dump":
+      if (expected === "no-items") return { failures: [`drafted a Dump, "${outcome.slug}", from a Session with nothing worth keeping`] };
+      return { failures: checkDraft(outcome.slug, outcome.body, expected), grade: grade(DUMP_RUBRIC, capText(text).text, outcome.body) };
+    case "secret":
+      return { failures: [`write-dump refused the body: line ${outcome.line} looks like it holds ${outcome.secretKind}`] };
+    case "invalid":
+    case "agent-failed":
+      return { failures: [outcome.error] };
+  }
+}

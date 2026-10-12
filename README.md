@@ -34,3 +34,7 @@ It leaves out Sessions in the Vault, still active in the last 2 hours, with fewe
 ```
 sweep-opt-out = ~/Projects/client-work, ~/Projects/secret
 ```
+
+## Prompt evals
+
+A change to a prompt is scored before it ships: `bun run eval [name]` runs each eval's committed synthetic fixtures on the pinned model, three runs each (`--runs N` to change), and needs every run to pass its deterministic checks. A rubric grade from the same model is printed beside the result but never gates. A passing run records the eval's input hash in `evals/passed.json`; `bun test` fails while any eval's prompts, shared rules, fixtures, checks or model have changed since. The `sweep` eval runs the Sweep's own drafting step on `evals/fixtures/sweep`.

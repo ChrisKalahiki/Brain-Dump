@@ -1,0 +1,38 @@
+[2026-09-29 14:02] User:
+The `harbor fetch` command re-downloads the tide tables every time. I want a local cache. Should we just write JSON files under ~/.cache/harbor?
+
+[2026-09-29 14:03] Assistant:
+JSON files are the simplest start. One file per station, keyed by station id, with a `fetchedAt` field so we can tell how old an entry is. Want me to sketch it?
+
+[2026-09-29 14:09] User:
+Sketch it. Also I keep forgetting the semicolon at the end of line 40 in fetch.ts, can you fix that while you're there.
+
+[2026-09-29 14:11] Assistant:
+Fixed the missing semicolon in fetch.ts:40. Here's the JSON cache sketch: `cache/<station>.json` holding `{ fetchedAt, table }`, read before fetching and written after.
+
+[2026-09-29 14:30] User:
+I ran two `harbor fetch` processes at once from the cron job and the watch command, and one of the JSON files came out half-written: `Unexpected end of JSON input`. That will keep happening.
+
+[2026-09-29 14:32] Assistant:
+Right: two processes writing the same file race, and a reader can catch a write in progress. Options: write to a temp file and rename (atomic per file, but no locking across read-modify-write), a lock file, or SQLite, which handles concurrent access for us. Bun ships `bun:sqlite`, so it adds no dependency.
+
+[2026-09-29 14:35] User:
+Let's use SQLite then. One table, `tides(station TEXT PRIMARY KEY, fetched_at INTEGER, table_json TEXT)`.
+
+[2026-09-29 14:41] Assistant:
+Done: `src/cache.ts` opens `~/.cache/harbor/cache.db` with `bun:sqlite` and creates the table if missing. I ran the two processes together again and got `SQLITE_BUSY: database is locked` from the second one.
+
+[2026-09-29 14:44] User:
+Ugh. What's the fix?
+
+[2026-09-29 14:46] Assistant:
+In the default rollback-journal mode a writer blocks readers. Setting `PRAGMA journal_mode = WAL` once on open lets readers run while one process writes, and `PRAGMA busy_timeout = 5000` makes a second writer wait up to 5 seconds instead of failing straight away. WAL mode persists in the database file, so it only needs setting once, but setting it on every open is harmless.
+
+[2026-09-29 14:52] User:
+Added both pragmas, ran the cron and the watch command together ten times, no errors. Good.
+
+[2026-09-29 14:55] User:
+The cache will grow forever though. Stations we stopped watching keep their rows. We should drop entries older than 30 days on startup, but not today. Make a note.
+
+[2026-09-29 14:56] Assistant:
+Noted: evict rows whose `fetched_at` is older than 30 days when the cache opens. Not implemented yet.

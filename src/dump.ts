@@ -60,7 +60,7 @@ export function writeDumps(vault: Vault, run: RunInfo, dumps: PreparedDump[]): {
   return { run: id, paths };
 }
 
-function toFilenameSafe(slug: string): string {
+export function toFilenameSafe(slug: string): string {
   const safe = slug.replace(OBSIDIAN_FORBIDDEN, " ").replace(/\s+/g, " ").trim();
   if (safe === "") throw new UsageError(`--slug "${slug}" has no usable characters`);
   return safe;
