@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 // Reads Claude Code's Session logs, `~/.claude/projects/<encoded cwd>/<session>.jsonl`. Their format is internal to Claude Code and changes between
 // versions, so the reader takes only user and assistant text, timestamps, `cwd` and branch, and ignores every record it doesn't recognise.
@@ -18,7 +18,7 @@ export type Transcript = {
   /** The latest timestamp of any record, or the file's modification time when no record has one. */
   lastRecord: Date;
   messages: SessionMessage[];
-  /** The first record is a `compact_boundary`, so what came before it is gone from the file. */
+  /** A `compact_boundary` comes before any message, so what came before it is gone from the file. */
   startsAfterCompaction: boolean;
 };
 
@@ -41,34 +41,40 @@ export function readClaudeSession(file: string): Transcript {
   let cwd: string | undefined;
   let branch: string | undefined;
   let lastRecord: number | undefined;
-  let startsAfterCompaction: boolean | undefined;
+  let startsAfterCompaction = false;
+  let sawMessage = false;
   for (const line of readFileSync(file, "utf8").split("\n")) {
     const row = parseRow(line);
     if (row === undefined) continue;
-    startsAfterCompaction ??= row.type === "system" && row.subtype === "compact_boundary";
-    const at = typeof row.timestamp === "string" ? new Date(row.timestamp) : undefined;
-    const time = at?.getTime();
-    if (time !== undefined && !Number.isNaN(time)) lastRecord = Math.max(lastRecord ?? time, time);
+    if (!sawMessage && row.type === "system" && row.subtype === "compact_boundary") startsAfterCompaction = true;
+    const at = parseTime(row.timestamp);
+    if (at !== undefined) lastRecord = Math.max(lastRecord ?? at.getTime(), at.getTime());
+    if (typeof row.cwd === "string") cwd = row.cwd;
+    if (typeof row.gitBranch === "string" && row.gitBranch !== "") branch = row.gitBranch;
     const role = row.type;
     if ((role !== "user" && role !== "assistant") || row.isSidechain === true || row.isMeta === true) continue;
+    sawMessage = true;
     if (typeof row.uuid === "string") {
       if (seen.has(row.uuid)) continue;
       seen.add(row.uuid);
     }
-    if (typeof row.cwd === "string") cwd = row.cwd;
-    if (typeof row.gitBranch === "string" && row.gitBranch !== "") branch = row.gitBranch;
     const text = messageText(row.message);
-    if (text !== "" && at !== undefined && time !== undefined && !Number.isNaN(time)) messages.push({ role, text, at });
+    if (text !== "" && at !== undefined) messages.push({ role, text, at });
   }
   return {
-    session: file.slice(file.lastIndexOf("/") + 1, -".jsonl".length),
+    session: basename(file, ".jsonl"),
     file,
     cwd,
     branch,
     lastRecord: lastRecord === undefined ? statSync(file).mtime : new Date(lastRecord),
     messages,
-    startsAfterCompaction: startsAfterCompaction ?? false,
+    startsAfterCompaction,
   };
+}
+
+function parseTime(timestamp: unknown): Date | undefined {
+  const at = typeof timestamp === "string" ? new Date(timestamp) : undefined;
+  return at === undefined || Number.isNaN(at.getTime()) ? undefined : at;
 }
 
 function parseRow(line: string): Record<string, unknown> | undefined {

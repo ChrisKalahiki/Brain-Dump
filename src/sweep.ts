@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, closeSync, writeSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { countOf } from "./check.ts";
@@ -7,7 +7,8 @@ import { now } from "./clock.ts";
 import { prepareDump, SecretRefusedError, writeDumps, type PreparedDump } from "./dump.ts";
 import { BrainDumpError, errnoCode } from "./errors.ts";
 import { canonical, isInside } from "./guard.ts";
-import { FILED_FOLDER, INBOX } from "./layout.ts";
+import { coveredSessions } from "./inbox.ts";
+import { INBOX } from "./layout.ts";
 import { datePart, detectDevOrigin, type DevOrigin } from "./origin.ts";
 import { NO_ITEMS_REPLY, sweepDraftPrompt } from "./prompts.ts";
 import { stateFolder } from "./runs.ts";
@@ -24,7 +25,7 @@ const AGENT_TIMEOUT_MS = 10 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 
 /** The pinned model every Session is drafted with. */
-export const DRAFTING_MODEL = "claude-sonnet-5-5";
+const DRAFTING_MODEL = "claude-sonnet-5-5";
 const DRAFTING_COMMAND = ["claude", "-p", "--no-session-persistence", "--model", DRAFTING_MODEL, "--tools", "", "--strict-mcp-config", "--safe-mode"];
 /** A shell command run in place of the drafting agent, so tests substitute a stub. It gets the prompt on stdin like the agent. */
 const AGENT_VARIABLE = "BRAIN_DUMP_DRAFT_AGENT";
@@ -90,6 +91,7 @@ export function sweep(vault: Vault): SweepSummary {
       } catch (error) {
         if (!(error instanceof BrainDumpError)) throw error;
         summary.errors.push({ error: `no Dumps written: ${error.message}` });
+        summary.carriedOver.push(...drafted.map(({ session }) => ({ session })));
         stopped = true;
       }
     }
@@ -117,21 +119,21 @@ function findCandidates(vault: Vault, at: Date, state: SweepState | undefined, s
   const since = Math.max(oldest, state?.coveredUntil === undefined ? oldest : new Date(state.coveredUntil).getTime());
   const activeCutoff = at.getTime() - ACTIVE_HOURS * HOUR_MS;
   const retry = new Set(state?.retry ?? []);
-  const covered = mergeCovered(dumpedSessions(vault), readLedger());
+  const covered = mergeCovered(coveredSessions(vault), readLedger());
   const excluded = [vault.root, ...optOutPaths()].map(canonical);
   const candidates: Candidate[] = [];
   for (const file of claudeSessionFiles()) {
     const floor = retry.has(file) ? oldest : since;
-    if (statSync(file).mtime.getTime() <= floor) continue;
-    const transcript = readClaudeSession(file);
+    const transcript = readIfChanged(file, floor);
+    if (transcript === undefined) continue;
     const last = transcript.lastRecord.getTime();
     if (last <= floor || last > activeCutoff) continue;
     const { cwd } = transcript;
+    if (cwd !== undefined && excluded.some((root) => isInside(canonical(cwd), root))) continue;
     if (cwd === undefined || !transcript.messages.some(({ role }) => role === "user")) {
       summary.unreadable.push({ file });
       continue;
     }
-    if (excluded.some((root) => isInside(canonical(cwd), root))) continue;
     const from = covered.get(transcript.session);
     if (from !== undefined && last <= from.getTime()) continue;
     const messages = from === undefined ? transcript.messages : transcript.messages.filter((message) => message.at > from);
@@ -139,6 +141,16 @@ function findCandidates(vault: Vault, at: Date, state: SweepState | undefined, s
     candidates.push({ transcript: { ...transcript, cwd }, messages });
   }
   return candidates.sort((a, b) => b.transcript.lastRecord.getTime() - a.transcript.lastRecord.getTime());
+}
+
+/** The log, unless it hasn't changed since `floor`; a log Claude Code removed meanwhile is passed over. */
+function readIfChanged(file: string, floor: number): Transcript | undefined {
+  try {
+    return statSync(file).mtime.getTime() <= floor ? undefined : readClaudeSession(file);
+  } catch (error) {
+    if (errnoCode(error) === "ENOENT") return undefined;
+    throw error;
+  }
 }
 
 type DraftOutcome =
@@ -153,8 +165,8 @@ function draft({ transcript, messages }: Candidate): DraftOutcome {
   const reply = runAgent(sweepDraftPrompt(text));
   if (!reply.ok) return { kind: "agent-failed", error: reply.error };
   const parsed = parseReply(reply.stdout);
-  if (parsed === "no-items") return { kind: "no-items" };
-  if (typeof parsed === "string") return { kind: "invalid", error: `invalid draft: ${parsed}` };
+  if (parsed.kind === "no-items") return parsed;
+  if (parsed.kind === "off-contract") return { kind: "agent-failed", error: `drafting agent replied outside its output contract: ${parsed.firstLine}` };
   const notes = [...(transcript.startsAfterCompaction ? ["earlier part missing"] : []), ...(truncated ? ["truncated"] : [])];
   const origin: DevOrigin = { ...sessionOrigin(transcript), swept: true, notes };
   try {
@@ -193,30 +205,17 @@ function runAgent(prompt: string): { ok: true; stdout: string } | { ok: false; e
   }
 }
 
-/** The slug and body, `no-items`, or why the reply breaks the output contract. */
-function parseReply(stdout: string): { slug: string; body: string } | "no-items" | string {
+type Reply = { kind: "draft"; slug: string; body: string } | { kind: "no-items" } | { kind: "off-contract"; firstLine: string };
+
+/** A reply that neither starts with a `Slug:` line nor says `No Items` is the agent failing (an error printed with exit 0), not a bad draft. */
+function parseReply(stdout: string): Reply {
   const reply = stdout.trim();
-  if (reply === NO_ITEMS_REPLY) return "no-items";
+  if (reply === NO_ITEMS_REPLY) return { kind: "no-items" };
   const [first = "", ...rest] = reply.split("\n");
   const slug = /^Slug:\s*(.+)$/.exec(first.trim())?.[1];
-  if (slug === undefined) return "the reply does not start with a Slug: line";
+  if (slug === undefined) return { kind: "off-contract", firstLine: first.trim() };
   const body = rest.join("\n").trim().replace(/^```(?:markdown)?\n([\s\S]*)\n```$/, "$1");
-  return { slug, body: `${body}\n` };
-}
-
-/** Each Session a Dump in `Inbox/` or `Inbox/Filed/` covers, through the latest `through` among them. */
-function dumpedSessions(vault: Vault): Covered {
-  const covered: Covered = new Map();
-  for (const folder of [INBOX, FILED_FOLDER].map((name) => join(vault.root, name))) {
-    if (!existsSync(folder)) continue;
-    for (const name of readdirSync(folder).filter((entry) => entry.endsWith(".md"))) {
-      const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(readFileSync(join(folder, name), "utf8"))?.[1] ?? "";
-      const session = /^session: (\S+)$/m.exec(frontmatter)?.[1];
-      const through = new Date(/^through: (\S+)$/m.exec(frontmatter)?.[1] ?? "");
-      if (session !== undefined && !Number.isNaN(through.getTime())) covered.set(session, latest(covered.get(session), through));
-    }
-  }
-  return covered;
+  return { kind: "draft", slug, body: `${body}\n` };
 }
 
 function mergeCovered(dumped: Covered, ledger: Record<string, string>): Covered {
@@ -237,22 +236,26 @@ function optOutPaths(): string[] {
     .map(expandHome);
 }
 
-/** Holds the per-machine lock for the whole Sweep; a lock left by a process that is gone is taken over. */
+/** Holds the per-machine lock for the whole Sweep. The lock file appears with its pid already in it, so it is never read half-written; one left by a process that is gone is taken over. */
 function withLock<T>(work: () => T): T {
   const path = join(stateFolder(), "sweep.lock");
+  const claim = `${path}.${process.pid}`;
   mkdirSync(stateFolder(), { recursive: true });
-  for (let attempt = 0; ; attempt++) {
-    try {
-      const fd = openSync(path, "wx");
-      writeSync(fd, String(process.pid));
-      closeSync(fd);
-      break;
-    } catch (error) {
-      if (errnoCode(error) !== "EEXIST" || attempt > 0) throw error;
-      const holder = Number(readFileSync(path, "utf8"));
-      if (isAlive(holder)) throw new BrainDumpError(`another Sweep is running (pid ${holder})`);
-      rmSync(path, { force: true });
+  writeFileSync(claim, String(process.pid));
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        linkSync(claim, path);
+        break;
+      } catch (error) {
+        if (errnoCode(error) !== "EEXIST") throw error;
+        const holder = Number(readFileSync(path, "utf8"));
+        if (attempt > 0 || isAlive(holder)) throw new BrainDumpError(`another Sweep is running (pid ${holder})`);
+        rmSync(path, { force: true });
+      }
     }
+  } finally {
+    rmSync(claim, { force: true });
   }
   try {
     return work();
@@ -272,8 +275,7 @@ function isAlive(pid: number): boolean {
 }
 
 function readState(): SweepState | undefined {
-  const path = join(stateFolder(), "sweep.json");
-  return existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as SweepState) : undefined;
+  return readJson<SweepState>(join(stateFolder(), "sweep.json"));
 }
 
 function writeState(state: SweepState): void {
@@ -282,8 +284,18 @@ function writeState(state: SweepState): void {
 
 /** The skip ledger: Sessions judged not worth keeping, through the last record read. */
 function readLedger(): Record<string, string> {
-  const path = join(stateFolder(), "sweep-ledger.json");
-  return existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as Record<string, string>) : {};
+  return readJson<Record<string, string>>(join(stateFolder(), "sweep-ledger.json")) ?? {};
+}
+
+/** Brain-Dump wrote the file itself, so its shape is trusted; a file that isn't JSON is named rather than crashing the Sweep. */
+function readJson<T>(path: string): T | undefined {
+  if (!existsSync(path)) return undefined;
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as T;
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new BrainDumpError(`${path} is not valid JSON; delete it to start the Sweep's state afresh`);
+    throw error;
+  }
 }
 
 function writeLedger(ledger: Record<string, string>): void {

@@ -26,7 +26,7 @@ function record(session: string, cwd: string, { role, text, at }: Message, extra
   };
 }
 
-function conversation(start: string, turns: number, topic = "Question"): Message[] {
+function exchanges(start: string, turns: number, topic = "Question"): Message[] {
   const at = (minutes: number): string => new Date(new Date(start).getTime() + minutes * 60_000).toISOString();
   return Array.from({ length: turns }, (_, turn) => [
     { role: "user" as const, text: `${topic} ${turn + 1}`, at: at(turn * 2) },
@@ -45,8 +45,8 @@ function writeSession(sandbox: Sandbox, session: string, cwd: string, rows: unkn
   return path;
 }
 
-function writeConversation(sandbox: Sandbox, session: string, cwd: string, start: string, turns = 3, topic = "Question"): string {
-  return writeSession(sandbox, session, cwd, conversation(start, turns, topic).map((message) => record(session, cwd, message)));
+function writeSessionLog(sandbox: Sandbox, session: string, cwd: string, start: string, turns = 3, topic = "Question"): string {
+  return writeSession(sandbox, session, cwd, exchanges(start, turns, topic).map((message) => record(session, cwd, message)));
 }
 
 type Reply = { reply: string; exitCode?: number };
@@ -99,7 +99,7 @@ describe("sweep drafts each uncaptured Claude Code Session into a Dump", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    writeConversation(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
+    writeSessionLog(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
 
     // #when
     const result = sweep(sandbox, stubAgent(sandbox, `Slug: bun zstd\n${BODY}`));
@@ -119,32 +119,32 @@ const EMPTY = { run: null, written: [], skipped: [], unreadable: [], secretRefus
 
 describe("sweep leaves out Sessions it should not draft", () => {
   const cases: [string, (sandbox: Sandbox, repo: string) => void][] = [
-    ["a subagent transcript", (sandbox, repo) => writeSession(sandbox, "s-1", repo, conversation("2026-10-11T15:00:00Z", 3).map((message) => record("s-1", repo, message)), "s-1/subagents/agent-a1.jsonl")],
-    ["an older-style agent- transcript", (sandbox, repo) => writeSession(sandbox, "agent-a1", repo, conversation("2026-10-11T15:00:00Z", 3).map((message) => record("agent-a1", repo, message)))],
-    ["an .orphaned- copy", (sandbox, repo) => writeSession(sandbox, "s-1", repo, conversation("2026-10-11T15:00:00Z", 3).map((message) => record("s-1", repo, message)), "s-1.orphaned-20261011-ab12.jsonl")],
-    ["a .superseded- copy", (sandbox, repo) => writeSession(sandbox, "s-1", repo, conversation("2026-10-11T15:00:00Z", 3).map((message) => record("s-1", repo, message)), "s-1.jsonl.superseded-20261011")],
-    ["a Session active in the last 2 hours", (sandbox, repo) => writeConversation(sandbox, "s-1", repo, "2026-10-12T02:10:00Z")],
-    ["a Session last active more than 28 days ago", (sandbox, repo) => writeConversation(sandbox, "s-1", repo, "2026-09-13T15:00:00Z")],
-    ["a Session with fewer than 3 user messages", (sandbox, repo) => writeConversation(sandbox, "s-1", repo, "2026-10-11T15:00:00Z", 2)],
-    ["a Session inside the Vault", (sandbox) => writeConversation(sandbox, "s-1", join(sandbox.vault, "Research"), "2026-10-11T15:00:00Z")],
+    ["a subagent transcript", (sandbox, repo) => writeSession(sandbox, "s-1", repo, exchanges("2026-10-11T15:00:00Z", 3).map((message) => record("s-1", repo, message)), "s-1/subagents/agent-a1.jsonl")],
+    ["an older-style agent- transcript", (sandbox, repo) => writeSession(sandbox, "agent-a1", repo, exchanges("2026-10-11T15:00:00Z", 3).map((message) => record("agent-a1", repo, message)))],
+    ["an .orphaned- copy", (sandbox, repo) => writeSession(sandbox, "s-1", repo, exchanges("2026-10-11T15:00:00Z", 3).map((message) => record("s-1", repo, message)), "s-1.orphaned-20261011-ab12.jsonl")],
+    ["a .superseded- copy", (sandbox, repo) => writeSession(sandbox, "s-1", repo, exchanges("2026-10-11T15:00:00Z", 3).map((message) => record("s-1", repo, message)), "s-1.jsonl.superseded-20261011")],
+    ["a Session active in the last 2 hours", (sandbox, repo) => writeSessionLog(sandbox, "s-1", repo, "2026-10-12T02:10:00Z")],
+    ["a Session last active more than 28 days ago", (sandbox, repo) => writeSessionLog(sandbox, "s-1", repo, "2026-09-13T15:00:00Z")],
+    ["a Session with fewer than 3 user messages", (sandbox, repo) => writeSessionLog(sandbox, "s-1", repo, "2026-10-11T15:00:00Z", 2)],
+    ["a Session inside the Vault", (sandbox) => writeSessionLog(sandbox, "s-1", join(sandbox.vault, "Research"), "2026-10-11T15:00:00Z")],
     [
       "a Session in an opted-out repo",
       (sandbox, repo) => {
         writeConfig(sandbox, "sweep-opt-out = ~/Elsewhere, ~/Projects/Brain-Dump\n");
-        writeConversation(sandbox, "s-1", join(repo, "src"), "2026-10-11T15:00:00Z");
+        writeSessionLog(sandbox, "s-1", join(repo, "src"), "2026-10-11T15:00:00Z");
       },
     ],
     [
       "a Session covered by a Dump in the Inbox",
       (sandbox, repo) => {
-        writeConversation(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
+        writeSessionLog(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
         run(sandbox, [...writeDumpArgs("manual"), "--session", "s-1", "--through", "2026-10-11T15:05:00Z"], { stdin: BODY });
       },
     ],
     [
       "a Session covered by a filed Dump",
       (sandbox, repo) => {
-        writeConversation(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
+        writeSessionLog(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
         mkdirSync(join(sandbox.vault, "Inbox", "Filed"), { recursive: true });
         writeFileSync(join(sandbox.vault, "Inbox", "Filed", "2026-10-11 1505 Brain-Dump - manual.md"), `---\ntags:\n  - dump\nsession: s-1\nthrough: 2026-10-11T15:06:00.000Z\n---\nSession: Claude Code\n\n${BODY}`);
       },
@@ -172,11 +172,27 @@ describe("sweep leaves out Sessions it should not draft", () => {
     });
   }
 
+  test("never reports an unreadable log from the Vault or an opted-out repo", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const repo = makeRepo(sandbox, "Brain-Dump", "main");
+    writeConfig(sandbox, `sweep-opt-out = ${repo}\n`);
+    for (const [session, cwd] of [["s-vault", sandbox.vault], ["s-opted", repo]] as const) {
+      writeSession(sandbox, session, cwd, [{ type: "message-v9", timestamp: "2026-10-11T15:00:00Z", cwd, payload: {} }]);
+    }
+
+    // #when
+    const result = sweep(sandbox, stubAgent(sandbox, `Slug: s\n${BODY}`));
+
+    // #then
+    expect(result.summary.unreadable).toEqual([]);
+  });
+
   test("drafts a Session left out while active once it has gone quiet, on the next day's Sweep", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    writeConversation(sandbox, "s-1", repo, "2026-10-12T02:10:00Z");
+    writeSessionLog(sandbox, "s-1", repo, "2026-10-12T02:10:00Z");
     const env = stubAgent(sandbox, `Slug: s\n${BODY}`);
     sweep(sandbox, env);
 
@@ -191,7 +207,7 @@ describe("sweep leaves out Sessions it should not draft", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    writeConversation(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
+    writeSessionLog(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
     sweep(sandbox, stubAgent(sandbox, "No Items"));
 
     // #when
@@ -207,7 +223,7 @@ describe("sweep reads only what a Session said", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    const [ask, answer, ...rest] = conversation("2026-10-11T15:00:00Z", 3).map((message) => record("s-1", repo, message));
+    const [ask, answer, ...rest] = exchanges("2026-10-11T15:00:00Z", 3).map((message) => record("s-1", repo, message));
     writeSession(sandbox, "s-1", repo, [
       { type: "file-history-snapshot", messageId: "m", snapshot: {} },
       ask,
@@ -237,7 +253,7 @@ describe("sweep reads only what a Session said", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    writeConversation(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
+    writeSessionLog(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
 
     // #when
     sweep(sandbox, stubAgent(sandbox, `Slug: s\n${BODY}`));
@@ -252,7 +268,7 @@ describe("sweep reads only what a Session said", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    const rows = [...conversation("2026-10-11T15:00:00Z", 3, "Early"), ...conversation("2026-10-11T18:00:00Z", 3, "Later")].map((message) => record("s-1", repo, message));
+    const rows = [...exchanges("2026-10-11T15:00:00Z", 3, "Early"), ...exchanges("2026-10-11T18:00:00Z", 3, "Later")].map((message) => record("s-1", repo, message));
     writeSession(sandbox, "s-1", repo, rows);
     run(sandbox, [...writeDumpArgs("manual"), "--session", "s-1", "--through", "2026-10-11T15:05:00Z"], { stdin: BODY });
 
@@ -270,7 +286,7 @@ describe("sweep reads only what a Session said", () => {
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
     const boundary = { type: "system", subtype: "compact_boundary", timestamp: "2026-10-11T14:59:00Z", compactMetadata: { trigger: "auto" } };
-    writeSession(sandbox, "s-1", repo, [boundary, ...conversation("2026-10-11T15:00:00Z", 3).map((message) => record("s-1", repo, message))]);
+    writeSession(sandbox, "s-1", repo, [{ type: "permission-mode", permissionMode: "default" }, boundary, ...exchanges("2026-10-11T15:00:00Z", 3).map((message) => record("s-1", repo, message))]);
 
     // #when
     const result = sweep(sandbox, stubAgent(sandbox, `Slug: s\n${BODY}`));
@@ -314,7 +330,7 @@ describe("sweep reports and retries a file it cannot read", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    const file = writeSession(sandbox, "s-1", repo, [{ type: "conversation-v9", timestamp: "2026-10-11T15:00:00Z", payload: { text: "Question 1" } }]);
+    const file = writeSession(sandbox, "s-1", repo, [{ type: "message-v9", timestamp: "2026-10-11T15:00:00Z", payload: { text: "Question 1" } }]);
     const env = stubAgent(sandbox, `Slug: s\n${BODY}`);
 
     // #when
@@ -336,7 +352,7 @@ describe("sweep is bounded", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    for (let n = 1; n <= 27; n++) writeConversation(sandbox, `s-${String(n).padStart(2, "0")}`, repo, new Date(Date.parse("2026-10-11T00:00:00Z") + n * 30 * 60_000).toISOString(), 3, `Topic ${n}`);
+    for (let n = 1; n <= 27; n++) writeSessionLog(sandbox, `s-${String(n).padStart(2, "0")}`, repo, new Date(Date.parse("2026-10-11T00:00:00Z") + n * 30 * 60_000).toISOString(), 3, `Topic ${n}`);
     const env = stubAgent(sandbox, "No Items");
 
     // #when
@@ -358,7 +374,7 @@ describe("sweep handles what the drafting agent does", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    writeConversation(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
+    writeSessionLog(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
 
     // #when
     const result = sweep(sandbox, stubAgent(sandbox, "No Items\n"));
@@ -371,10 +387,10 @@ describe("sweep handles what the drafting agent does", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    writeConversation(sandbox, "s-new", repo, "2026-10-11T20:00:00Z", 3, "Newest");
-    writeConversation(sandbox, "s-mid", repo, "2026-10-11T18:00:00Z", 3, "Middle");
-    writeConversation(sandbox, "s-old", repo, "2026-10-11T15:00:00Z", 3, "Oldest");
-    writeConversation(sandbox, "s-oldest", repo, "2026-10-11T12:00:00Z", 3, "Ancient");
+    writeSessionLog(sandbox, "s-new", repo, "2026-10-11T20:00:00Z", 3, "Newest");
+    writeSessionLog(sandbox, "s-mid", repo, "2026-10-11T18:00:00Z", 3, "Middle");
+    writeSessionLog(sandbox, "s-old", repo, "2026-10-11T15:00:00Z", 3, "Oldest");
+    writeSessionLog(sandbox, "s-oldest", repo, "2026-10-11T12:00:00Z", 3, "Ancient");
     const failing = stubAgent(sandbox, `Slug: newest\n${BODY}`, { Middle: { reply: "No Items" }, Oldest: { reply: "rate limited", exitCode: 1 } });
 
     // #when
@@ -397,14 +413,13 @@ describe("sweep handles what the drafting agent does", () => {
     });
   });
 
-  test("reports and skips a reply that breaks the output contract or the Dump rules, and goes on", () => {
+  test("reports and skips a body that breaks the Dump rules, and goes on", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    writeConversation(sandbox, "s-junk", repo, "2026-10-11T20:00:00Z", 3, "Junk");
-    writeConversation(sandbox, "s-bad", repo, "2026-10-11T18:00:00Z", 3, "Bad");
-    writeConversation(sandbox, "s-good", repo, "2026-10-11T15:00:00Z", 3, "Good");
-    const env = stubAgent(sandbox, `Slug: good\n${BODY}`, { Junk: { reply: "Sure! Here are some thoughts." }, Bad: { reply: "Slug: bad\n## Notes\n- [ ] x\n" } });
+    writeSessionLog(sandbox, "s-bad", repo, "2026-10-11T18:00:00Z", 3, "Bad");
+    writeSessionLog(sandbox, "s-good", repo, "2026-10-11T15:00:00Z", 3, "Good");
+    const env = stubAgent(sandbox, `Slug: good\n${BODY}`, { Bad: { reply: "Slug: bad\n## Notes\n- [ ] x\n" } });
 
     // #when
     const result = sweep(sandbox, env);
@@ -412,10 +427,26 @@ describe("sweep handles what the drafting agent does", () => {
     // #then
     expect({ written: result.summary.written.map(({ session }) => session), errors: result.summary.errors }).toEqual({
       written: ["s-good"],
-      errors: [
-        { session: "s-junk", error: "invalid draft: the reply does not start with a Slug: line" },
-        { session: "s-bad", error: 'invalid draft: invalid Dump body: unexpected section "## Notes"' },
-      ],
+      errors: [{ session: "s-bad", error: 'invalid draft: invalid Dump body: unexpected section "## Notes"' }],
+    });
+  });
+
+  test("treats a reply outside the output contract as an agent failure and stops", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const repo = makeRepo(sandbox, "Brain-Dump", "main");
+    writeSessionLog(sandbox, "s-junk", repo, "2026-10-11T20:00:00Z", 3, "Junk");
+    writeSessionLog(sandbox, "s-good", repo, "2026-10-11T15:00:00Z", 3, "Good");
+    const env = stubAgent(sandbox, `Slug: good\n${BODY}`, { Junk: { reply: "Error: credit balance too low" } });
+
+    // #when
+    const result = sweep(sandbox, env);
+
+    // #then
+    expect({ written: result.summary.written, carriedOver: result.summary.carriedOver, errors: result.summary.errors }).toEqual({
+      written: [],
+      carriedOver: [{ session: "s-junk" }, { session: "s-good" }],
+      errors: [{ session: "s-junk", error: "drafting agent replied outside its output contract: Error: credit balance too low" }],
     });
   });
 
@@ -423,7 +454,7 @@ describe("sweep handles what the drafting agent does", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    writeConversation(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
+    writeSessionLog(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
 
     // #when
     const result = sweep(sandbox, stubAgent(sandbox, `Slug: s\n\n\`\`\`markdown\n${BODY}\`\`\`\n`));
@@ -436,7 +467,7 @@ describe("sweep handles what the drafting agent does", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    writeConversation(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
+    writeSessionLog(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
     const secret = "ghp_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789";
 
     // #when
@@ -456,7 +487,7 @@ describe("sweep when the Dumps can't be written", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    writeConversation(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
+    writeSessionLog(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
     const env = stubAgent(sandbox, `Slug: s\n${BODY}`);
     const inboxFolder = join(sandbox.vault, "Inbox");
     mkdirSync(inboxFolder);
@@ -476,13 +507,35 @@ describe("sweep when the Dumps can't be written", () => {
   });
 });
 
+describe("sweep keeps a carried-over Session until it is written", () => {
+  test("retries a carried-over Session whose Dump could not be written", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const repo = makeRepo(sandbox, "Brain-Dump", "main");
+    for (let n = 1; n <= 26; n++) writeSessionLog(sandbox, `s-${String(n).padStart(2, "0")}`, repo, new Date(Date.parse("2026-10-11T00:00:00Z") + n * 30 * 60_000).toISOString(), 3, `Topic ${n}`);
+    sweep(sandbox, stubAgent(sandbox, "No Items"));
+    const env = stubAgent(sandbox, `Slug: s\n${BODY}`);
+    const inboxFolder = join(sandbox.vault, "Inbox");
+    mkdirSync(inboxFolder, { recursive: true });
+    chmodSync(inboxFolder, 0o500);
+    sweep(sandbox, env, "2026-10-13T04:00:00Z");
+    chmodSync(inboxFolder, 0o755);
+
+    // #when
+    const result = sweep(sandbox, env, "2026-10-14T04:00:00Z");
+
+    // #then
+    expect(result.summary.written.map(({ session }) => session)).toEqual(["s-01"]);
+  });
+});
+
 describe("one Sweep is one Run", () => {
   test("journals every Dump it wrote as a single sweep Run that undo reverses", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    writeConversation(sandbox, "s-1", repo, "2026-10-11T15:00:00Z", 3, "First");
-    writeConversation(sandbox, "s-2", repo, "2026-10-11T18:00:00Z", 3, "Second");
+    writeSessionLog(sandbox, "s-1", repo, "2026-10-11T15:00:00Z", 3, "First");
+    writeSessionLog(sandbox, "s-2", repo, "2026-10-11T18:00:00Z", 3, "Second");
     const result = sweep(sandbox, stubAgent(sandbox, `Slug: s\n${BODY}`));
 
     // #when
@@ -503,7 +556,7 @@ describe("sweep --last", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    writeConversation(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
+    writeSessionLog(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
     const swept = sweep(sandbox, stubAgent(sandbox, "No Items"));
 
     // #when
@@ -536,7 +589,7 @@ describe("the Sweep's per-machine lock", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    writeConversation(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
+    writeSessionLog(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
     lock(sandbox, process.pid);
 
     // #when
@@ -550,7 +603,7 @@ describe("the Sweep's per-machine lock", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    writeConversation(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
+    writeSessionLog(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
     const gone = Bun.spawnSync(["true"]).pid;
     lock(sandbox, gone);
 
