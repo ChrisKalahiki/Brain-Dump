@@ -36,51 +36,69 @@ link "$repo/skills/recall" "$HOME/.claude/skills/recall"
 link "$repo/skills/recall" "$HOME/.agents/skills/recall"
 
 guard_command="$HOME/.local/bin/brain-dump guard"
+pointer_command="$HOME/.local/bin/brain-dump pointer"
 
-# Merges a PreToolUse entry running the guard into a Claude Code settings file or Codex hooks file.
-install_guard() {
-  local path="$1" matcher="$2"
-  GUARD_COMMAND="$guard_command" HOOKS_FILE="$path" MATCHER="$matcher" bun -e '
+# Merges an entry running a command on a hook event into a Claude Code settings file or Codex hooks file; an empty matcher matches everything.
+install_hook() {
+  local path="$1" event="$2" command="$3" matcher="$4"
+  HOOK_COMMAND="$command" HOOKS_FILE="$path" HOOK_EVENT="$event" MATCHER="$matcher" bun -e '
     import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
     import { dirname } from "node:path";
-    const { GUARD_COMMAND: command, HOOKS_FILE: path, MATCHER: matcher } = process.env;
+    const { HOOK_COMMAND: command, HOOKS_FILE: path, HOOK_EVENT: event, MATCHER: matcher } = process.env;
     const settings = existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : {};
-    ((settings.hooks ??= {}).PreToolUse ??= []).push({ matcher, hooks: [{ type: "command", command, timeout: 5 }] });
+    const hooks = [{ type: "command", command, timeout: 5 }];
+    ((settings.hooks ??= {})[event] ??= []).push(matcher ? { matcher, hooks } : { hooks });
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(`${path}.brain-dump-tmp`, `${JSON.stringify(settings, null, 2)}\n`);
     renameSync(`${path}.brain-dump-tmp`, path);
-    console.log(`added the Vault guard to ${path}`);
   '
 }
 
-# Asks before installing the guard in one tool; skips a file that already runs it.
-offer_guard() {
-  local path="$1" matcher="$2" tool="$3" covers="$4" after="${5:-}" answer
-  local removal="To remove it, delete the PreToolUse entry running \"$guard_command\" from $path."
-  if [[ -f "$path" ]] && grep -qF "\"$guard_command\"" "$path"; then
-    echo "Vault guard already in $path. $removal"
+# Asks before adding a hook to one tool's file; skips a file that already runs its command.
+offer_hook() {
+  local path="$1" event="$2" command="$3" matcher="$4" name="$5" pitch="$6" after="${7:-}" answer
+  local removal="To remove it, delete the $event entry running \"$command\" from $path."
+  if [[ -f "$path" ]] && grep -qF "\"$command\"" "$path"; then
+    echo "$name already in $path. $removal"
     [[ -z "$after" ]] || echo "$after"
     return
   fi
   echo
-  echo "The Vault guard is a $tool hook that stops agents reaching the Vault except through brain-dump."
-  echo "It runs before every $covers call, in every project."
+  echo "$pitch"
   echo "$removal"
   read -r -p "Install it in $path? [Y/n] " answer || answer=""
   if [[ "$answer" =~ ^[Nn] ]]; then
     return
   fi
-  if install_guard "$path" "$matcher"; then
+  if install_hook "$path" "$event" "$command" "$matcher"; then
+    echo "added the $name to $path"
     [[ -z "$after" ]] || echo "$after"
   else
-    echo "brain-dump install: could not update $path; the Vault guard is not installed" >&2
+    echo "brain-dump install: could not update $path; the $name is not installed" >&2
   fi
 }
 
+offer_guard() {
+  local path="$1" matcher="$2" tool="$3" covers="$4" after="${5:-}"
+  offer_hook "$path" PreToolUse "$guard_command" "$matcher" "Vault guard" \
+    "The Vault guard is a $tool hook that stops agents reaching the Vault except through brain-dump.
+It runs before every $covers call, in every project." "$after"
+}
+
+offer_pointer() {
+  local path="$1" tool="$2" after="${3:-}"
+  offer_hook "$path" SessionStart "$pointer_command" "" "Vault pointer" \
+    "The Vault pointer is a $tool hook that names this repo's Vault notes and any Vault findings when a Session starts.
+It runs at the start of every Session, in every project, and prints nothing when there is nothing to say." "$after"
+}
+
+codex_trust="Codex skips new hooks until you trust them: run /hooks in Codex once and trust the brain-dump entries."
+
 offer_guard "$HOME/.claude/settings.json" "Edit|Write|NotebookEdit|MultiEdit|Read|Grep|Glob|Bash|PowerShell" "Claude Code" \
   "file-tool (Edit, Write, NotebookEdit, MultiEdit, Read, Grep, Glob) and shell (Bash, PowerShell)"
-offer_guard "$HOME/.codex/hooks.json" "Bash|apply_patch" "Codex" "shell (Bash) and apply_patch" \
-  "Codex skips new hooks until you trust them: run /hooks in Codex once and trust the brain-dump guard entry."
+offer_guard "$HOME/.codex/hooks.json" "Bash|apply_patch" "Codex" "shell (Bash) and apply_patch" "$codex_trust"
+offer_pointer "$HOME/.claude/settings.json" "Claude Code"
+offer_pointer "$HOME/.codex/hooks.json" "Codex" "$codex_trust"
 
 cat <<EOF
 

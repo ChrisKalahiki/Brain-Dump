@@ -9,6 +9,7 @@ import { applyFilingPlan, parseFilingPlan } from "./filing.ts";
 import { guard } from "./guard.ts";
 import { listUnfiledDumps, summarize } from "./inbox.ts";
 import { listNotes } from "./notes.ts";
+import { pointerLines } from "./pointer.ts";
 import { parseRecallQuery, recall } from "./recall.ts";
 import { readRoutesNote } from "./routes.ts";
 import { listRuns } from "./runs.ts";
@@ -68,6 +69,11 @@ async function main(argv: string[]): Promise<number> {
     }
     case "check":
       return runCheck(rest);
+    case "pointer": {
+      const lines = pointerLines(projectOf(process.cwd()));
+      if (lines.length > 0) process.stdout.write(`${lines.join("\n")}\n`);
+      return 0;
+    }
     case "runs":
       writeJson(listRuns());
       return 0;
