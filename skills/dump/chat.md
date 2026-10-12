@@ -10,7 +10,7 @@ The chat-app branch of `dump`: the Session lives in Claude web, ChatGPT or Gemin
 
 The chat app was given the saved chat prompt, so the paste holds a `Slug:` line and a fenced `markdown` block with the body.
 
-- Body: the contents of that block, unchanged. If the helper rejects it as `invalid Dump body`, fix only the formatting rule it names (indentation, a missing `#todo`, a stray line) and tell the user what you adjusted; the wording of every Item stays as the chat app wrote it.
+- Body: the contents of that block, unchanged. If the helper rejects it as `invalid Dump body`, fix only the formatting rule it names (indentation, a missing `#todo`, a stray line) and tell the user what you adjusted; the wording of every Item stays as the chat app wrote it. If it refuses it as `Dump refused: line N looks like it holds …`, take the secret out of that Item and tell the user.
 - Slug: from the `Slug:` line; write one (2–6 words) if it is missing.
 
 Done when you hold the body exactly as pasted and a slug.
@@ -39,11 +39,13 @@ The JavaScript tool truncates long results, so read the transcript through the p
 
 **ChatGPT, Gemini, or the fallback**: read the page text, loading earlier messages until the first one is on the page.
 
-Then pick the Items and write the body and slug exactly as `SKILL.md` steps 1–2 describe, treating the chat as the Session.
+Then pick the Items and write the body and slug exactly as `item-rules.md` describes, treating the chat as the conversation.
 
 Done when the body covers the chat from its first message to its last. If the start of the chat can't be read, say so to the user and suggest `--paste` for this one.
 
 ## Options for step 3
+
+The helper records no Session id for a chat tool.
 
 ```bash
 brain-dump write-dump --tool <ClaudeWeb|ChatGPT|Gemini> --slug "<slug>" [--chat-url "<url>"] [--project "<project>"] <<'DUMP'
