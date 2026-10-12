@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { chatDumpPrompt, ITEM_RULES_PATH } from "../src/prompts.ts";
+import { CHAT_DUMP_PATH, chatDumpPrompt, ITEM_RULES_PATH } from "../src/prompts.ts";
 
 const ROOT = join(import.meta.dir, "..");
 
 describe("the shared Item rules", () => {
   test("prompts/chat-dump.md is the prompt built from them, so the paste text can't drift", () => {
     // #given
-    const committed = readFileSync(join(ROOT, "prompts", "chat-dump.md"), "utf8");
+    const committed = readFileSync(CHAT_DUMP_PATH, "utf8");
 
     // #when
     const built = chatDumpPrompt();
@@ -28,7 +28,7 @@ describe("the shared Item rules", () => {
     expect(built).toContain(fragment);
   });
 
-  test("the dump skill reads the fragment from its own folder", () => {
+  test("the dump skill reads the fragment", () => {
     // #given
     const skill = readFileSync(join(ROOT, "skills", "dump", "SKILL.md"), "utf8");
 
@@ -36,6 +36,6 @@ describe("the shared Item rules", () => {
     const reads = skill.includes("`item-rules.md`");
 
     // #then
-    expect({ reads, fragmentInSkillFolder: ITEM_RULES_PATH }).toEqual({ reads: true, fragmentInSkillFolder: join(ROOT, "skills", "dump", "item-rules.md") });
+    expect(reads).toBe(true);
   });
 });

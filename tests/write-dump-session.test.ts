@@ -52,6 +52,41 @@ describe("write-dump records the Session a Dump covers", () => {
     expect(frontmatter(result.stdout.trim())).toBe("---\ntags:\n  - dump\n  - AIGenerated\n  - ClaudeCode\n---\n");
   });
 
+  test("takes the session id from the tool's own variable when --session is absent", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const env = { CLAUDE_CODE_SESSION_ID: SESSION, CODEX_THREAD_ID: "codex-thread" };
+
+    // #when
+    const claude = run(sandbox, writeDumpArgs("a"), { stdin: BODY, env });
+    const codex = run(sandbox, writeDumpArgs("b", "Codex"), { stdin: BODY, env });
+
+    // #then
+    expect([claude, codex].map((result) => frontmatter(result.stdout.trim()).split("\n")[5])).toEqual([`session: ${SESSION}`, "session: codex-thread"]);
+  });
+
+  test("leaves the session out for a chat tool, whatever the environment holds", () => {
+    // #given
+    const sandbox = makeSandbox();
+
+    // #when
+    const result = run(sandbox, writeDumpArgs("s", "ChatGPT"), { stdin: BODY, env: { CLAUDE_CODE_SESSION_ID: SESSION } });
+
+    // #then
+    expect(frontmatter(result.stdout.trim())).not.toContain("session:");
+  });
+
+  test("an empty --session overrides the variable, as a focused dump passes it", () => {
+    // #given
+    const sandbox = makeSandbox();
+
+    // #when
+    const result = run(sandbox, [...writeDumpArgs("s"), "--session", ""], { stdin: BODY, env: { CLAUDE_CODE_SESSION_ID: SESSION } });
+
+    // #then
+    expect(frontmatter(result.stdout.trim())).not.toContain("session:");
+  });
+
   const usageErrors: [string, string[], string][] = [
     ["--through without --session", ["--through", "2026-10-05T18:00:00Z"], "--through needs --session"],
     ["a through that isn't a time", ["--session", SESSION, "--through", "later"], `--through "later" is not a date and time`],
@@ -116,6 +151,7 @@ describe("write-dump refuses a body that looks like it holds a secret", () => {
     ["an AWS secret key", "aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"],
     ["a PEM header", "-----BEGIN OPENSSH PRIVATE KEY-----"],
     ["a password assignment", "PASSWORD=hunter2"],
+    ["a prefixed password variable", "DB_PASSWORD=hunter2"],
   ];
 
   for (const [name, secret] of secrets) {
@@ -128,11 +164,11 @@ describe("write-dump refuses a body that looks like it holds a secret", () => {
       const result = run(sandbox, writeDumpArgs("s"), { stdin: body });
 
       // #then
-      expect({ exitCode: result.exitCode, stdout: result.stdout, leaked: result.stderr.includes(secret), stderr: result.stderr.split(":")[1], written: inboxFiles(sandbox.vault) }).toEqual({
+      expect({ exitCode: result.exitCode, stdout: result.stdout, leaked: result.stderr.includes(secret), refused: result.stderr.startsWith("brain-dump: Dump refused: line 3 looks like it holds "), written: inboxFiles(sandbox.vault) }).toEqual({
         exitCode: 1,
         stdout: "",
         leaked: false,
-        stderr: " Dump refused",
+        refused: true,
         written: [],
       });
     });
@@ -153,7 +189,7 @@ describe("write-dump refuses a body that looks like it holds a secret", () => {
   test("lets ordinary prose about secrets through", () => {
     // #given
     const sandbox = makeSandbox();
-    const body = "## Learnings\n- [ ] Store the password in 1Password, never in a skill-sk file or ghp_ prefix docs.\n";
+    const body = "## Learnings\n- [ ] Store the password in 1Password, never in a skill-sk file, ghp_ prefix docs or a `password=` line.\n";
 
     // #when
     const result = run(sandbox, writeDumpArgs("s"), { stdin: body });

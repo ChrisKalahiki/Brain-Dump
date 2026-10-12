@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
 export const ITEM_RULES_PATH = join(ROOT, "skills", "dump", "item-rules.md");
-const CHAT_DUMP_PATH = join(ROOT, "prompts", "chat-dump.md");
+export const CHAT_DUMP_PATH = join(ROOT, "prompts", "chat-dump.md");
 
 const CHAT_INTRO = `<!-- Built from skills/dump/item-rules.md by \`bun run prompts\`; edit that file, not this one. -->
 When I say **"dump"**, turn this conversation into a Dump: the things worth keeping a month from now, for my notes. Follow these rules.

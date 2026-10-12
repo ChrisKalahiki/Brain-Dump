@@ -7,7 +7,7 @@ const SECRET_PATTERNS: [kind: string, pattern: RegExp][] = [
   ["an AWS access key id", /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/],
   ["an AWS secret key", /\baws_secret_access_key\s*[=:]\s*\S/i],
   ["a PEM block", /-----BEGIN [A-Z0-9 ]+-----/],
-  ["a password", /\bpassword\s*=\s*\S/i],
+  ["a password", /password\s*=\s*[^\s`]/i],
 ];
 
 /** The first line (1-based) holding a secret, and what kind it looks like; never the secret itself. */

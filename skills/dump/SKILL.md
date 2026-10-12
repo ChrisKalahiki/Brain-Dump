@@ -24,12 +24,12 @@ Write the body and slug exactly as `item-rules.md` shows.
 Run the helper from the Session's working directory, passing the tool tag: the tool you are running in (`ClaudeCode` or `Codex`), or for a chat Session the tag `chat.md` names. In Codex, the helper writes outside the workspace, so run it with escalated permissions from the first attempt: the user approves the write once per Dump.
 
 ```bash
-brain-dump write-dump --tool <ClaudeCode|Codex> --slug "<slug>" --session "${CLAUDE_CODE_SESSION_ID:-$CODEX_THREAD_ID}" <<'DUMP'
+brain-dump write-dump --tool <ClaudeCode|Codex> --slug "<slug>" <<'DUMP'
 <body>
 DUMP
 ```
 
-Pass `--session` exactly as written: the shell fills in the tool's id for this Session, so a later Sweep knows it is already captured. Leave it out for a chat Session.
+The helper records this Session's id (from `CLAUDE_CODE_SESSION_ID` or `CODEX_THREAD_ID`) so a later Sweep knows it is captured. When the user gave a focus, add `--session ""`: the Dump then covers only part of the Session, and the Sweep should still draft the rest.
 
 - **Exit 0**: it prints the Dump's path. Tell the user the path and how many Items it holds.
 - **`invalid Dump body: …`**: the message names the broken rule. Fix the body to match step 2 and run the command again.

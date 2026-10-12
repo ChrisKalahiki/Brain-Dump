@@ -45,7 +45,7 @@ Done when the body covers the chat from its first message to its last. If the st
 
 ## Options for step 3
 
-No `--session`: the chat isn't this Session.
+The helper records no Session id for a chat tool.
 
 ```bash
 brain-dump write-dump --tool <ClaudeWeb|ChatGPT|Gemini> --slug "<slug>" [--chat-url "<url>"] [--project "<project>"] <<'DUMP'
