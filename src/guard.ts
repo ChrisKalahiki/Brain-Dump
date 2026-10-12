@@ -154,7 +154,7 @@ function endsOnlyWithHeredoc(body: string, { delimiter, stripTabs }: Heredoc): b
 }
 
 /** The realpath of `path`, or of its nearest existing parent with the missing segments appended. */
-function canonical(path: string): string {
+export function canonical(path: string): string {
   const missing: string[] = [];
   let existing = path;
   while (!existsSync(existing) && dirname(existing) !== existing) {
@@ -168,7 +168,7 @@ function firstInside(paths: string[], root: string): string | undefined {
   return paths.find((path) => isInside(canonical(path), root));
 }
 
-function isInside(path: string, root: string): boolean {
+export function isInside(path: string, root: string): boolean {
   return path === root || path.startsWith(root.endsWith(sep) ? root : root + sep);
 }
 

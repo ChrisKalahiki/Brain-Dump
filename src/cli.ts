@@ -16,6 +16,7 @@ import { parseRecallQuery, recall } from "./recall.ts";
 import { readRoutesNote } from "./routes.ts";
 import { listRuns } from "./runs.ts";
 import { showNote } from "./show.ts";
+import { lastSweep, sweep } from "./sweep.ts";
 import { readTodoGroups } from "./todo-groups.ts";
 import { findVault, locateVault } from "./vault.ts";
 import { undoRun } from "./undo.ts";
@@ -83,6 +84,11 @@ async function main(argv: string[]): Promise<number> {
       if (note === undefined || note.startsWith("-")) throw new UsageError("consolidate needs a note");
       const { confirm } = parseOptions(flags, { confirm: { type: "boolean" } });
       writeJson(consolidate(locateVault(), note, parseConsolidationPlan(await Bun.stdin.text()), { confirm }));
+      return 0;
+    }
+    case "sweep": {
+      const { last } = parseOptions(rest, { last: { type: "boolean" } });
+      writeJson(last ? lastSweep() : sweep(locateVault()));
       return 0;
     }
     case "runs":

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { contentHash } from "../src/content-hash.ts";
@@ -12,7 +12,8 @@ export type Sandbox = {
 };
 
 export function makeSandbox(): Sandbox {
-  const home = mkdtempSync(join(tmpdir(), "brain-dump-test-"));
+  // Resolved, so HOME matches the paths git reports where the temp folder sits behind a symlink, as /var does on macOS.
+  const home = realpathSync(mkdtempSync(join(tmpdir(), "brain-dump-test-")));
   const vault = join(home, "Documents", "The Vault");
   mkdirSync(join(vault, ".obsidian"), { recursive: true });
   return { home, vault };
