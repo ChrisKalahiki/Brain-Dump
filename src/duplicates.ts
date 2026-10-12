@@ -22,10 +22,12 @@ export type Similar = { note: string; text: string; score: number; done: boolean
 
 export type ListedDump = Omit<DumpSummary, "items"> & { items: (DumpSummary["items"][number] & { similar?: Similar })[] };
 
+export type NearDuplicateFinder = (dump: StoredDump, item: StoredItem) => Similar | undefined;
+
 type Candidate = Omit<Similar, "score"> & { words: Set<string> };
 
 /** `inbox` is every unfiled Dump; the finder compares an open Item against the allowlist's Items and the other Dumps' open Items. Dropped Items never match. */
-export function nearDuplicateFinder(vault: Vault, inbox: StoredDump[]): (dump: StoredDump, item: StoredItem) => Similar | undefined {
+export function nearDuplicateFinder(vault: Vault, inbox: StoredDump[]): NearDuplicateFinder {
   const curated = curatedNotes(vault).flatMap(({ note, lines }) =>
     curatedBullets(lines)
       .filter(({ text }) => !DROPPED.test(text))

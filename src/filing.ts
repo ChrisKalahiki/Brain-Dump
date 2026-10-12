@@ -5,7 +5,7 @@ import { contentHash, readHashed } from "./content-hash.ts";
 import { STATE_MARKS } from "./dump-body.ts";
 import { BrainDumpError, UsageError } from "./errors.ts";
 import { commit, type Write } from "./gateway.ts";
-import { nearDuplicateFinder } from "./duplicates.ts";
+import { nearDuplicateFinder, type NearDuplicateFinder } from "./duplicates.ts";
 import { listUnfiledDumps, readDump, type StoredDump } from "./inbox.ts";
 import { FILED_FOLDER, ROUTES_NOTE, WEEKLY_FOLDER, WEEKLY_TEMPLATE_NOTE } from "./layout.ts";
 import { titleKey } from "./notes.ts";
@@ -128,7 +128,7 @@ function checkFresh(vault: Vault, plan: FilingPlan, writesRoutes: boolean): void
 /** A Routine Item's destination must come from a Route already in the Routes note and already exist, and the Item must have no near-duplicate; anything else is a skill mislabelling an Item as routine. */
 function checkRoutineItems(vault: Vault, dump: StoredDump, items: PlannedItem[]): void {
   const routes = readRoutes(vault);
-  let nearest: ReturnType<typeof nearDuplicateFinder> | undefined;
+  let nearest: NearDuplicateFinder | undefined;
   for (const item of items) {
     if (item.outcome !== "filed" || item.route === undefined) continue;
     const claim = `Item ${item.index} claims Route "${item.route}"`;
