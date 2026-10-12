@@ -181,7 +181,7 @@ describe("brain-dump pointer", () => {
     expect(result).toEqual([
       0,
       "brain-dump: Vault notes for chronos: [[Scheduling]] (5 Items), [[Retries]] (3 Items), [[Job Queues]] (2 Items) · use the recall skill for more\n" +
-        "brain-dump: last Sweep: 2 Dumps written to the Inbox, 1 unreadable log, 1 draft refused for a secret, 3 carried over, 1 error (run brain-dump sweep --last)\n" +
+        "brain-dump: last Sweep: 2 Dumps written to the Inbox, 1 unreadable log, 1 draft refused for a secret, 1 error, 3 carried over (run brain-dump sweep --last)\n" +
         "brain-dump: 1 Vault finding (run brain-dump check)\n",
       "",
     ]);

@@ -8,7 +8,7 @@ import { INBOX } from "./layout.ts";
 import { noteFiles, titleKey } from "./notes.ts";
 import { describeDump } from "./recall.ts";
 import { readRoutes, type Route } from "./routes.ts";
-import { sweepLine } from "./sweep.ts";
+import { lastSweep, type SweepSummary } from "./sweep.ts";
 import { findVault, type Vault } from "./vault.ts";
 
 // The SessionStart pointer: at most a line naming this project's Vault notes, a line on the last Sweep and a line with the `check` count, so a Session knows the Vault has context.
@@ -16,6 +16,8 @@ import { findVault, type Vault } from "./vault.ts";
 const DEADLINE_MS = 1000;
 const DEADLINE_VARIABLE = "BRAIN_DUMP_POINTER_DEADLINE_MS";
 const NOTE_CAP = 3;
+/** How long after a Sweep the pointer names it. */
+const SWEEP_REPORT_MS = 24 * 60 * 60 * 1000;
 
 /** The notes line first, then the Sweep line, then the `check` line only if time remains; anything that fails or ends past the deadline is left out. */
 export function pointerLines(project: string): string[] {
@@ -26,7 +28,7 @@ export function pointerLines(project: string): string[] {
   const lines: string[] = [];
   const notesLine = quietly(() => projectLine(vault, project));
   if (notesLine !== undefined && inTime()) lines.push(notesLine);
-  const sweptLine = quietly(() => sweepLine(now()));
+  const sweptLine = quietly(() => sweepLine(lastSweep(), now()));
   if (sweptLine !== undefined && inTime()) lines.push(sweptLine);
   if (!inTime()) return lines;
   const findings = quietly(() => checkVault(vault).length);
@@ -85,4 +87,18 @@ function projectNotes(vault: Vault, project: string, dumps: StoredDump[]): strin
     .sort((a, b) => b.itemCount - a.itemCount || a.title.localeCompare(b.title))
     .map(({ title, itemCount }) => `[[${title}]] (${countOf(itemCount, "Item")})`);
   return [...(routed === undefined ? [] : [`[[${routed}]] (Route)`]), ...ranked].slice(0, NOTE_CAP);
+}
+
+/** Only a Sweep in the window that wrote a Dump or hit a problem; carry-over alone is the cap working, not a problem. */
+function sweepLine(last: SweepSummary, at: Date): string | undefined {
+  const age = at.getTime() - new Date(last.time).getTime();
+  if (age < 0 || age > SWEEP_REPORT_MS) return undefined;
+  const segments: string[] = [];
+  if (last.written.length > 0) segments.push(`${countOf(last.written.length, "Dump")} written to the Inbox`);
+  if (last.unreadable.length > 0) segments.push(countOf(last.unreadable.length, "unreadable log"));
+  if (last.secretRefused.length > 0) segments.push(`${countOf(last.secretRefused.length, "draft")} refused for a secret`);
+  if (last.errors.length > 0) segments.push(countOf(last.errors.length, "error"));
+  if (segments.length === 0) return undefined;
+  if (last.carriedOver.length > 0) segments.push(`${last.carriedOver.length} carried over`);
+  return `brain-dump: last Sweep: ${segments.join(", ")} (run brain-dump sweep --last)`;
 }

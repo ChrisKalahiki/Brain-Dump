@@ -28,7 +28,8 @@ if ! command -v bun >/dev/null 2>&1; then
   exit 1
 fi
 
-link "$repo/src/cli.ts" "$HOME/.local/bin/brain-dump"
+brain_dump="$HOME/.local/bin/brain-dump"
+link "$repo/src/cli.ts" "$brain_dump"
 link "$repo/skills/dump" "$HOME/.claude/skills/dump"
 link "$repo/skills/dump" "$HOME/.agents/skills/dump"
 link "$repo/skills/file" "$HOME/.claude/skills/file"
@@ -36,8 +37,15 @@ link "$repo/skills/consolidate" "$HOME/.claude/skills/consolidate"
 link "$repo/skills/recall" "$HOME/.claude/skills/recall"
 link "$repo/skills/recall" "$HOME/.agents/skills/recall"
 
-guard_command="$HOME/.local/bin/brain-dump guard"
-pointer_command="$HOME/.local/bin/brain-dump pointer"
+guard_command="$brain_dump guard"
+pointer_command="$brain_dump pointer"
+
+# Asks a yes-or-no question that defaults to yes; fails on a no.
+confirm() {
+  local answer
+  read -r -p "$1 [Y/n] " answer || answer=""
+  [[ ! "$answer" =~ ^[Nn] ]]
+}
 
 # Merges an entry running a command on a hook event into a Claude Code settings file or Codex hooks file; an empty matcher matches everything.
 install_hook() {
@@ -57,7 +65,7 @@ install_hook() {
 
 # Asks before adding a hook to one tool's file; skips a file that already runs its command.
 offer_hook() {
-  local path="$1" event="$2" command="$3" matcher="$4" name="$5" pitch="$6" after="${7:-}" answer
+  local path="$1" event="$2" command="$3" matcher="$4" name="$5" pitch="$6" after="${7:-}"
   local removal="To remove it, delete the $event entry running \"$command\" from $path."
   if [[ -f "$path" ]] && grep -qF "\"$command\"" "$path"; then
     echo "$name already in $path. $removal"
@@ -67,10 +75,7 @@ offer_hook() {
   echo
   echo "$pitch"
   echo "$removal"
-  read -r -p "Install it in $path? [Y/n] " answer || answer=""
-  if [[ "$answer" =~ ^[Nn] ]]; then
-    return
-  fi
+  confirm "Install it in $path?" || return 0
   if install_hook "$path" "$event" "$command" "$matcher"; then
     echo "added the $name to $path"
     [[ -z "$after" ]] || echo "$after"
@@ -103,7 +108,7 @@ xml_escape() {
 
 # The launchd agent has no login shell, so it gets this shell's PATH to find bun and claude.
 offer_launchd_timer() {
-  local label="com.brain-dump.sweep" domain="gui/$(id -u)" answer
+  local label="com.brain-dump.sweep" domain="gui/$(id -u)"
   local plist="$HOME/Library/LaunchAgents/$label.plist" state="$HOME/.local/state/brain-dump"
   local removal="To turn it off: launchctl bootout $domain/$label && rm \"$plist\""
   if [[ -f "$plist" ]]; then
@@ -114,10 +119,7 @@ offer_launchd_timer() {
   echo "$sweep_pitch"
   echo "It runs at 04:00 on this machine, or when it wakes if it was asleep then; a day it was off is caught up by the next Sweep."
   echo "$removal"
-  read -r -p "Install it as a launchd agent? [Y/n] " answer || answer=""
-  if [[ "$answer" =~ ^[Nn] ]]; then
-    return
-  fi
+  confirm "Install it as a launchd agent?" || return 0
   mkdir -p "$(dirname "$plist")" "$state"
   cat >"$plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -128,7 +130,7 @@ offer_launchd_timer() {
   <string>$label</string>
   <key>ProgramArguments</key>
   <array>
-    <string>$(xml_escape "$HOME/.local/bin/brain-dump")</string>
+    <string>$(xml_escape "$brain_dump")</string>
     <string>sweep</string>
   </array>
   <key>EnvironmentVariables</key>
@@ -161,7 +163,7 @@ EOF
 
 # The systemd user manager has no login shell either, so the service gets this shell's PATH; % is escaped as systemd requires.
 offer_systemd_timer() {
-  local units="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user" name="brain-dump-sweep" answer
+  local units="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user" name="brain-dump-sweep"
   local removal="To turn it off: systemctl --user disable --now $name.timer && rm \"$units/$name.timer\" \"$units/$name.service\""
   if [[ -f "$units/$name.timer" ]]; then
     echo "Daily Sweep already installed as $units/$name.timer. $removal"
@@ -171,10 +173,7 @@ offer_systemd_timer() {
   echo "$sweep_pitch"
   echo "It runs at 04:00 on this machine, or at the next boot if it was off or asleep then."
   echo "$removal"
-  read -r -p "Install it as a systemd user timer? [Y/n] " answer || answer=""
-  if [[ "$answer" =~ ^[Nn] ]]; then
-    return
-  fi
+  confirm "Install it as a systemd user timer?" || return 0
   mkdir -p "$units"
   cat >"$units/$name.service" <<EOF
 [Unit]
@@ -183,7 +182,7 @@ Description=Brain-Dump Sweep
 [Service]
 Type=oneshot
 Environment="PATH=${PATH//%/%%}"
-ExecStart=%h/.local/bin/brain-dump sweep
+ExecStart=${brain_dump//%/%%} sweep
 StandardOutput=null
 EOF
   cat >"$units/$name.timer" <<EOF
