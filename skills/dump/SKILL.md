@@ -11,50 +11,29 @@ Turn this Session into one **Dump**: the Items worth keeping a month from now, w
 
 ## 1. Pick the Items
 
-Read back over the Session and keep what would be lost otherwise:
-
-- **Learning**: something found out (a fact, a gotcha, how a tool behaves). Keep URLs that came up inline in the Item.
-- **Decision**: a choice that was made, with its **Rationale** (why this over the alternatives).
-- **Todo**: an action still to be taken.
-
-If the user gave a focus with the command (e.g. "just the auth decisions"), keep only Items inside that focus.
-
-Each Item is one self-contained sentence or two: readable cold, without the Session. Leave out play-by-play, dead ends that taught nothing, and anything already captured in code or commit messages.
+Read `item-rules.md` in this skill's folder: the Item rules every Dump follows, shared with the chat prompt and the Sweep. Apply them to this Session.
 
 Done when every Item passes the month-from-now test and the focus, if any, is honoured.
 
 ## 2. Write the body
 
-Exactly this shape, sections in this order, a section left out entirely when it has no Items:
-
-```markdown
-## Learnings
-- [ ] <Learning>
-
-## Decisions
-- [ ] <Decision>
-	- Why: <Rationale>
-
-## Todos
-- [ ] #todo <Todo>
-```
-
-Every Decision carries its tab-indented `- Why:` line; every Todo carries `#todo`. Nothing else goes in the body: no title, no frontmatter, no origin line (the helper adds those).
-
-Also write a **slug**: a 2–6 word title for the Dump, e.g. `wayfinder charting` or `auth token refresh`.
+Write the body and slug exactly as `item-rules.md` shows.
 
 ## 3. Write the Dump
 
 Run the helper from the Session's working directory, passing the tool tag: the tool you are running in (`ClaudeCode` or `Codex`), or for a chat Session the tag `chat.md` names. In Codex, the helper writes outside the workspace, so run it with escalated permissions from the first attempt: the user approves the write once per Dump.
 
 ```bash
-brain-dump write-dump --tool <ClaudeCode|Codex> --slug "<slug>" <<'DUMP'
+brain-dump write-dump --tool <ClaudeCode|Codex> --slug "<slug>" --session "${CLAUDE_CODE_SESSION_ID:-$CODEX_THREAD_ID}" <<'DUMP'
 <body>
 DUMP
 ```
 
+Pass `--session` exactly as written: the shell fills in the tool's id for this Session, so a later Sweep knows it is already captured. Leave it out for a chat Session.
+
 - **Exit 0**: it prints the Dump's path. Tell the user the path and how many Items it holds.
 - **`invalid Dump body: …`**: the message names the broken rule. Fix the body to match step 2 and run the command again.
+- **`Dump refused: line N looks like it holds …`**: nothing was written. Rewrite that Item without the secret (say where it lives instead), tell the user what you removed, and run the command again.
 - **Escalation declined in Codex**: run the same command once more without escalation. The sandbox stops the write, so it lands in the next branch with the complete Dump printed.
 - **Any other failure** (Vault not found, not an Obsidian Vault, write denied): the helper prints the reason on stderr and the complete Dump on stdout. Tell the user the reason, then show that complete Dump in a fenced `markdown` block so nothing is lost. The helper is the only writer; the Dump stays in the Session until the user retries.
 

@@ -32,6 +32,8 @@ export type DevOrigin = {
   location: string;
   branch: string | undefined;
   at: Date;
+  /** Drafted by the Sweep rather than by the user's own `dump`. */
+  swept?: boolean;
 };
 
 export type ChatOrigin = {
@@ -63,7 +65,7 @@ export function dumpStem(origin: Origin): string {
 }
 
 export function renderOriginLine(origin: Origin): string {
-  const segments = [`Session: ${TOOLS[origin.tool].name}`];
+  const segments = [`Session: ${TOOLS[origin.tool].name}${origin.kind === "dev" && origin.swept ? " (swept)" : ""}`];
   if (origin.kind === "dev") {
     const branch = origin.branch === undefined ? "" : ` @ \`${origin.branch}\``;
     segments.push(`\`${abbreviateHome(origin.location)}\`${branch}`);
