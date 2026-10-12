@@ -1,0 +1,23 @@
+[2026-10-04 20:02] User:
+I'm drowning in citations for the thesis. I use Zotero, and I've been exporting a .bib by hand before every LaTeX build. Is there a better way?
+
+[2026-10-04 20:03] Assistant:
+Yes. The Better BibTeX plugin for Zotero (https://retorque.re/zotero-better-bibtex/) can auto-export a collection to a .bib file and keep it updated whenever the library changes, so you never export by hand again. It also generates stable citation keys.
+
+[2026-10-04 20:07] User:
+Nice. How does it pick the keys? Mine are a mess right now, like smith2019a and smith2019b that changed between exports.
+
+[2026-10-04 20:09] Assistant:
+Better BibTeX builds keys from a citekey formula you set in its preferences, for example `auth.lower + year + shorttitle(1,0)` gives `smith2019attention`. You can also pin a key on an item so it never changes, even if you edit the title later. Pinned keys are what keep old \cite commands from breaking.
+
+[2026-10-04 20:15] User:
+I want keys that never change under me. So I'll use the formula auth.lower + year + shorttitle(1,0) and pin every key. Any downside?
+
+[2026-10-04 20:17] Assistant:
+Only that a pinned key won't pick up a later fix to the author or year, so fix metadata before pinning. Pinning everything up front is a common choice when a thesis is mid-flight: a changed key silently breaks a \cite until the next build.
+
+[2026-10-04 20:20] User:
+Ha, the weather here is awful, perfect night for reference cleanup. OK: the old hand-exported thesis.bib has about 40 entries that aren't in Zotero at all. I'll need to import those into Zotero before switching over. Not tonight.
+
+[2026-10-04 20:21] Assistant:
+Makes sense. When you do: import thesis.bib into a Zotero collection, check the generated keys match your existing \cite commands, then pin them and point the auto-export at the thesis folder.

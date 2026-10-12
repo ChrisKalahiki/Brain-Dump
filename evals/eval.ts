@@ -1,6 +1,9 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { contentHash } from "../src/content-hash.ts";
+import { CHAT_DUMP_EVAL } from "./chat-dump.ts";
+import { DUMP_EVAL } from "./dump.ts";
+import { FILE_EVAL } from "./file.ts";
 import type { Grade } from "./rubric.ts";
 import { SWEEP_EVAL } from "./sweep.ts";
 
@@ -10,15 +13,15 @@ import { SWEEP_EVAL } from "./sweep.ts";
 const ROOT = join(import.meta.dir, "..");
 const PASSED_PATH = join(import.meta.dir, "passed.json");
 
-export const EVALS: Eval[] = [SWEEP_EVAL];
+export const EVALS: Eval[] = [SWEEP_EVAL, DUMP_EVAL, CHAT_DUMP_EVAL, FILE_EVAL];
 
 /** Everything that, once changed, needs a fresh pass: the pinned model, and the repo-relative prompt files, shared rules, fixtures and assertions. */
 export type EvalInputs = { model: string; inputs: string[] };
 
 export type Eval = EvalInputs & { name: string; cases: EvalCase[] };
 
-/** One fixture: each run calls the real prompt once. */
-export type EvalCase = { name: string; run: () => CaseResult };
+/** One fixture: each run calls the real prompt once. A case's runs go in parallel when `run` is async. */
+export type EvalCase = { name: string; run: () => CaseResult | Promise<CaseResult> };
 
 /** `failures` gate; `grade` is advisory and absent when there was nothing to grade. */
 export type CaseResult = { failures: string[]; grade?: Grade };

@@ -9,7 +9,7 @@ import { EVALS, recordPass, type CaseResult, type Eval } from "./eval.ts";
 /** A pass is only recorded with at least this many runs per fixture, so a lucky single run can't. */
 const DEFAULT_RUNS = 3;
 
-function main(argv: string[]): number {
+async function main(argv: string[]): Promise<number> {
   const { values, positionals } = parseArgs({ args: argv, options: { runs: { type: "string" } }, allowPositionals: true, strict: true });
   const runs = values.runs === undefined ? DEFAULT_RUNS : Number(values.runs);
   if (!Number.isInteger(runs) || runs < 1) return fail(`--runs "${values.runs}" is not a whole number of runs`);
@@ -17,15 +17,16 @@ function main(argv: string[]): number {
   const unknown = positionals.filter((name) => !EVALS.some((declared) => declared.name === name));
   if (unknown.length > 0) return fail(`no eval named ${unknown.join(", ")}; there are ${EVALS.map(({ name }) => name).join(", ")}`);
   const selected = positionals.length === 0 ? EVALS : EVALS.filter(({ name }) => positionals.includes(name));
-  const passed = selected.map((declared) => runEval(declared, runs));
-  return passed.every(Boolean) ? 0 : 1;
+  let passed = true;
+  for (const declared of selected) passed = (await runEval(declared, runs)) && passed;
+  return passed ? 0 : 1;
 }
 
-function runEval(declared: Eval, runs: number): boolean {
+async function runEval(declared: Eval, runs: number): Promise<boolean> {
   console.log(`${declared.name} (${declared.model}, ${runs} run${runs === 1 ? "" : "s"} per fixture)`);
   let passed = true;
   for (const evalCase of declared.cases) {
-    const results = Array.from({ length: runs }, () => evalCase.run());
+    const results = await Promise.all(Array.from({ length: runs }, () => evalCase.run()));
     passed &&= results.every(({ failures }) => failures.length === 0);
     console.log(`  ${evalCase.name}  ${results.map(({ failures }) => (failures.length === 0 ? "pass" : "FAIL")).join(" ")}`);
     for (const [index, { failures }] of results.entries()) for (const failure of failures) console.log(`    run ${index + 1}: ${failure}`);
@@ -62,4 +63,4 @@ function fail(message: string): number {
   return 2;
 }
 
-process.exitCode = main(process.argv.slice(2));
+process.exitCode = await main(process.argv.slice(2));

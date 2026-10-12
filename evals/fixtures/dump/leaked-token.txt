@@ -1,0 +1,30 @@
+[2026-10-03 15:10] User:
+The nightly `harbor release-notes` job fails with `HTTP 401: Bad credentials` when it calls the GitHub API.
+
+[2026-10-03 15:12] Assistant:
+401 from GitHub means the token was rejected: expired, revoked, or the wrong one. Which token does the job use?
+
+[2026-10-03 15:14] User:
+It reads GH_TOKEN from the cron host's environment. Here's what's set there:
+
+```
+GH_TOKEN=ghp_FAKE0eva1T0kenN0tReal0000000000000000
+```
+
+[2026-10-03 15:17] Assistant:
+That's a classic personal access token. If it was created with an expiry date, it stops working on that date and GitHub returns exactly this 401. The token settings page shows its expiry. Also, now that it has been pasted here it should be treated as exposed and revoked.
+
+[2026-10-03 15:21] User:
+It expired yesterday. Fine-grained tokens are what we should be using anyway, right?
+
+[2026-10-03 15:24] Assistant:
+For a single-repo job, yes: a fine-grained token can be limited to the harbor repo and to read-only Contents and Pull requests, which is all release notes need. A classic token's `repo` scope grants write access to every repo you can reach.
+
+[2026-10-03 15:27] User:
+Make it a fine-grained token, harbor only, read-only contents and pull requests, 90-day expiry. I'll create it now.
+
+[2026-10-03 15:35] User:
+New token is on the cron host, job passes. I need to revoke the old one in GitHub settings, and put a calendar reminder to rotate before the 90 days are up.
+
+[2026-10-03 15:36] Assistant:
+Good. Two things left for you: revoke the old classic token, and set a reminder to rotate the fine-grained token before it expires.

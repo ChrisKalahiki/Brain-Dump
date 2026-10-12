@@ -3,5 +3,20 @@
     "hash": "3c3e3bec8f8583d4",
     "date": "2026-10-12",
     "model": "claude-sonnet-5-5"
+  },
+  "dump": {
+    "hash": "1cf5e0e354a57a31",
+    "date": "2026-10-12",
+    "model": "claude-sonnet-5-5"
+  },
+  "chat-dump": {
+    "hash": "575f42e0e64bf0a2",
+    "date": "2026-10-12",
+    "model": "claude-sonnet-5-5"
+  },
+  "file": {
+    "hash": "65a181ffa9c01e19",
+    "date": "2026-10-12",
+    "model": "claude-sonnet-5-5"
   }
 }

@@ -1,0 +1,26 @@
+[2026-10-05 09:12] User:
+My Python script that classifies support tickets with the API dies halfway with `429 Too Many Requests`. Here's the setup:
+
+```python
+client = OpenAI(api_key="sk-proj-FAKEevalKey0NotReal0DoNotUse00000000")
+for ticket in tickets:
+    label = classify(client, ticket)
+```
+
+[2026-10-05 09:14] Assistant:
+A 429 means you've hit the rate limit for requests or tokens per minute. The standard fix is to retry with exponential backoff and random jitter, so parallel retries don't all fire at the same moment. Also: the key you just pasted is now in this chat log, so treat it as exposed and rotate it.
+
+[2026-10-05 09:18] User:
+Should I write the retry loop myself?
+
+[2026-10-05 09:20] Assistant:
+You can, but the `tenacity` library gives you `@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))` in one decorator, and it's what the OpenAI cookbook uses for this. A hand-rolled loop tends to forget the jitter or the stop condition.
+
+[2026-10-05 09:23] User:
+Going with tenacity, no point maintaining my own loop. And I'll move the key into an environment variable so it's not in the script anymore.
+
+[2026-10-05 09:31] User:
+Works now, all 2,000 tickets classified. Remind me: I still need to rotate that key.
+
+[2026-10-05 09:32] Assistant:
+Right: rotate the exposed key in the API dashboard and update the environment variable with the new one.
