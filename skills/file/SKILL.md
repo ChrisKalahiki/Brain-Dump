@@ -11,7 +11,9 @@ Otherwise, work through every unfiled **Dump** in the Vault's Inbox, oldest firs
 
 ## 1. Load the Inbox and the Vault's map
 
-Run these once per run:
+First run `brain-dump check --json`, which reports Vault problems and writes nothing: a list of `{kind, note, detail, fix}`, exiting 1 when there are findings. Show one line before anything else: `Vault check: N findings (<count> <kind>, …); run brain-dump check for details`, or `Vault check: clean`. Don't act on the findings; Filing goes on either way. If it exits 2, say `Vault check failed: <its error>` and go on.
+
+Then run these once per run:
 
 - `brain-dump list-dumps`: each unfiled Dump's `file`, `title`, `date`, `project`, `hash`, and `items` (`index`, `kind`, `text`, `rationale`, `state`). Only `open` Items are filed.
 - `brain-dump list-notes`: every note's `note` (path), `title`, `folder`, `tags` and `hash`.

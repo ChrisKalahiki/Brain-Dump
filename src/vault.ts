@@ -12,6 +12,17 @@ export type Vault = {
 };
 
 export function locateVault(): Vault {
+  const vault = findVault();
+  try {
+    mkdirSync(vault.inbox, { recursive: true });
+  } catch (error) {
+    throw new BrainDumpError(`cannot create ${vault.inbox}: ${describeFsError(error)}`);
+  }
+  return vault;
+}
+
+/** The Vault, left untouched: its Inbox may not exist yet. */
+export function findVault(): Vault {
   const root = resolveVaultPath();
   if (!existsSync(root)) {
     throw new BrainDumpError(`Vault not found at ${root}`);
@@ -19,13 +30,7 @@ export function locateVault(): Vault {
   if (!existsSync(join(root, ".obsidian"))) {
     throw new BrainDumpError(`${root} is not an Obsidian Vault (no .obsidian/)`);
   }
-  const inbox = join(root, INBOX);
-  try {
-    mkdirSync(inbox, { recursive: true });
-  } catch (error) {
-    throw new BrainDumpError(`cannot create ${inbox}: ${describeFsError(error)}`);
-  }
-  return { root, inbox };
+  return { root, inbox: join(root, INBOX) };
 }
 
 /** Where the Vault should be, from config or the default; it may not exist. */

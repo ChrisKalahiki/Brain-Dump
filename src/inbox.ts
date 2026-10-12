@@ -1,8 +1,9 @@
 import { readdirSync } from "node:fs";
-import { basename, join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { readHashed } from "./content-hash.ts";
 import { parseDumpBody, SECTIONS, type ItemState, type SectionName } from "./dump-body.ts";
 import { BrainDumpError } from "./errors.ts";
+import { FILED_FOLDER, INBOX } from "./layout.ts";
 import type { Vault } from "./vault.ts";
 
 export type ItemKind = "Learning" | "Decision" | "Todo";
@@ -32,6 +33,12 @@ export type StoredDump = {
 
 export function isDumpFile(path: string): boolean {
   return DUMP_FILENAME.test(basename(path));
+}
+
+/** A Dump in the Inbox or, once finished, in Inbox/Filed. */
+export function isStoredDump(vault: Vault, path: string): boolean {
+  const folder = relative(vault.root, dirname(path));
+  return isDumpFile(path) && (folder === INBOX || folder === FILED_FOLDER);
 }
 
 export function listUnfiledDumps(vault: Vault): StoredDump[] {
@@ -64,6 +71,18 @@ export function readDump(vault: Vault, path: string): StoredDump {
     })),
   );
   return { file: relative(vault.root, path), title: name.slice(0, -3), date: match[1], project: match[2], items, lines, eol, hash };
+}
+
+/** A Dump `readDump` can't parse, left for `check` to report rather than breaking other commands. */
+export type MalformedDump = { file: string; problem: string };
+
+export function readDumpOrProblem(vault: Vault, path: string): StoredDump | MalformedDump {
+  try {
+    return readDump(vault, path);
+  } catch (error) {
+    if (error instanceof BrainDumpError) return { file: relative(vault.root, path), problem: error.message };
+    throw error;
+  }
 }
 
 export type DumpSummary = Omit<StoredDump, "lines" | "items" | "eol"> & { items: Omit<StoredItem, "line">[] };
