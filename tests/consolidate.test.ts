@@ -7,9 +7,11 @@ const NOW = "2026-10-12T09:00";
 const BULLETS = ["Codex reads skills from ~/.agents/skills [[2026-10-05 1940 B - s|dump 10-05-26]]", "Skills load lazily (hand-added)", "Prefer one skill per verb [[2026-10-05 1940 B - s|dump 10-05-26]]"];
 const filed = (text: string) => `- ${text}\n\t- From [[2026-10-05 1940 B - s|dump 10-05-26]]\n`;
 
+/** With `--confirm`, the plan carries the `digest` its preview prints, as the skill's does. */
 function consolidate(sandbox: Sandbox, note: string, plan: object, flags: string[] = []) {
-  const expectHashes = { [note]: vaultFileHash(sandbox, note) };
-  return run(sandbox, ["consolidate", note, ...flags], { now: NOW, stdin: JSON.stringify({ expect: expectHashes, bullets: BULLETS, ...plan }) });
+  const stdin = (extra: object) => JSON.stringify({ expect: { [note]: vaultFileHash(sandbox, note) }, bullets: BULLETS, ...extra, ...plan });
+  const digest = flags.includes("--confirm") ? JSON.parse(run(sandbox, ["consolidate", note], { now: NOW, stdin: stdin({}) }).stdout || "{}").digest : undefined;
+  return run(sandbox, ["consolidate", note, ...flags], { now: NOW, stdin: stdin({ digest }) });
 }
 
 describe("brain-dump consolidate", () => {
@@ -67,6 +69,31 @@ describe("brain-dump consolidate", () => {
     expect(readVaultFile(sandbox, NOTE)).toStartWith(`# Agent Skills\n${filed("A.")}\n> [!summary] Digest 10-12-26\n`);
   });
 
+  test("keeps a CRLF note's line endings", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const before = "# Agent Skills\r\n- A.\r\n\t- From [[2026-10-05 1940 B - s|dump 10-05-26]]\r\n";
+    writeVaultFile(sandbox, NOTE, before);
+
+    // #when
+    consolidate(sandbox, NOTE, {}, ["--confirm"]);
+
+    // #then
+    expect(readVaultFile(sandbox, NOTE)).toBe(`${before}\r\n> [!summary] Digest 10-12-26\r\n${BULLETS.map((bullet) => `> - ${bullet}\r\n`).join("")}^digest-101226\r\n`);
+  });
+
+  test("ignores a Digest ID line that closes no Digest callout", () => {
+    // #given
+    const sandbox = makeSandbox();
+    writeVaultFile(sandbox, NOTE, `# Agent Skills\n${filed("A.")}^digest-100126\n${filed("B.")}`);
+
+    // #when
+    const preview = JSON.parse(consolidate(sandbox, NOTE, {}).stdout);
+
+    // #then
+    expect({ supersedes: preview.supersedes, items: preview.items }).toEqual({ supersedes: null, items: 2 });
+  });
+
   test("supersedes the latest Digest, counting only Items filed after it", () => {
     // #given
     const sandbox = makeSandbox();
@@ -119,6 +146,7 @@ describe("brain-dump consolidate", () => {
   });
 
   const refusals: [string, string, string, (sandbox: Sandbox) => object, string][] = [
+    ["an Inbox note", "Inbox/Notes.md", `# Notes\n${filed("A.")}`, () => ({}), "Inbox/Notes.md is in the Inbox, and only Topic Notes and Project Notes take a Digest"],
     ["a Weekly Note", WEEK, `# Notes:\n${filed("A.")}`, () => ({}), `${WEEK} is a Weekly Note, and only Topic Notes and Project Notes take a Digest`],
     ["a note with no filed Item", NOTE, "# Agent Skills\n- Hand-written.\n", () => ({}), `${NOTE} has no filed Item to consolidate`],
     [
@@ -128,6 +156,8 @@ describe("brain-dump consolidate", () => {
       () => ({}),
       `${NOTE} has no filed Item since ^digest-100126`,
     ],
+    ["a confirm without the previewed Digest ID", NOTE, `# Agent Skills\n${filed("A.")}`, () => ({ digest: undefined }), "Consolidation plan rejected: --confirm needs the digest its preview printed"],
+    ["a Digest ID that changed since the preview", NOTE, `# Agent Skills\n${filed("A.")}`, () => ({ digest: "^digest-101126" }), "Consolidation plan stale: the Digest would now be ^digest-101226, not ^digest-101126"],
     ["a plan with no hash for the note", NOTE, `# Agent Skills\n${filed("A.")}`, () => ({ expect: {} }), `Consolidation plan rejected: expect has no hash for ${NOTE}`],
   ];
 
@@ -162,6 +192,18 @@ describe("brain-dump consolidate", () => {
       stderr: `brain-dump: Consolidation plan stale: ${NOTE} changed since it was read\n`,
       note: changed,
     });
+  });
+
+  test("rejects stdin that isn't JSON", () => {
+    // #given
+    const sandbox = makeSandbox();
+    writeVaultFile(sandbox, NOTE, `# Agent Skills\n${filed("A.")}`);
+
+    // #when
+    const result = run(sandbox, ["consolidate", NOTE], { now: NOW, stdin: "ok" });
+
+    // #then
+    expect({ exitCode: result.exitCode, stderr: result.stderr }).toEqual({ exitCode: 2, stderr: "brain-dump: invalid consolidation plan: stdin is not JSON\n" });
   });
 
   const badPlans: [string, object][] = [

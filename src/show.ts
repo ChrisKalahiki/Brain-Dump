@@ -1,12 +1,11 @@
 import { basename, isAbsolute, join, normalize, relative } from "node:path";
 import { readHashed } from "./content-hash.ts";
+import { latestDigest } from "./digest.ts";
 import { BrainDumpError } from "./errors.ts";
 import { linkTarget, noteFiles } from "./notes.ts";
 import type { Vault } from "./vault.ts";
 
 const TEXT_CAP = 60_000;
-/** The opening line of a Digest callout (ADR 0008); a note's latest Digest is its last one. */
-const DIGEST_START = /^> \[!summary\] Digest \d{2}-\d{2}-\d{2}(?: \(\d+\))?[ \t]*\r?$/gm;
 
 export type ShownNote = { note: string; hash: string; text: string; truncated: boolean };
 
@@ -14,9 +13,16 @@ export type ShownNote = { note: string; hash: string; text: string; truncated: b
 export function showNote(vault: Vault, name: string, { full = false } = {}): ShownNote {
   const path = findNote(vault, name);
   const { contents, hash } = readHashed(path);
-  const text = full ? contents : contents.slice([...contents.matchAll(DIGEST_START)].at(-1)?.index ?? 0);
+  const text = full ? contents : contents.slice(digestOffset(contents));
   const truncated = text.length > TEXT_CAP && !full;
   return { note: relative(vault.root, path), hash, text: truncated ? text.slice(0, TEXT_CAP) : text, truncated };
+}
+
+/** Where the latest Digest's header line starts, or 0 when the note has none; `\r` stays on each line, so the offsets hold for CRLF notes too. */
+function digestOffset(contents: string): number {
+  const lines = contents.split("\n");
+  const header = latestDigest(lines)?.header ?? 0;
+  return lines.slice(0, header).reduce((offset, line) => offset + line.length + 1, 0);
 }
 
 /** `name` is a Vault-relative path, a title, or a `[[wikilink]]`; only notes in the write allowlist can be shown (ADR 0007). */

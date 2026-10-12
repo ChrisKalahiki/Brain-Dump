@@ -2,7 +2,7 @@ import { basename, relative } from "node:path";
 import { countOf } from "./check.ts";
 import { now } from "./clock.ts";
 import { readHashed } from "./content-hash.ts";
-import { digestName, digestsOn, sinceLatestDigest } from "./digest.ts";
+import { digestName, latestOrdinalOn, sinceLatestDigest } from "./digest.ts";
 import { BrainDumpError, UsageError } from "./errors.ts";
 import { isRecord } from "./filing.ts";
 import { commit } from "./gateway.ts";
@@ -14,9 +14,10 @@ import type { Vault } from "./vault.ts";
 
 const MIN_BULLETS = 3;
 const MAX_BULLETS = 10;
-const PLAN_SHAPE = `expected {"expect": {[path: string]: string}, "bullets": string[]} with ${MIN_BULLETS} to ${MAX_BULLETS} one-line bullets, none starting with "- "`;
+const PLAN_SHAPE = `expected {"expect": {[path: string]: string}, "bullets": string[], "digest"?: string} with ${MIN_BULLETS} to ${MAX_BULLETS} one-line bullets, none starting with "- "`;
 
-export type ConsolidationPlan = { expect: Record<string, string>; bullets: string[] };
+/** `digest` is the ID the preview printed, required with `--confirm` so the Digest written is the one the user approved. */
+export type ConsolidationPlan = { expect: Record<string, string>; bullets: string[]; digest?: string };
 
 /** `lines` is the Digest exactly as appended; `run` is set once it is written. */
 export type Consolidation = { note: string; digest: string; supersedes: string | null; items: number; lines: string[]; run?: string };
@@ -36,9 +37,8 @@ export function parseConsolidationPlan(text: string): ConsolidationPlan {
 export function consolidate(vault: Vault, name: string, plan: ConsolidationPlan, { confirm = false } = {}): Consolidation {
   const path = findNote(vault, name);
   const note = relative(vault.root, path);
-  if (note.startsWith(`${WEEKLY_FOLDER}/`) || note.startsWith(`${INBOX}/`)) {
-    throw new BrainDumpError(`${note} is ${note.startsWith(`${INBOX}/`) ? "in the Inbox" : "a Weekly Note"}, and only Topic Notes and Project Notes take a Digest`);
-  }
+  const notDigestible = note.startsWith(`${INBOX}/`) ? "in the Inbox" : note.startsWith(`${WEEKLY_FOLDER}/`) ? "a Weekly Note" : undefined;
+  if (notDigestible) throw new BrainDumpError(`${note} is ${notDigestible}, and only Topic Notes and Project Notes take a Digest`);
   const expected = plan.expect[note];
   if (expected === undefined) throw new BrainDumpError(`Consolidation plan rejected: expect has no hash for ${note}`);
   const { contents, hash } = readHashed(path);
@@ -47,28 +47,37 @@ export function consolidate(vault: Vault, name: string, plan: ConsolidationPlan,
   const eol = contents.includes("\r\n") ? "\r\n" : "\n";
   const lines = contents.split(eol);
   const { latest, filed } = sinceLatestDigest(lines);
-  if (filed === 0) throw new BrainDumpError(latest === undefined ? `${note} has no filed Item to consolidate` : `${note} has no filed Item since ^${latest}`);
+  if (filed === 0) throw new BrainDumpError(latest === undefined ? `${note} has no filed Item to consolidate` : `${note} has no filed Item since ${latest}`);
   const day = now();
-  const { id, title } = digestName(day, digestsOn(lines, day) + 1);
+  const { id, title } = digestName(day, latestOrdinalOn(lines, day) + 1);
   const digest = [
     `> [!summary] ${title}`,
-    ...(latest === undefined ? [] : [`> Supersedes [[#^${latest}]] · ${countOf(filed, "Item")}`]),
+    ...(latest === undefined ? [] : [`> Supersedes [[#${latest}]] · ${countOf(filed, "Item")}`]),
     ...plan.bullets.map((bullet) => `> - ${bullet}`),
-    `^${id}`,
+    id,
   ];
-  const consolidation: Consolidation = { note, digest: `^${id}`, supersedes: latest === undefined ? null : `^${latest}`, items: filed, lines: digest };
+  const consolidation: Consolidation = { note, digest: id, supersedes: latest ?? null, items: filed, lines: digest };
   if (!confirm) return consolidation;
+  if (plan.digest === undefined) throw new BrainDumpError("Consolidation plan rejected: --confirm needs the digest its preview printed");
+  if (plan.digest !== id) throw new BrainDumpError(`Consolidation plan stale: the Digest would now be ${id}, not ${plan.digest}`);
 
-  const separator = contents.endsWith(`${eol}${eol}`) ? "" : contents.endsWith(eol) ? eol : `${eol}${eol}`;
-  const run = commit(vault, "approved-plan", { command: "consolidate", label: basename(note, ".md") }, [{ mode: "append", path, contents: `${contents}${separator}${digest.join(eol)}${eol}` }]);
+  const appended = `${contents}${blankLineAfter(contents, eol)}${digest.join(eol)}${eol}`;
+  const run = commit(vault, "approved-plan", { command: "consolidate", label: basename(note, ".md") }, [{ mode: "append", path, contents: appended }]);
   return { ...consolidation, run };
+}
+
+/** What to add so the Digest starts after a blank line. */
+function blankLineAfter(contents: string, eol: string): string {
+  if (contents.endsWith(`${eol}${eol}`)) return "";
+  return contents.endsWith(eol) ? eol : `${eol}${eol}`;
 }
 
 function isConsolidationPlan(value: unknown): value is ConsolidationPlan {
   if (!isRecord(value)) return false;
   const { expect, bullets } = value;
   const expectOk = isRecord(expect) && Object.values(expect).every((hash) => typeof hash === "string");
-  return expectOk && Array.isArray(bullets) && bullets.length >= MIN_BULLETS && bullets.length <= MAX_BULLETS && bullets.every(isBullet);
+  const digestOk = value.digest === undefined || typeof value.digest === "string";
+  return expectOk && digestOk && Array.isArray(bullets) && bullets.length >= MIN_BULLETS && bullets.length <= MAX_BULLETS && bullets.every(isBullet);
 }
 
 function isBullet(bullet: unknown): boolean {

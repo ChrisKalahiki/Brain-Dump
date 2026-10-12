@@ -57,16 +57,17 @@ Done when the plan is on screen and nothing has been written.
 
 ## 5. Apply
 
-Run the same command with `--confirm` and the same plan:
+Run the same command with `--confirm`, adding the preview's `digest` to the plan, so the helper writes only the Digest the user saw:
 
 ```bash
 brain-dump consolidate "<note>" --confirm <<'PLAN'
-{ "expect": { "<note>": "<hash>" }, "bullets": ["<bullet>", "<bullet>", "<bullet>"] }
+{ "expect": { "<note>": "<hash>" }, "bullets": ["<bullet>", "<bullet>", "<bullet>"], "digest": "<the preview's digest>" }
 PLAN
 ```
 
 - **Exit 0**: it prints the same report plus `run`, the Run's id. Tell the user the Digest was added, and that `/file` can take it back as "undo the last Consolidation".
 - **`Consolidation plan stale: <note> changed since it was read`**: nothing was written; the note changed after you read it. Go back to step 1, re-draft from what's there now, and show the plan headed `Re-drafted: [[X]] changed since you last saw it`. Wait for a fresh `ok`; the earlier one no longer counts.
+- **`Consolidation plan stale: the Digest would now be <id>, not <id>`**: nothing was written; the date turned over since the preview. Preview again (step 3) and wait for a fresh `ok`.
 - **`… has no filed Item since …`** or **`… has no filed Item to consolidate`**: nothing new to digest. Tell the user. Done.
 - **`invalid consolidation plan: …`**: your plan broke a rule (3 to 10 one-line bullets, none starting with `- `). Fix it, preview again, and wait for a fresh `ok`.
 - Anything else: nothing was written. Tell the user the reason.

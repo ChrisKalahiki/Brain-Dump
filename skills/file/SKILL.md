@@ -162,7 +162,7 @@ PLAN
 - **`Filing Plan rejected: Item N claims Route …`**: nothing was written. You marked Item N as a Routine Item when it isn't one. Show the plan again with Item N in the table, and wait for a fresh `ok`. When the reason is `…, but it nearly duplicates "<text>" in [[<note>]]` (an earlier Filing in this run added the match), mark Item N `≈` with that line too.
 - **`Filing Plan rejected: …`** (anything else): nothing was written. Tell the user the reason, then offer to adjust the plan or skip this Dump.
 
-Then, unless the user cancelled, offer one line for the oversized notes from step 1, e.g. `[[Agent Skills]] and [[Brain-Dump]] are long: /consolidate [[Note]] adds a Digest.` Don't run it yourself.
+Once every Dump is done, and unless the user cancelled, offer one line, once per run, for the oversized notes from step 1, e.g. `[[Agent Skills]] and [[Brain-Dump]] are long: /consolidate [[Note]] adds a Digest.` Don't run it yourself.
 
 Done when every Dump has been applied, skipped, or the user cancelled, and the user has a one-line summary of the run.
 
