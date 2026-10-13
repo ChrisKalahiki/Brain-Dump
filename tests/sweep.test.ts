@@ -1,52 +1,45 @@
 import { describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, utimesSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, utimesSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { claudeProjectFolder, renderClaudeSession, type ClaudeSessionLog } from "../src/claude-sessions.ts";
+import { codexRolloutPath, renderCodexSession, type CodexSessionLog } from "../src/codex-sessions.ts";
+import type { SessionMessage } from "../src/transcript.ts";
 import { devOrigin, dumpFile, makeRepo, makeSandbox, run, writeConfig, writeDumpArgs, writeVaultFile, type Sandbox } from "./harness.ts";
 
 const NOW = "2026-10-12T04:00:00Z";
 const BODY = "## Learnings\n- [ ] Bun ships zstd.\n";
 
-type Message = { role: "user" | "assistant"; text: string; at: string };
-
-let uuids = 0;
-
-/** One Claude Code record, shaped as Claude Code writes it to `~/.claude/projects/<encoded cwd>/<session>.jsonl`. */
-function record(session: string, cwd: string, { role, text, at }: Message, extra: Record<string, unknown> = {}): Record<string, unknown> {
-  return {
-    type: role,
-    uuid: `uuid-${++uuids}`,
-    parentUuid: null,
-    sessionId: session,
-    timestamp: at,
-    cwd,
-    gitBranch: "main",
-    isSidechain: false,
-    message: { role, content: role === "user" ? text : [{ type: "text", text }] },
-    ...extra,
-  };
-}
-
-function exchanges(start: string, turns: number, topic = "Question"): Message[] {
-  const at = (minutes: number): string => new Date(new Date(start).getTime() + minutes * 60_000).toISOString();
+function exchanges(start: string, turns: number, topic = "Question"): SessionMessage[] {
+  const at = (minutes: number): Date => new Date(new Date(start).getTime() + minutes * 60_000);
   return Array.from({ length: turns }, (_, turn) => [
     { role: "user" as const, text: `${topic} ${turn + 1}`, at: at(turn * 2) },
     { role: "assistant" as const, text: `Answer ${turn + 1}`, at: at(turn * 2 + 1) },
   ]).flat();
 }
 
-function sessionPath(sandbox: Sandbox, cwd: string, name: string): string {
-  return join(sandbox.home, ".claude", "projects", cwd.replace(/[^A-Za-z0-9]/g, "-"), name);
-}
-
-function writeSession(sandbox: Sandbox, session: string, cwd: string, rows: unknown[], name = `${session}.jsonl`): string {
-  const path = sessionPath(sandbox, cwd, name);
-  mkdirSync(join(path, ".."), { recursive: true });
-  writeFileSync(path, rows.map((row) => (typeof row === "string" ? row : JSON.stringify(row))).join("\n") + "\n");
+function writeFile(path: string, contents: string | Uint8Array): string {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, contents);
   return path;
 }
 
+/** Records no reader knows, appended as written: noise a reader must pass over. */
+function foreign(records: unknown[]): string {
+  return records.map((row) => `${typeof row === "string" ? row : JSON.stringify(row)}\n`).join("");
+}
+
+/** A Claude Code log under the sandbox's `~/.claude`, written by the adapter; `name` places it elsewhere in the project folder, `noise` follows it. */
+function writeSession(sandbox: Sandbox, log: ClaudeSessionLog, { name = `${log.session}.jsonl`, noise = [] }: { name?: string; noise?: unknown[] } = {}): string {
+  return writeFile(join(claudeProjectFolder(log.cwd, join(sandbox.home, ".claude")), name), renderClaudeSession(log) + foreign(noise));
+}
+
+/** A log in a format no adapter writes, for a Session run in `cwd`. */
+function writeUnknownLog(sandbox: Sandbox, session: string, cwd: string, records: unknown[]): string {
+  return writeFile(join(claudeProjectFolder(cwd, join(sandbox.home, ".claude")), `${session}.jsonl`), foreign(records));
+}
+
 function writeSessionLog(sandbox: Sandbox, session: string, cwd: string, start: string, turns = 3, topic = "Question"): string {
-  return writeSession(sandbox, session, cwd, exchanges(start, turns, topic).map((message) => record(session, cwd, message)));
+  return writeSession(sandbox, { session, cwd, branch: "main", messages: exchanges(start, turns, topic) });
 }
 
 type Reply = { reply: string; exitCode?: number };
@@ -119,10 +112,10 @@ const EMPTY = { run: null, written: [], skipped: [], unreadable: [], secretRefus
 
 describe("sweep leaves out Sessions it should not draft", () => {
   const cases: [string, (sandbox: Sandbox, repo: string) => void][] = [
-    ["a subagent transcript", (sandbox, repo) => writeSession(sandbox, "s-1", repo, exchanges("2026-10-11T15:00:00Z", 3).map((message) => record("s-1", repo, message)), "s-1/subagents/agent-a1.jsonl")],
-    ["an older-style agent- transcript", (sandbox, repo) => writeSession(sandbox, "agent-a1", repo, exchanges("2026-10-11T15:00:00Z", 3).map((message) => record("agent-a1", repo, message)))],
-    ["an .orphaned- copy", (sandbox, repo) => writeSession(sandbox, "s-1", repo, exchanges("2026-10-11T15:00:00Z", 3).map((message) => record("s-1", repo, message)), "s-1.orphaned-20261011-ab12.jsonl")],
-    ["a .superseded- copy", (sandbox, repo) => writeSession(sandbox, "s-1", repo, exchanges("2026-10-11T15:00:00Z", 3).map((message) => record("s-1", repo, message)), "s-1.jsonl.superseded-20261011")],
+    ["a subagent transcript", (sandbox, repo) => writeSession(sandbox, { session: "s-1", cwd: repo, messages: exchanges("2026-10-11T15:00:00Z", 3) }, { name: "s-1/subagents/agent-a1.jsonl" })],
+    ["an older-style agent- transcript", (sandbox, repo) => writeSessionLog(sandbox, "agent-a1", repo, "2026-10-11T15:00:00Z")],
+    ["an .orphaned- copy", (sandbox, repo) => writeSession(sandbox, { session: "s-1", cwd: repo, messages: exchanges("2026-10-11T15:00:00Z", 3) }, { name: "s-1.orphaned-20261011-ab12.jsonl" })],
+    ["a .superseded- copy", (sandbox, repo) => writeSession(sandbox, { session: "s-1", cwd: repo, messages: exchanges("2026-10-11T15:00:00Z", 3) }, { name: "s-1.jsonl.superseded-20261011" })],
     ["a Session active in the last 2 hours", (sandbox, repo) => writeSessionLog(sandbox, "s-1", repo, "2026-10-12T02:10:00Z")],
     ["a Session last active more than 28 days ago", (sandbox, repo) => writeSessionLog(sandbox, "s-1", repo, "2026-09-13T15:00:00Z")],
     ["a Session with fewer than 3 user messages", (sandbox, repo) => writeSessionLog(sandbox, "s-1", repo, "2026-10-11T15:00:00Z", 2)],
@@ -178,7 +171,7 @@ describe("sweep leaves out Sessions it should not draft", () => {
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
     writeConfig(sandbox, `sweep-opt-out = ${repo}\n`);
     for (const [session, cwd] of [["s-vault", sandbox.vault], ["s-opted", repo]] as const) {
-      writeSession(sandbox, session, cwd, [{ type: "message-v9", timestamp: "2026-10-11T15:00:00Z", cwd, payload: {} }]);
+      writeUnknownLog(sandbox, session, cwd, [{ type: "message-v9", timestamp: "2026-10-11T15:00:00Z", cwd, payload: {} }]);
     }
 
     // #when
@@ -223,18 +216,17 @@ describe("sweep reads only what a Session said", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    const [ask, answer, ...rest] = exchanges("2026-10-11T15:00:00Z", 3).map((message) => record("s-1", repo, message));
-    writeSession(sandbox, "s-1", repo, [
-      { type: "file-history-snapshot", messageId: "m", snapshot: {} },
-      ask,
-      ask,
-      "not json {",
-      { ...record("s-1", repo, { role: "assistant", text: "", at: "2026-10-11T15:00:30Z" }), message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "ls secret-dir" } }, { type: "thinking", thinking: "hmm" }] } },
-      { ...record("s-1", repo, { role: "user", text: "", at: "2026-10-11T15:00:40Z" }), message: { role: "user", content: [{ type: "tool_result", content: "tool output here" }] } },
-      record("s-1", repo, { role: "user", text: "Sidechain chatter", at: "2026-10-11T15:00:50Z" }, { isSidechain: true }),
-      answer,
-      ...rest,
-    ]);
+    const row = { type: "assistant", uuid: "u-tool", sessionId: "s-1", cwd: repo, isSidechain: false };
+    const file = writeSession(sandbox, { session: "s-1", cwd: repo, branch: "main", messages: exchanges("2026-10-11T15:00:00Z", 3) }, {
+      noise: [
+        { type: "file-history-snapshot", messageId: "m", snapshot: {} },
+        "not json {",
+        { ...row, timestamp: "2026-10-11T15:00:30Z", message: { role: "assistant", content: [{ type: "tool_use", name: "Bash", input: { command: "ls secret-dir" } }, { type: "thinking", thinking: "hmm" }] } },
+        { ...row, type: "user", uuid: "u-result", timestamp: "2026-10-11T15:00:40Z", message: { role: "user", content: [{ type: "tool_result", content: "tool output here" }] } },
+        { ...row, type: "user", uuid: "u-side", isSidechain: true, timestamp: "2026-10-11T15:00:50Z", message: { role: "user", content: "Sidechain chatter" } },
+      ],
+    });
+    appendFileSync(file, `${readFileSync(file, "utf8").split("\n")[0]}\n`);
 
     // #when
     sweep(sandbox, stubAgent(sandbox, `Slug: s\n${BODY}`));
@@ -268,8 +260,7 @@ describe("sweep reads only what a Session said", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    const rows = [...exchanges("2026-10-11T15:00:00Z", 3, "Early"), ...exchanges("2026-10-11T18:00:00Z", 3, "Later")].map((message) => record("s-1", repo, message));
-    writeSession(sandbox, "s-1", repo, rows);
+    writeSession(sandbox, { session: "s-1", cwd: repo, branch: "main", messages: [...exchanges("2026-10-11T15:00:00Z", 3, "Early"), ...exchanges("2026-10-11T18:00:00Z", 3, "Later")] });
     run(sandbox, [...writeDumpArgs("manual"), "--session", "s-1", "--through", "2026-10-11T15:05:00Z"], { stdin: BODY });
 
     // #when
@@ -285,8 +276,7 @@ describe("sweep reads only what a Session said", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    const boundary = { type: "system", subtype: "compact_boundary", timestamp: "2026-10-11T14:59:00Z", compactMetadata: { trigger: "auto" } };
-    writeSession(sandbox, "s-1", repo, [{ type: "permission-mode", permissionMode: "default" }, boundary, ...exchanges("2026-10-11T15:00:00Z", 3).map((message) => record("s-1", repo, message))]);
+    writeSession(sandbox, { session: "s-1", cwd: repo, branch: "main", messages: exchanges("2026-10-11T15:00:00Z", 3), startsAfterCompaction: true });
 
     // #when
     const result = sweep(sandbox, stubAgent(sandbox, `Slug: s\n${BODY}`));
@@ -300,12 +290,12 @@ describe("sweep reads only what a Session said", () => {
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
     const filler = "x".repeat(80_000);
-    const messages: Message[] = [
-      { role: "user", text: `HEAD ${filler}`, at: "2026-10-11T15:00:00Z" },
-      { role: "user", text: `${filler} MIDDLE ${filler}`, at: "2026-10-11T15:02:00Z" },
-      { role: "user", text: `${filler} TAIL`, at: "2026-10-11T15:05:00Z" },
+    const messages: SessionMessage[] = [
+      { role: "user", text: `HEAD ${filler}`, at: new Date("2026-10-11T15:00:00Z") },
+      { role: "user", text: `${filler} MIDDLE ${filler}`, at: new Date("2026-10-11T15:02:00Z") },
+      { role: "user", text: `${filler} TAIL`, at: new Date("2026-10-11T15:05:00Z") },
     ];
-    writeSession(sandbox, "s-1", repo, messages.map((message) => record("s-1", repo, message)));
+    writeSession(sandbox, { session: "s-1", cwd: repo, branch: "main", messages });
 
     // #when
     const result = sweep(sandbox, stubAgent(sandbox, `Slug: s\n${BODY}`));
@@ -330,7 +320,7 @@ describe("sweep reports and retries a file it cannot read", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    const file = writeSession(sandbox, "s-1", repo, [{ type: "message-v9", timestamp: "2026-10-11T15:00:00Z", payload: { text: "Question 1" } }]);
+    const file = writeUnknownLog(sandbox, "s-1", repo, [{ type: "message-v9", timestamp: "2026-10-11T15:00:00Z", payload: { text: "Question 1" } }]);
     const env = stubAgent(sandbox, `Slug: s\n${BODY}`);
 
     // #when
@@ -638,43 +628,15 @@ describe("the Sweep's per-machine lock", () => {
   });
 });
 
-/** One Codex rollout record, shaped as Codex writes it to `~/.codex/sessions/YYYY/MM/DD/rollout-<ts>-<thread>.jsonl`. */
-function codexRecord(at: string, type: string, payload: Record<string, unknown>): Record<string, unknown> {
-  return { timestamp: at, type, payload };
-}
-
-function codexMeta(thread: string, cwd: string, at: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
-  return codexRecord(at, "session_meta", {
-    id: thread,
-    timestamp: at,
-    cwd,
-    originator: "codex-tui",
-    cli_version: "0.162.1",
-    source: "cli",
-    thread_source: "user",
-    git: { commit_hash: "aa32ff3", branch: "feature-x", repository_url: "git@github.com:me/Brain-Dump.git" },
-    ...extra,
-  });
-}
-
-/** A turn as current Codex writes it: `item_completed` events holding the user's and the agent's messages. */
-function codexTurn({ role, text, at }: Message): Record<string, unknown> {
-  const item = role === "user" ? { type: "UserMessage", id: `item-${++uuids}`, content: [{ type: "text", text, text_elements: [] }] } : { type: "AgentMessage", id: `item-${++uuids}`, phase: "final_answer", content: [{ type: "Text", text }] };
-  return codexRecord(at, "event_msg", { type: "item_completed", thread_id: "t", turn_id: "turn", item });
-}
-
-function writeCodexSession(sandbox: Sandbox, thread: string, start: string, rows: unknown[], { compress = false } = {}): string {
-  const day = start.slice(0, 10).replaceAll("-", "/");
-  const name = `rollout-${start.slice(0, 19).replaceAll(":", "-")}-${thread}.jsonl${compress ? ".zst" : ""}`;
-  const path = join(sandbox.home, ".codex", "sessions", day, name);
-  mkdirSync(join(path, ".."), { recursive: true });
-  const text = rows.map((row) => (typeof row === "string" ? row : JSON.stringify(row))).join("\n") + "\n";
-  writeFileSync(path, compress ? Bun.zstdCompressSync(text) : text);
-  return path;
+/** A rollout under the sandbox's `~/.codex`, written by the adapter; `noise` follows it, and `compress` makes it a cold `.jsonl.zst`. */
+function writeRollout(sandbox: Sandbox, log: CodexSessionLog, { compress = false, noise = [] }: { compress?: boolean; noise?: unknown[] } = {}): string {
+  const text = renderCodexSession(log) + foreign(noise);
+  const path = codexRolloutPath(log, join(sandbox.home, ".codex"));
+  return compress ? writeFile(`${path}.zst`, Bun.zstdCompressSync(text)) : writeFile(path, text);
 }
 
 function writeCodexLog(sandbox: Sandbox, thread: string, cwd: string, start: string, options: { compress?: boolean } = {}): string {
-  return writeCodexSession(sandbox, thread, start, [codexMeta(thread, cwd, start), ...exchanges(start, 3).map(codexTurn)], options);
+  return writeRollout(sandbox, { thread, cwd, branch: "feature-x", start: new Date(start), messages: exchanges(start, 3) }, options);
 }
 
 describe("sweep drafts Codex Sessions too", () => {
@@ -695,28 +657,23 @@ describe("sweep drafts Codex Sessions too", () => {
     });
   });
 
-  test("gives the agent only what the user and agent said in message events, in either Codex format, never compaction's replacement history", () => {
+  test("gives the agent only what the user and agent said in message events, never tool items, model copies or compaction's replacement history", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
-    const thread = "01a13167-81a4-7843-abad-34ec9c7270cf";
-    const at = (minute: number): string => `2026-10-11T15:0${minute}:00.000Z`;
-    writeCodexSession(sandbox, thread, at(0), [
-      codexMeta(thread, repo, at(0)),
-      codexRecord(at(0), "turn_context", { cwd: repo, model: "gpt-5.5" }),
-      codexRecord(at(0), "response_item", { type: "message", role: "user", content: [{ type: "input_text", text: "<environment_context>injected</environment_context>" }] }),
-      codexRecord(at(0), "event_msg", { type: "user_message", message: "Question 1", images: [] }),
-      codexRecord(at(0), "response_item", { type: "reasoning", summary: [{ type: "summary_text", text: "thinking" }] }),
-      codexRecord(at(1), "event_msg", { type: "agent_message", message: "Answer 1", phase: "final_answer" }),
-      codexRecord(at(2), "compacted", { message: "summary", replacement_history: [{ type: "message", role: "user", content: [{ type: "input_text", text: "Rewritten question" }] }] }),
-      codexRecord(at(2), "event_msg", { type: "item_completed", item: { type: "CommandExecution", command: "ls secret-dir", aggregated_output: "tool output here" } }),
-      "not json {",
-      codexRecord(at(2), "event_msg", { type: "token_count", info: null }),
-      codexTurn({ role: "user", text: "Question 2", at: at(2) }),
-      codexTurn({ role: "assistant", text: "Answer 2", at: at(3) }),
-      codexTurn({ role: "user", text: "Question 3", at: at(4) }),
-      codexTurn({ role: "assistant", text: "Answer 3", at: at(5) }),
-    ]);
+    const at = "2026-10-11T15:02:00.000Z";
+    const log: CodexSessionLog = { thread: "01a13167-81a4-7843-abad-34ec9c7270cf", cwd: repo, branch: "feature-x", start: new Date("2026-10-11T15:00:00Z"), messages: exchanges("2026-10-11T15:00:00Z", 3) };
+    writeRollout(sandbox, log, {
+      noise: [
+        { timestamp: at, type: "turn_context", payload: { cwd: repo, model: "gpt-5.5" } },
+        { timestamp: at, type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "<environment_context>injected</environment_context>" }] } },
+        { timestamp: at, type: "response_item", payload: { type: "reasoning", summary: [{ type: "summary_text", text: "thinking" }] } },
+        { timestamp: at, type: "compacted", payload: { message: "summary", replacement_history: [{ type: "message", role: "user", content: [{ type: "input_text", text: "Rewritten question" }] }] } },
+        { timestamp: at, type: "event_msg", payload: { type: "item_completed", item: { type: "CommandExecution", command: "ls secret-dir", aggregated_output: "tool output here" } } },
+        "not json {",
+        { timestamp: at, type: "event_msg", payload: { type: "token_count", info: null } },
+      ],
+    });
 
     // #when
     sweep(sandbox, stubAgent(sandbox, `Slug: s\n${BODY}`));
@@ -736,9 +693,8 @@ describe("sweep drafts Codex Sessions too", () => {
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
     const parent = "01a0a813-bc00-7000-8000-000000000000";
-    const subagent = { source: { subagent: { thread_spawn: { parent_thread_id: parent, depth: 1 } } }, thread_source: "subagent", parent_thread_id: parent, agent_role: "explorer" };
-    writeCodexSession(sandbox, "t-busy", "2026-10-11T15:00:00Z", [codexMeta("t-busy", repo, "2026-10-11T15:00:00Z", subagent), ...exchanges("2026-10-11T15:00:00Z", 3).map(codexTurn)]);
-    writeCodexSession(sandbox, "t-quiet", "2026-10-11T16:00:00Z", [codexMeta("t-quiet", repo, "2026-10-11T16:00:00Z", subagent)]);
+    writeRollout(sandbox, { thread: "t-busy", cwd: repo, start: new Date("2026-10-11T15:00:00Z"), messages: exchanges("2026-10-11T15:00:00Z", 3), parent });
+    writeRollout(sandbox, { thread: "t-quiet", cwd: repo, start: new Date("2026-10-11T16:00:00Z"), messages: [], parent });
 
     // #when
     const result = sweep(sandbox, stubAgent(sandbox, `Slug: s\n${BODY}`));
@@ -787,7 +743,7 @@ describe("sweep drafts Codex Sessions too", () => {
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
     const session = "01a13167-81a4-7843-abad-34ec9c7270cf";
     writeCodexLog(sandbox, session, repo, "2026-10-11T15:00:00Z");
-    const reverted = writeCodexSession(sandbox, session, "2026-10-11T18:00:00Z", [codexMeta(session, repo, "2026-10-11T18:00:00Z"), ...exchanges("2026-10-11T18:00:00Z", 3, "Reverted").map(codexTurn)]);
+    const reverted = writeRollout(sandbox, { thread: session, cwd: repo, start: new Date("2026-10-11T18:00:00Z"), messages: exchanges("2026-10-11T18:00:00Z", 3, "Reverted") });
     renameSync(reverted, reverted.replace(".jsonl", "_01a13190-0000-7000-8000-000000000000.jsonl"));
 
     // #when
@@ -805,8 +761,8 @@ describe("sweep drafts Codex Sessions too", () => {
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
     const session = "01a13167-81a4-7843-abad-34ec9c7270cf";
-    const turns = [...exchanges("2026-10-11T15:00:00Z", 3, "Early"), ...exchanges("2026-10-11T18:00:00Z", 3, "Later")].map(codexTurn);
-    writeCodexSession(sandbox, session, "2026-10-11T15:00:00Z", [codexMeta(session, repo, "2026-10-11T15:00:00Z"), ...turns]);
+    const messages = [...exchanges("2026-10-11T15:00:00Z", 3, "Early"), ...exchanges("2026-10-11T18:00:00Z", 3, "Later")];
+    writeRollout(sandbox, { thread: session, cwd: repo, start: new Date("2026-10-11T15:00:00Z"), messages });
     run(sandbox, [...writeDumpArgs("manual", "Codex"), "--through", "2026-10-11T15:05:00Z"], { stdin: BODY, cwd: repo, env: { CODEX_THREAD_ID: session } });
 
     // #when

@@ -4,7 +4,7 @@ import { basename, join } from "node:path";
 import { countOf } from "./check.ts";
 import { claudeSessionFiles, readClaudeSession } from "./claude-sessions.ts";
 import { codexSessionFiles, readCodexSession } from "./codex-sessions.ts";
-import { datePart, now } from "./clock.ts";
+import { now } from "./clock.ts";
 import { checkCoverage, prepareDump, SecretRefusedError, writeDumps, type CoveredSession, type PreparedDump } from "./dump.ts";
 import { BrainDumpError, errnoCode } from "./errors.ts";
 import { canonical, isInside } from "./guard.ts";
@@ -13,7 +13,7 @@ import { INBOX } from "./layout.ts";
 import { detectDevOrigin, type DevOrigin } from "./origin.ts";
 import { NO_ITEMS_REPLY, sweepDraftPrompt } from "./prompts.ts";
 import { stateFolder } from "./runs.ts";
-import type { SessionMessage, Transcript } from "./transcript.ts";
+import { renderSessionText, type SessionMessage, type Transcript } from "./transcript.ts";
 import { expandHome, readSetting, type Vault } from "./vault.ts";
 
 // The Sweep (ADR 0009): drafts one Dump per recent uncaptured Session, each through its own tool-less, unsaved agent run, and writes them all as one Run.
@@ -183,7 +183,7 @@ export type DraftOutcome =
 
 function draft({ transcript, messages }: Candidate): DraftOutcome {
   const origin: DevOrigin = { ...sessionOrigin(transcript), notes: transcript.startsAfterCompaction ? ["earlier part missing"] : [] };
-  return draftText(renderTranscript(messages), origin, { id: transcript.session, through: transcript.lastRecord });
+  return draftText(renderSessionText(messages), origin, { id: transcript.session, through: transcript.lastRecord });
 }
 
 /** The drafting step on one Session's extracted text: capped, drafted by one agent run, the reply parsed and checked as `write-dump` checks it. The Sweep eval runs it on fixtures. */
@@ -214,11 +214,6 @@ export function draftText(text: string, origin: DevOrigin, session: CoveredSessi
 function sessionOrigin({ tool, cwd, branch, lastRecord }: Candidate["transcript"]): DevOrigin {
   if (!existsSync(cwd)) return { kind: "dev", tool, project: basename(cwd), location: cwd, branch, at: lastRecord };
   return { ...detectDevOrigin(tool, cwd, lastRecord), branch };
-}
-
-/** User and assistant text in order, the form fixtures for the Sweep eval take. */
-function renderTranscript(messages: SessionMessage[]): string {
-  return messages.map(({ role, text, at }) => `[${datePart(at)} ${at.toTimeString().slice(0, 5)}] ${role === "user" ? "User" : "Assistant"}:\n${text}`).join("\n\n");
 }
 
 /** Over the cap, the head and the tail are kept. */

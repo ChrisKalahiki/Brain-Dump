@@ -57,6 +57,8 @@ export const DUMP_EVAL: Eval = {
     "src/dump.ts",
     "src/dump-body.ts",
     "src/secrets.ts",
+    "src/claude-sessions.ts",
+    "src/transcript.ts",
     "evals/dump.ts",
     "evals/agent.ts",
     "evals/assertions.ts",

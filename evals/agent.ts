@@ -1,7 +1,9 @@
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
+import { claudeProjectFolder, renderClaudeSession } from "../src/claude-sessions.ts";
 import { DRAFTING_MODEL } from "../src/sweep.ts";
+import { parseSessionText } from "../src/transcript.ts";
 
 // Skill evals run a skill as the user would, in a headless Claude Code run on the pinned model: the repo's own skills and nothing of the user's
 // (no user settings, skills, hooks or CLAUDE.md), with a `brain-dump` on PATH that works on a sandbox Vault.
@@ -9,13 +11,19 @@ import { DRAFTING_MODEL } from "../src/sweep.ts";
 const ROOT = join(import.meta.dir, "..");
 const CLI = join(ROOT, "src", "cli.ts");
 const AGENT_TIMEOUT_MS = 15 * 60 * 1000;
-const FIXTURE_MESSAGE = /^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\] (User|Assistant):$/;
+/** Every folder an eval runs Claude Code in starts with this, so what Claude Code keeps for one is recognisable in the real `~/.claude/projects`. */
+const EVAL_FOLDER_PREFIX = join(realpathSync(tmpdir()), "brain-dump-eval-");
+
+/** A throwaway folder for a run, resolved so it matches the cwd Claude Code records where the temp folder sits behind a symlink. */
+export function makeEvalFolder(): string {
+  return realpathSync(mkdtempSync(EVAL_FOLDER_PREFIX));
+}
 
 /** A throwaway home: the Vault at its default place, and a git repo, the Session's project, holding the skills under test. */
 export type SkillSandbox = { home: string; vault: string; project: string; path: string };
 
 export function makeSkillSandbox(skills: string[], project = "harbor"): SkillSandbox {
-  const home = realpathSync(mkdtempSync(join(tmpdir(), "brain-dump-eval-")));
+  const home = makeEvalFolder();
   const vault = join(home, "Documents", "The Vault");
   mkdirSync(join(vault, ".obsidian"), { recursive: true });
   const projectDir = join(home, "Projects", project);
@@ -98,42 +106,23 @@ function parseResult(stdout: string): { is_error: boolean; result: string } | un
 }
 
 /**
- * Writes a fixture transcript (`[YYYY-MM-DD HH:MM] User:` and `Assistant:` headers, as the Sweep renders one) as a Claude Code Session log
- * for `cwd`, so a run can resume it. The log sits in the real `~/.claude/projects` for as long as the run needs it; `remove` deletes it and anything
- * else Claude Code kept for `cwd`.
+ * Writes a fixture transcript, in the Session text form, as a Claude Code Session log for `cwd`, so a run can resume it. The log sits in the real
+ * `~/.claude/projects`, since a separate config folder loses the login, for as long as the run needs it; `remove` deletes it and anything else Claude
+ * Code kept for `cwd`. `cwd` must be an eval folder, so a killed run's log is found by `removeLeftoverSessions`.
  */
 export function writeSessionLog(cwd: string, transcript: string): { id: string; remove: () => void } {
+  if (!cwd.startsWith(EVAL_FOLDER_PREFIX)) throw new Error(`${cwd} is not an eval folder; make it with makeEvalFolder`);
   const id = crypto.randomUUID();
   const folder = claudeProjectFolder(cwd);
   mkdirSync(folder, { recursive: true });
-  let parentUuid: string | null = null;
-  const rows = parseFixtureTranscript(transcript).map(({ role, text, at }, index) => {
-    const uuid = crypto.randomUUID();
-    const message =
-      role === "user"
-        ? { role, content: text }
-        : { id: `msg_fixture_${index}`, type: "message", role, model: DRAFTING_MODEL, content: [{ type: "text", text }], stop_reason: "end_turn", stop_sequence: null };
-    const row = { parentUuid, isSidechain: false, userType: "external", cwd, sessionId: id, gitBranch: "main", type: role, message, uuid, timestamp: at.toISOString() };
-    parentUuid = uuid;
-    return JSON.stringify(row);
-  });
-  writeFileSync(join(folder, `${id}.jsonl`), `${rows.join("\n")}\n`);
+  writeFileSync(join(folder, `${id}.jsonl`), renderClaudeSession({ session: id, cwd, branch: "main", messages: parseSessionText(transcript) }));
   return { id, remove: () => rmSync(folder, { recursive: true, force: true }) };
 }
 
-function claudeProjectFolder(cwd: string): string {
-  return join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude"), "projects", cwd.replace(/[^a-zA-Z0-9]/g, "-"));
-}
-
-export type FixtureMessage = { role: "user" | "assistant"; text: string; at: Date };
-
-export function parseFixtureTranscript(transcript: string): FixtureMessage[] {
-  const messages: FixtureMessage[] = [];
-  for (const line of transcript.split("\n")) {
-    const header = FIXTURE_MESSAGE.exec(line);
-    const last = messages.at(-1);
-    if (header?.[1] && header[2]) messages.push({ role: header[2] === "User" ? "user" : "assistant", text: "", at: new Date(`${header[1].replace(" ", "T")}:00Z`) });
-    else if (last !== undefined) last.text += `${line}\n`;
-  }
-  return messages.map((message) => ({ ...message, text: message.text.trim() }));
+/** Removes what Claude Code kept for eval folders a killed run never cleaned up. Run before an eval starts, so never alongside a live one. */
+export function removeLeftoverSessions(): void {
+  const projects = dirname(claudeProjectFolder(EVAL_FOLDER_PREFIX));
+  const prefix = basename(claudeProjectFolder(EVAL_FOLDER_PREFIX));
+  if (!existsSync(projects)) return;
+  for (const name of readdirSync(projects)) if (name.startsWith(prefix)) rmSync(join(projects, name), { recursive: true, force: true });
 }

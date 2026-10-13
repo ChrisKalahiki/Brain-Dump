@@ -1,3 +1,4 @@
+import { datePart, pad } from "./clock.ts";
 import type { DevToolTag } from "./origin.ts";
 
 // What the Sweep's readers make of a Session log, one reader per tool. Neither tool's log format is a stable interface, so each reader takes only user and
@@ -44,4 +45,29 @@ export function textBlocks(content: unknown): string {
     .flatMap((block) => (isRecord(block) && typeof block.type === "string" && block.type.toLowerCase() === "text" && typeof block.text === "string" ? [block.text.trim()] : []))
     .filter((text) => text !== "")
     .join("\n\n");
+}
+
+// The Session text form: each message under a `[YYYY-MM-DD HH:MM] User:` or `Assistant:` header, in local time. The Sweep hands the drafting agent a
+// Session in this form, and eval fixtures are written in it.
+
+const TEXT_HEADER = /^\[(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})\] (User|Assistant):$/;
+
+export function renderSessionText(messages: SessionMessage[]): string {
+  return messages.map(({ role, text, at }) => `[${datePart(at)} ${pad(at.getHours())}:${pad(at.getMinutes())}] ${role === "user" ? "User" : "Assistant"}:\n${text}`).join("\n\n");
+}
+
+/** Times are to the minute, so only a message at a whole minute reads back exactly. */
+export function parseSessionText(text: string): SessionMessage[] {
+  const messages: SessionMessage[] = [];
+  for (const line of text.split("\n")) {
+    const header = TEXT_HEADER.exec(line);
+    const last = messages.at(-1);
+    if (header !== null) {
+      const [year, month, day, hour, minute] = header.slice(1, 6).map(Number);
+      messages.push({ role: header[6] === "User" ? "user" : "assistant", text: "", at: new Date(year ?? 0, (month ?? 1) - 1, day, hour, minute) });
+    } else if (last !== undefined) {
+      last.text += `${line}\n`;
+    }
+  }
+  return messages.map((message) => ({ ...message, text: message.text.trim() }));
 }

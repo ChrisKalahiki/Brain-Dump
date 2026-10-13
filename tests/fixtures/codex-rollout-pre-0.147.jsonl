@@ -1,0 +1,11 @@
+{"timestamp":"2026-09-01T15:00:00.000Z","type":"session_meta","payload":{"id":"0199a0f2-4c1e-7d30-9a51-2f6b8c3d1e70","timestamp":"2026-09-01T15:00:00.000Z","cwd":"/Users/me/Projects/Brain-Dump","originator":"codex_cli_rs","cli_version":"0.146.0","source":"cli","git":{"commit_hash":"aa32ff3","branch":"feature-x","repository_url":"git@github.com:me/Brain-Dump.git"}}}
+{"timestamp":"2026-09-01T15:00:00.000Z","type":"turn_context","payload":{"cwd":"/Users/me/Projects/Brain-Dump","model":"gpt-5.5"}}
+{"timestamp":"2026-09-01T15:00:00.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>injected</environment_context>"}]}}
+{"timestamp":"2026-09-01T15:00:00.000Z","type":"event_msg","payload":{"type":"user_message","message":"Question 1","images":[]}}
+{"timestamp":"2026-09-01T15:00:30.000Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"thinking"}]}}
+{"timestamp":"2026-09-01T15:01:00.000Z","type":"event_msg","payload":{"type":"agent_message","message":"Answer 1","phase":"final_answer"}}
+{"timestamp":"2026-09-01T15:02:00.000Z","type":"compacted","payload":{"message":"summary","replacement_history":[{"type":"message","role":"user","content":[{"type":"input_text","text":"Rewritten question"}]}]}}
+not json {
+{"timestamp":"2026-09-01T15:02:00.000Z","type":"event_msg","payload":{"type":"token_count","info":null}}
+{"timestamp":"2026-09-01T15:02:00.000Z","type":"event_msg","payload":{"type":"user_message","message":"Question 2","images":[]}}
+{"timestamp":"2026-09-01T15:03:00.000Z","type":"event_msg","payload":{"type":"agent_message","message":"Answer 2","phase":"final_answer"}}
