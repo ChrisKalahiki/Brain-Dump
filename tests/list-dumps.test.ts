@@ -30,7 +30,7 @@ describe("brain-dump list-dumps", () => {
         date: "2026-10-05",
         project: "Brain-Dump",
         label: "Brain-Dump",
-        hash:vaultFileHash(sandbox, "Inbox/2026-10-05 1940 Brain-Dump - filing.md"),
+        hash: vaultFileHash(sandbox, "Inbox/2026-10-05 1940 Brain-Dump - filing.md"),
         items: [
           { index: 1, kind: "Learning", text: "Bun runs TypeScript directly.", rationale: null, state: "filed" },
           { index: 2, kind: "Decision", text: "Filing is append-only.", rationale: "protect curated notes.", state: "open" },

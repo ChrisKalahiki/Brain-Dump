@@ -5,7 +5,7 @@ import { countOf } from "./check.ts";
 import { claudeSessionFiles, readClaudeSession } from "./claude-sessions.ts";
 import { codexSessionFiles, readCodexSession } from "./codex-sessions.ts";
 import { datePart, now } from "./clock.ts";
-import { prepareDump, SecretRefusedError, writeDumps, type CoveredSession, type PreparedDump } from "./dump.ts";
+import { checkCoverage, prepareDump, SecretRefusedError, writeDumps, type CoveredSession, type PreparedDump } from "./dump.ts";
 import { BrainDumpError, errnoCode } from "./errors.ts";
 import { canonical, isInside } from "./guard.ts";
 import { coveredSessions } from "./inbox.ts";
@@ -188,6 +188,12 @@ function draft({ transcript, messages }: Candidate): DraftOutcome {
 
 /** The drafting step on one Session's extracted text: capped, drafted by one agent run, the reply parsed and checked as `write-dump` checks it. The Sweep eval runs it on fixtures. */
 export function draftText(text: string, origin: DevOrigin, session: CoveredSession): DraftOutcome {
+  try {
+    checkCoverage({ origin, swept: true, session: session.id, through: session.through });
+  } catch (error) {
+    if (error instanceof BrainDumpError) return { kind: "invalid", error: `not drafted: ${error.message}` };
+    throw error;
+  }
   const { text: capped, truncated } = capText(text);
   const reply = runAgent(sweepDraftPrompt(capped));
   if (!reply.ok) return { kind: "agent-failed", error: reply.error };

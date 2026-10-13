@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, writeFi
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { contentHash } from "../src/content-hash.ts";
-import { parseDump, renderDump, renderOriginLine, type CoveredSession } from "../src/dump.ts";
+import { renderDump, type CoveredSession } from "../src/dump.ts";
 import { ROUTES_NOTE } from "../src/layout.ts";
 import type { DevOrigin, DevToolTag, Origin } from "../src/origin.ts";
 
@@ -66,11 +66,11 @@ export function writeDumpArgs(slug = "s", tool = "ClaudeCode"): string[] {
   return ["write-dump", "--tool", tool, "--slug", slug, "--at", DUMP_AT];
 }
 
-/** The origin line of the Dump at `dumpPath`, read back through the Dump document. */
-export function originLine(dumpPath: string): string {
-  const dump = parseDump(dumpPath, readFileSync(dumpPath, "utf8"));
-  if ("problem" in dump) throw new Error(`${dumpPath}: ${dump.problem}`);
-  return renderOriginLine(dump.origin, dump.swept);
+/** The origin line exactly as written, so tests of what `write-dump` writes don't read it back through the parser under test. */
+export function originLine(dumpPath: string): string | undefined {
+  return readFileSync(dumpPath, "utf8")
+    .split("\n")
+    .find((line) => line.startsWith("Session: "));
 }
 
 export function writeVaultFile(sandbox: Sandbox, relativePath: string, contents: string): string {

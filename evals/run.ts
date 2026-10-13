@@ -1,6 +1,5 @@
 import { parseArgs } from "node:util";
-import { now } from "../src/clock.ts";
-import { datePart } from "../src/clock.ts";
+import { datePart, now } from "../src/clock.ts";
 import { AGENT_VARIABLE } from "../src/sweep.ts";
 import { EVALS, recordPass, type CaseResult, type Eval } from "./eval.ts";
 

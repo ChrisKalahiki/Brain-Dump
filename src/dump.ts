@@ -66,14 +66,19 @@ export function writeDump(request: DumpRequest): string {
 /** Refuses a Dump breaking the origin and coverage rules, a body holding a secret or breaking the Dump rules, before anything is written. */
 export function prepareDump({ origin, swept = false, slug, body, session, through }: DumpRequest): PreparedDump {
   const stem = dumpStem(origin, slug);
-  if (session !== undefined && !SESSION_ID.test(session)) throw new UsageError(`--session "${session}" may hold only letters, digits, ".", "_" and "-"`);
-  if (through !== undefined && session === undefined) throw new UsageError("--through needs --session");
-  if (swept && origin.kind === "chat") throw new UsageError(`--swept is only for ${TOOL_TAGS.filter((tool) => !isChatTool(tool)).join(" and ")}`);
-  if (swept && session === undefined) throw new UsageError("--swept needs --session");
+  checkCoverage({ origin, swept, session, through });
   const secret = findSecret(body);
   if (secret !== undefined) throw new SecretRefusedError(secret.line, secret.kind);
   const covered = session === undefined ? undefined : { id: session, through: through ?? origin.at };
   return { stem, contents: renderContents({ origin, swept, session: covered, slug, body: renderDumpBody(parseDumpBody(body)) }) };
+}
+
+/** The origin and coverage rules alone, so the Sweep can refuse a Session before paying for its draft. */
+export function checkCoverage({ origin, swept = false, session, through }: Omit<DumpRequest, "slug" | "body">): void {
+  if (session !== undefined && !SESSION_ID.test(session)) throw new UsageError(`--session "${session}" may hold only letters, digits, ".", "_" and "-"`);
+  if (through !== undefined && session === undefined) throw new UsageError("--through needs --session");
+  if (swept && origin.kind === "chat") throw new UsageError(`--swept is only for ${TOOL_TAGS.filter((tool) => !isChatTool(tool)).join(" and ")}`);
+  if (swept && session === undefined) throw new UsageError("--swept needs --session");
 }
 
 /** Renders a Dump as it is, unchecked. */

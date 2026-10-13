@@ -83,7 +83,7 @@ Each ticket's decisions sit under its own heading; tickets link here by heading.
 - The origin module keeps only the tool table and git detection (`detectDevOrigin`, `projectOf`).
 - The Inbox module keeps folder listing and reads Dumps through the Dump module. The body parser stays as an internal seam.
 - Parsing returns the Dump or a named problem; `check` reports the problem, other readers raise it. `check`'s own header check goes away.
-- **Project** means the origin-line link; it may be absent on a chat Dump. The filename segment is the **label**: the Project, or the tool name when there is none. `list-dumps` returns both `project` (nullable) and `label`.
+- **Project** means the origin-line link; it may be absent on a chat Dump. The filename segment is the **label**: a dev Dump's Project, a chat Dump's tool name (as today, even when the chat names a Project). `list-dumps` returns both `project` (nullable) and `label`.
 - The file skill matches Routes on `project`, falling back to `label`. The link line's alias uses `label`.
 - Filenames don't change.
 - GLOSSARY gains **Project**: "The repo or subject a Session was about; for a dev Session, its main worktree folder; for a chat Session, given or absent."

@@ -431,7 +431,7 @@ describe("sweep handles what the drafting agent does", () => {
     });
   });
 
-  test("holds a Session to the rules write-dump holds it to", () => {
+  test("refuses a Session breaking the rules write-dump holds it to, before drafting it", () => {
     // #given
     const sandbox = makeSandbox();
     const repo = makeRepo(sandbox, "Brain-Dump", "main");
@@ -443,9 +443,14 @@ describe("sweep handles what the drafting agent does", () => {
     const result = sweep(sandbox, env);
 
     // #then
-    expect({ written: result.summary.written.map(({ session }) => session), errors: result.summary.errors }).toEqual({
+    expect({
+      written: result.summary.written.map(({ session }) => session),
+      errors: result.summary.errors,
+      drafted: prompts(sandbox).some((prompt) => prompt.includes("Odd")),
+    }).toEqual({
       written: ["s-good"],
-      errors: [{ session: "s odd", error: 'invalid draft: --session "s odd" may hold only letters, digits, ".", "_" and "-"' }],
+      errors: [{ session: "s odd", error: 'not drafted: --session "s odd" may hold only letters, digits, ".", "_" and "-"' }],
+      drafted: false,
     });
   });
 

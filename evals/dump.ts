@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { renderDumpBody } from "../src/dump-body.ts";
 import { parseDump } from "../src/dump.ts";
 import { INBOX } from "../src/layout.ts";
 import { DRAFTING_MODEL } from "../src/sweep.ts";
@@ -86,7 +87,7 @@ async function runCase({ fixture, focus, expected }: DumpCase): Promise<CaseResu
     const dump = parseDump(name, readFileSync(join(inbox, name), "utf8"));
     if ("problem" in dump) return { failures: [`wrote an unreadable Dump: ${dump.problem}`] };
     const { slug } = dump;
-    const body = `${dump.lines.slice(dump.bodyStart).join("\n").trim()}\n`;
+    const body = renderDumpBody(dump.body);
     const graded = focus === undefined ? transcript : `${transcript}\n\n[The user then ran \`/dump ${focus}\`.]`;
     return { failures: checkDraft(slug, body, expected), grade: grade(DUMP_RUBRIC, graded, body) };
   } finally {
