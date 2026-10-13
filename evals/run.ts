@@ -1,6 +1,7 @@
 import { parseArgs } from "node:util";
 import { datePart, now } from "../src/clock.ts";
 import { AGENT_VARIABLE } from "../src/sweep.ts";
+import { removeLeftoverSessions } from "./agent.ts";
 import { EVALS, recordPass, type CaseResult, type Eval } from "./eval.ts";
 
 // `bun run eval [name] [--runs N]`: runs each fixture N times on the real model; a pass with every run of every fixture passing is recorded.
@@ -22,6 +23,7 @@ async function main(argv: string[]): Promise<number> {
 }
 
 async function runEval(declared: Eval, runs: number): Promise<boolean> {
+  removeLeftoverSessions();
   console.log(`${declared.name} (${declared.model}, ${runs} run${runs === 1 ? "" : "s"} per fixture)`);
   let passed = true;
   for (const evalCase of declared.cases) {

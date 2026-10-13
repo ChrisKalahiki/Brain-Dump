@@ -1,12 +1,11 @@
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { prepareDump, SecretRefusedError } from "../src/dump.ts";
 import { BrainDumpError } from "../src/errors.ts";
 import type { ChatToolTag } from "../src/origin.ts";
 import { CHAT_DUMP_PATH } from "../src/prompts.ts";
 import { DRAFTING_MODEL } from "../src/sweep.ts";
-import { runClaude, writeSessionLog } from "./agent.ts";
+import { makeEvalFolder, runClaude, writeSessionLog } from "./agent.ts";
 import { checkDraft, type DraftExpectation } from "./assertions.ts";
 import type { CaseResult, Eval } from "./eval.ts";
 import { DUMP_RUBRIC, grade } from "./rubric.ts";
@@ -47,6 +46,8 @@ export const CHAT_DUMP_EVAL: Eval = {
     "src/dump.ts",
     "src/dump-body.ts",
     "src/secrets.ts",
+    "src/claude-sessions.ts",
+    "src/transcript.ts",
     "evals/chat-dump.ts",
     "evals/agent.ts",
     "evals/assertions.ts",
@@ -57,7 +58,7 @@ export const CHAT_DUMP_EVAL: Eval = {
 
 async function runCase({ fixture, tool, expected }: ChatCase): Promise<CaseResult> {
   const chat = readFileSync(join(import.meta.dir, "..", FIXTURES, fixture), "utf8");
-  const folder = realpathSync(mkdtempSync(join(tmpdir(), "brain-dump-eval-")));
+  const folder = makeEvalFolder();
   let session: { remove: () => void } | undefined;
   try {
     const { id, remove } = writeSessionLog(folder, chat);

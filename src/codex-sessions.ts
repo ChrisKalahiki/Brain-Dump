@@ -1,20 +1,35 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
+import { datePart, pad } from "./clock.ts";
 import { isRecord, parseRow, parseTime, textBlocks, type SessionMessage, type Transcript } from "./transcript.ts";
 
-// Reads Codex's Session logs ("rollouts"), `~/.codex/sessions/YYYY/MM/DD/rollout-<timestamp>-<thread id>.jsonl`, or `.jsonl.zst` once Codex has
-// compressed a cold one. Codex documents no schema for them; its record types live in its open-source Rust. A Session's `cwd` and branch come from
-// its `session_meta` record, and what was said from its message events. Codex calls a Session a thread, so its id is the thread id.
+// Reads and writes Codex's Session logs ("rollouts"), `~/.codex/sessions/YYYY/MM/DD/rollout-<timestamp>-<thread id>.jsonl`, or `.jsonl.zst` once Codex
+// has compressed a cold one. Codex documents no schema for them; its record types live in its open-source Rust. A Session's `cwd` and branch come from
+// its `session_meta` record, and what was said from its message events. Codex calls a Session a thread, so its id is the thread id. Tests and evals
+// write rollouts only through `renderCodexSession`, in the current format; a frozen fixture keeps the format before 0.147 covered.
 
 /** `rollout-<timestamp>-<thread id>[_<rollout id>].jsonl[.zst]`; a reverted Session goes on in a new rollout under the same thread id. */
 const ROLLOUT_FILE = /^rollout-.+\.jsonl(?:\.zst)?$/;
 /** The thread id in a rollout's name, for a rollout whose `session_meta` is missing. */
 const THREAD_ID_IN_NAME = /-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:_[^.]+)?\.jsonl/;
 
+/** What a rollout holds of a Session, as `readCodexSession` reads it back; `parent` is the thread id of the Session that spawned a sub-agent Session. */
+export type CodexSessionLog = { thread: string; cwd: string; branch?: string; start: Date; messages: SessionMessage[]; parent?: string };
+
+function codexHome(): string {
+  return process.env.CODEX_HOME ?? join(homedir(), ".codex");
+}
+
+/** Where Codex keeps the rollout of a Session started at `start`: a folder per local day, the local start and thread id in the name. */
+export function codexRolloutPath({ thread, start }: CodexSessionLog, home = codexHome()): string {
+  const time = [start.getHours(), start.getMinutes(), start.getSeconds()].map(pad).join("-");
+  return join(home, "sessions", ...datePart(start).split("-"), `rollout-${datePart(start)}T${time}-${thread}.jsonl`);
+}
+
 /** Every rollout, sub-agent Sessions included: only reading one tells them apart. */
 export function codexSessionFiles(): string[] {
-  const sessions = join(process.env.CODEX_HOME ?? join(homedir(), ".codex"), "sessions");
+  const sessions = join(codexHome(), "sessions");
   if (!existsSync(sessions)) return [];
   return readdirSync(sessions, { recursive: true, encoding: "utf8" })
     .filter((path) => ROLLOUT_FILE.test(basename(path)))
@@ -48,6 +63,30 @@ export function readCodexSession(file: string): Transcript | undefined {
     messages,
     startsAfterCompaction: false,
   };
+}
+
+/** The rollout as current Codex writes it: a `session_meta` record, then an `item_completed` event per message. */
+export function renderCodexSession({ thread, cwd, branch, start, messages, parent }: CodexSessionLog): string {
+  const origin =
+    parent === undefined
+      ? { source: "cli", thread_source: "user" }
+      : { source: { subagent: { thread_spawn: { parent_thread_id: parent, depth: 1 } } }, thread_source: "subagent", parent_thread_id: parent, agent_role: "explorer" };
+  const git = branch === undefined ? null : { commit_hash: "aa32ff3", branch, repository_url: "git@example.com:fixture.git" };
+  const meta = { id: thread, timestamp: start.toISOString(), cwd, originator: "codex-tui", cli_version: "0.162.1", ...origin, git };
+  const events = messages.map(({ role, text }, index) => ({
+    type: "item_completed",
+    thread_id: thread,
+    turn_id: `turn-${index}`,
+    item:
+      role === "user"
+        ? { type: "UserMessage", id: `item-${index}`, content: [{ type: "text", text, text_elements: [] }] }
+        : { type: "AgentMessage", id: `item-${index}`, phase: "final_answer", content: [{ type: "Text", text }] },
+  }));
+  const rows = [
+    { timestamp: start.toISOString(), type: "session_meta", payload: meta },
+    ...events.map((payload, index) => ({ timestamp: messages[index]?.at.toISOString(), type: "event_msg", payload })),
+  ];
+  return rows.map((row) => `${JSON.stringify(row)}\n`).join("");
 }
 
 function readRollout(file: string): string {

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { DevOrigin } from "../src/origin.ts";
 import { capText, draftText, DRAFTING_MODEL } from "../src/sweep.ts";
+import { parseSessionText, renderSessionText } from "../src/transcript.ts";
 import { checkDraft, type DraftExpectation } from "./assertions.ts";
 import type { CaseResult, Eval } from "./eval.ts";
 import { DUMP_RUBRIC, grade } from "./rubric.ts";
@@ -48,12 +49,13 @@ export const SWEEP_EVAL: Eval = {
   name: "sweep",
   model: DRAFTING_MODEL,
   // The drafting call, its parsing and the `write-dump` checks are inputs too: a change to any of them changes what the eval scores.
-  inputs: ["src/prompts.ts", "skills/dump/item-rules.md", "src/sweep.ts", "src/dump.ts", "src/dump-body.ts", "src/secrets.ts", "evals/sweep.ts", "evals/assertions.ts", ...CASES.map(({ fixture }) => `${FIXTURES}/${fixture}`)],
+  inputs: ["src/prompts.ts", "skills/dump/item-rules.md", "src/sweep.ts", "src/transcript.ts", "src/dump.ts", "src/dump-body.ts", "src/secrets.ts", "evals/sweep.ts", "evals/assertions.ts", ...CASES.map(({ fixture }) => `${FIXTURES}/${fixture}`)],
   cases: CASES.map((sweepCase) => ({ name: sweepCase.fixture.replace(/\.txt$/, ""), run: () => runCase(sweepCase) })),
 };
 
 function runCase({ fixture, expected }: SweepCase): CaseResult {
-  const text = readFileSync(join(import.meta.dir, "..", FIXTURES, fixture), "utf8");
+  // Through the text form both ways, so the agent sees a fixture exactly as the Sweep would render its Session.
+  const text = renderSessionText(parseSessionText(readFileSync(join(import.meta.dir, "..", FIXTURES, fixture), "utf8")));
   const outcome = draftText(text, ORIGIN, SESSION);
   switch (outcome.kind) {
     case "no-items":
