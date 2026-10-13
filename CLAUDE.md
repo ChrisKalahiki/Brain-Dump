@@ -1,6 +1,6 @@
 ## Checks
 
-`bun run check` (typecheck, then the full test suite) runs on every commit through `.githooks/pre-commit`. Run `bun run eval:check` before opening a PR; it names the `bun run eval <name>` to rerun for each stale eval.
+See README "Checks". Run `bun run eval:check` before opening a PR; it names the `bun run eval <name>` to rerun for each stale eval.
 
 ## Agent skills
 

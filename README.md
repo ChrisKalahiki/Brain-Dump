@@ -35,9 +35,13 @@ It leaves out Sessions in the Vault, still active in the last 2 hours, with fewe
 sweep-opt-out = ~/Projects/client-work, ~/Projects/secret
 ```
 
+## Checks
+
+`bun run check` runs the typecheck, then the full test suite. `bun install` points git at `.githooks`, whose pre-commit hook runs it on every commit. CI runs `check` and `bun run eval:check` (see below) on every push and PR.
+
 ## Prompt evals
 
-A change to a prompt is scored before it ships: `bun run eval [name]` runs each eval's committed synthetic fixtures on the pinned model, three runs each (`--runs N` to change), and needs every run to pass its deterministic checks; a pass with fewer than three runs is not recorded. A rubric grade from the same model is printed beside the result but never gates. A passing run records the eval's input hash in `evals/passed.json`; `bun run eval:check` fails while any eval's prompts, shared rules, fixtures, checks or model have changed since; CI runs it on every push and PR, while `bun run check` (typecheck, then the full test suite) runs on every commit through `.githooks/pre-commit`, set up by `bun install`. The evals:
+A change to a prompt is scored before it ships: `bun run eval [name]` runs each eval's committed synthetic fixtures on the pinned model, three runs each (`--runs N` to change), and needs every run to pass its deterministic checks; a pass with fewer than three runs is not recorded. A rubric grade from the same model is printed beside the result but never gates. A passing run records the eval's input hash in `evals/passed.json`; `bun run eval:check` fails while any eval's prompts, shared rules, fixtures, checks or model have changed since. The evals:
 
 - `sweep`: the Sweep's own drafting step on `evals/fixtures/sweep`.
 - `dump`: `/dump` at the end of a synthetic Session (`evals/fixtures/dump`), with and without a focus, writing through the helper into a sandbox Vault.
