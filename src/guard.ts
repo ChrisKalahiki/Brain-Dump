@@ -6,8 +6,25 @@ import { expandHome, resolveVaultPath } from "./vault.ts";
 // It catches agents drifting off the helper, not determined evasion: the write gateway (ADR 0005) and undo (ADR 0006) are the safety net.
 
 const FILE_TOOLS = new Set(["Edit", "Write", "NotebookEdit", "MultiEdit", "Read", "Grep", "Glob"]);
-const SHELL_TOOLS = new Set(["Bash", "PowerShell"]);
+const BASH = "Bash";
+const SHELL_TOOLS = new Set([BASH, "PowerShell"]);
 const PATCH_TOOL = "apply_patch";
+
+/** The tools each agent's hook hands the guard: Codex edits files only through apply_patch, and its shell is Bash. */
+const AGENT_TOOLS = { claude: [...FILE_TOOLS, ...SHELL_TOOLS], codex: [BASH, PATCH_TOOL] };
+
+export type Agent = keyof typeof AGENT_TOOLS;
+
+export const AGENTS = Object.keys(AGENT_TOOLS);
+
+export function isAgent(value: string): value is Agent {
+  return Object.hasOwn(AGENT_TOOLS, value);
+}
+
+/** The PreToolUse matcher that sends every tool the guard checks for `agent` to it. */
+export function hookMatcher(agent: Agent): string {
+  return AGENT_TOOLS[agent].join("|");
+}
 
 export type Verdict = { allow: true } | { allow: false; reason: string };
 

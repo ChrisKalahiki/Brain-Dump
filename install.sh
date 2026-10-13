@@ -38,6 +38,8 @@ link "$repo/skills/recall" "$HOME/.claude/skills/recall"
 link "$repo/skills/recall" "$HOME/.agents/skills/recall"
 
 guard_command="$brain_dump guard"
+claude_guard_matcher="$("$brain_dump" guard --matchers claude)"
+codex_guard_matcher="$("$brain_dump" guard --matchers codex)"
 pointer_command="$brain_dump pointer"
 
 # Asks a yes-or-no question that defaults to yes; fails on a no.
@@ -85,10 +87,10 @@ offer_hook() {
 }
 
 offer_guard() {
-  local path="$1" matcher="$2" tool="$3" covers="$4" after="${5:-}"
+  local path="$1" matcher="$2" tool="$3" after="${4:-}"
   offer_hook "$path" PreToolUse "$guard_command" "$matcher" "Vault guard" \
     "The Vault guard is a $tool hook that stops agents reaching the Vault except through brain-dump.
-It runs before every $covers call, in every project." "$after"
+It runs before every call to the file and shell tools, in every project." "$after"
 }
 
 offer_pointer() {
@@ -215,9 +217,8 @@ offer_timer() {
 
 codex_trust="Codex skips new hooks until you trust them: run /hooks in Codex once and trust the brain-dump entries."
 
-offer_guard "$HOME/.claude/settings.json" "Edit|Write|NotebookEdit|MultiEdit|Read|Grep|Glob|Bash|PowerShell" "Claude Code" \
-  "file-tool (Edit, Write, NotebookEdit, MultiEdit, Read, Grep, Glob) and shell (Bash, PowerShell)"
-offer_guard "$HOME/.codex/hooks.json" "Bash|apply_patch" "Codex" "shell (Bash) and apply_patch" "$codex_trust"
+offer_guard "$HOME/.claude/settings.json" "$claude_guard_matcher" "Claude Code"
+offer_guard "$HOME/.codex/hooks.json" "$codex_guard_matcher" "Codex" "$codex_trust"
 offer_pointer "$HOME/.claude/settings.json" "Claude Code"
 offer_pointer "$HOME/.codex/hooks.json" "Codex" "$codex_trust"
 offer_timer

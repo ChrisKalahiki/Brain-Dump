@@ -8,7 +8,7 @@ import { listDumps } from "./duplicates.ts";
 import { BrainDumpError, describeFsError, DumpNotWrittenError, errnoCode, UsageError } from "./errors.ts";
 import { detectDevOrigin, isChatTool, isToolTag, projectOf, TOOL_TAGS, type Origin, type ToolTag } from "./origin.ts";
 import { applyFilingPlan, parseFilingPlan } from "./filing.ts";
-import { guard } from "./guard.ts";
+import { AGENTS, guard, hookMatcher, isAgent } from "./guard.ts";
 import { listUnfiledDumps } from "./inbox.ts";
 import { listNotes } from "./notes.ts";
 import { pointerLines } from "./pointer.ts";
@@ -67,6 +67,12 @@ async function main(argv: string[]): Promise<number> {
       writeJson(applyFilingPlan(locateVault(), parseFilingPlan(await Bun.stdin.text())));
       return 0;
     case "guard": {
+      if (rest.length > 0) {
+        const { matchers } = parseOptions(rest, { matchers: { type: "string" } });
+        if (matchers === undefined || !isAgent(matchers)) throw new UsageError(`--matchers must be one of ${AGENTS.join(", ")}`);
+        process.stdout.write(`${hookMatcher(matchers)}\n`);
+        return 0;
+      }
       const verdict = guard(await Bun.stdin.text(), process.env.CLAUDE_PROJECT_DIR);
       if (verdict.allow) return 0;
       process.stderr.write(`${verdict.reason}\n`);

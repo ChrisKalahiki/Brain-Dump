@@ -279,3 +279,30 @@ describe("guard on input it can't read", () => {
     expect(result).toEqual(ALLOWED);
   });
 });
+
+describe("guard --matchers", () => {
+  test.each([
+    ["claude", "Edit|Write|NotebookEdit|MultiEdit|Read|Grep|Glob|Bash|PowerShell"],
+    ["codex", "Bash|apply_patch"],
+  ])("prints the %s hook matcher", (agent, matcher) => {
+    // #given
+    const sandbox = makeSandbox();
+
+    // #when
+    const result = run(sandbox, ["guard", "--matchers", agent]);
+
+    // #then
+    expect(result).toMatchObject({ exitCode: 0, stdout: `${matcher}\n`, stderr: "" });
+  });
+
+  test("refuses an unknown agent", () => {
+    // #given
+    const sandbox = makeSandbox();
+
+    // #when
+    const result = run(sandbox, ["guard", "--matchers", "gemini"]);
+
+    // #then
+    expect(result).toMatchObject({ exitCode: 2, stdout: "", stderr: "brain-dump: --matchers must be one of claude, codex\n" });
+  });
+});
