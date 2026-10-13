@@ -12,20 +12,21 @@ const MESSAGES: SessionMessage[] = [
   { role: "assistant", text: "Answer 1\n\nwith a second paragraph", at: new Date("2026-10-11T15:01:00Z") },
 ];
 
-function readBack(log: CodexSessionLog) {
+function writeLog(log: CodexSessionLog): string {
   const file = codexRolloutPath(log, mkdtempSync(join(tmpdir(), "brain-dump-test-")));
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, renderCodexSession(log));
-  return readCodexSession(file);
+  return file;
 }
 
 describe("the Codex Session log adapter", () => {
   test("reads back the rollout it writes, in the current format", () => {
     // #given
     const log: CodexSessionLog = { thread: THREAD, cwd: "/Users/me/Projects/Brain-Dump", branch: "feature-x", start: START, messages: MESSAGES };
+    const file = writeLog(log);
 
     // #when
-    const read = readBack(log);
+    const read = readCodexSession(file);
 
     // #then
     expect({ session: read?.session, cwd: read?.cwd, branch: read?.branch, messages: read?.messages, lastRecord: read?.lastRecord }).toEqual({
@@ -38,32 +39,44 @@ describe("the Codex Session log adapter", () => {
   });
 
   test("reads back a rollout written outside git with no branch", () => {
+    // #given
+    const file = writeLog({ thread: THREAD, cwd: "/Users/me/Notes", start: START, messages: MESSAGES });
+
     // #when
-    const read = readBack({ thread: THREAD, cwd: "/Users/me/Notes", start: START, messages: MESSAGES });
+    const read = readCodexSession(file);
 
     // #then
     expect({ cwd: read?.cwd, branch: read?.branch }).toEqual({ cwd: "/Users/me/Notes", branch: undefined });
   });
 
   test("reads a rollout it writes for a sub-agent Session as one the Sweep never drafts", () => {
+    // #given
+    const file = writeLog({ thread: THREAD, cwd: "/Users/me/Projects/Brain-Dump", start: START, messages: MESSAGES, parent: "01a0a813-bc00-7000-8000-000000000000" });
+
     // #when
-    const read = readBack({ thread: THREAD, cwd: "/Users/me/Projects/Brain-Dump", start: START, messages: MESSAGES, parent: "01a0a813-bc00-7000-8000-000000000000" });
+    const read = readCodexSession(file);
 
     // #then
     expect(read).toBeUndefined();
   });
 
-  test("names a rollout by its start and thread, in a folder per day", () => {
+  test("names a rollout by its local start and thread, in a folder per local day", () => {
+    // #given
+    const log: CodexSessionLog = { thread: THREAD, cwd: "/", start: START, messages: [] };
+
     // #when
-    const path = codexRolloutPath({ thread: THREAD, cwd: "/", start: START, messages: [] }, "/codex");
+    const path = codexRolloutPath(log, "/codex");
 
     // #then
     expect(path).toBe(`/codex/sessions/2026/10/11/rollout-2026-10-11T15-00-00-${THREAD}.jsonl`);
   });
 
   test("still reads a rollout in the format before Codex 0.147, from its message events alone", () => {
+    // #given
+    const file = join(import.meta.dir, "fixtures", "codex-rollout-pre-0.147.jsonl");
+
     // #when
-    const read = readCodexSession(join(import.meta.dir, "fixtures", "codex-rollout-pre-0.147.jsonl"));
+    const read = readCodexSession(file);
 
     // #then
     expect({ session: read?.session, cwd: read?.cwd, branch: read?.branch, messages: read?.messages }).toEqual({

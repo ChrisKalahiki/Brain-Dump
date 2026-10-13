@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
+import { datePart, pad } from "./clock.ts";
 import { isRecord, parseRow, parseTime, textBlocks, type SessionMessage, type Transcript } from "./transcript.ts";
 
 // Reads and writes Codex's Session logs ("rollouts"), `~/.codex/sessions/YYYY/MM/DD/rollout-<timestamp>-<thread id>.jsonl`, or `.jsonl.zst` once Codex
@@ -13,18 +14,17 @@ const ROLLOUT_FILE = /^rollout-.+\.jsonl(?:\.zst)?$/;
 /** The thread id in a rollout's name, for a rollout whose `session_meta` is missing. */
 const THREAD_ID_IN_NAME = /-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:_[^.]+)?\.jsonl/;
 
-/** What a rollout holds of a Session, as `readCodexSession` reads it back; `parent` is the thread that spawned a sub-agent Session. */
+/** What a rollout holds of a Session, as `readCodexSession` reads it back; `parent` is the thread id of the Session that spawned a sub-agent Session. */
 export type CodexSessionLog = { thread: string; cwd: string; branch?: string; start: Date; messages: SessionMessage[]; parent?: string };
 
-/** Codex's home folder: `CODEX_HOME`, else `~/.codex`. */
 function codexHome(): string {
   return process.env.CODEX_HOME ?? join(homedir(), ".codex");
 }
 
-/** Where Codex keeps the rollout of a Session started at `start`: a folder per day, the start and thread id in the name. */
+/** Where Codex keeps the rollout of a Session started at `start`: a folder per local day, the local start and thread id in the name. */
 export function codexRolloutPath({ thread, start }: CodexSessionLog, home = codexHome()): string {
-  const stamp = start.toISOString().slice(0, 19);
-  return join(home, "sessions", ...stamp.slice(0, 10).split("-"), `rollout-${stamp.replaceAll(":", "-")}-${thread}.jsonl`);
+  const time = [start.getHours(), start.getMinutes(), start.getSeconds()].map(pad).join("-");
+  return join(home, "sessions", ...datePart(start).split("-"), `rollout-${datePart(start)}T${time}-${thread}.jsonl`);
 }
 
 /** Every rollout, sub-agent Sessions included: only reading one tells them apart. */

@@ -4,15 +4,15 @@ import { basename, join } from "node:path";
 import { isRecord, parseRow, parseTime, textBlocks, type SessionMessage, type Transcript } from "./transcript.ts";
 
 // Reads and writes Claude Code's Session logs, `~/.claude/projects/<encoded cwd>/<session>.jsonl`. Their format is internal to Claude Code and changes
-// between versions; `compact_boundary` marks a compaction. Tests and evals write logs only through `renderClaudeSession`, so they can't drift from the reader.
+// between versions; `compact_boundary` marks a compaction. Tests and evals build every Session they read through `renderClaudeSession`, so what was
+// said can't drift from the reader; only records the reader must pass over are written by hand.
 
 /** Set-aside earlier copies of a transcript, which Claude Code keeps beside the live one. */
 const SET_ASIDE = /\.(?:orphaned|superseded)-/;
 
-/** What a Claude Code log holds of a Session, as `readClaudeSession` reads it back. */
-export type ClaudeSessionLog = { session: string; cwd: string; branch?: string; messages: SessionMessage[]; startsAfterCompaction?: boolean };
+/** What a Claude Code log holds of a Session, as `readClaudeSession` reads it back; `model` names the model on assistant messages, which the reader ignores. */
+export type ClaudeSessionLog = { session: string; cwd: string; branch?: string; messages: SessionMessage[]; startsAfterCompaction?: boolean; model?: string };
 
-/** Claude Code's config folder: `CLAUDE_CONFIG_DIR`, else `~/.claude`. */
 function claudeConfigFolder(): string {
   return process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude");
 }
@@ -74,7 +74,7 @@ export function readClaudeSession(file: string): Transcript {
 }
 
 /** The log as Claude Code writes it: one record per message, chained by uuid, after a compaction boundary when `startsAfterCompaction`. */
-export function renderClaudeSession({ session, cwd, branch, messages, startsAfterCompaction = false }: ClaudeSessionLog): string {
+export function renderClaudeSession({ session, cwd, branch, messages, startsAfterCompaction = false, model = "<synthetic>" }: ClaudeSessionLog): string {
   const common = { isSidechain: false, userType: "external", cwd, sessionId: session, gitBranch: branch ?? "" };
   const rows: Record<string, unknown>[] = [];
   if (startsAfterCompaction) {
@@ -85,7 +85,7 @@ export function renderClaudeSession({ session, cwd, branch, messages, startsAfte
     const message =
       role === "user"
         ? { role, content: text }
-        : { id: `msg_fixture_${index}`, type: "message", role, model: "<synthetic>", content: [{ type: "text", text }], stop_reason: "end_turn", stop_sequence: null };
+        : { id: `msg_fixture_${index}`, type: "message", role, model, content: [{ type: "text", text }], stop_reason: "end_turn", stop_sequence: null };
     rows.push({ parentUuid: rows.at(-1)?.uuid ?? null, ...common, type: role, message, uuid: crypto.randomUUID(), timestamp: at.toISOString() });
   }
   return rows.map((row) => `${JSON.stringify(row)}\n`).join("");

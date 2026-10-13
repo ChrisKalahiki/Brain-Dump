@@ -11,11 +11,10 @@ const MESSAGES: SessionMessage[] = [
   { role: "user", text: "Question 2", at: new Date("2026-10-11T15:02:00Z") },
 ];
 
-function readBack(log: ClaudeSessionLog) {
+function writeLog(log: ClaudeSessionLog): string {
   const file = join(mkdtempSync(join(tmpdir(), "brain-dump-test-")), `${log.session}.jsonl`);
   writeFileSync(file, renderClaudeSession(log));
-  const { session, cwd, branch, messages, startsAfterCompaction, lastRecord } = readClaudeSession(file);
-  return { session, cwd, branch, messages, startsAfterCompaction, lastRecord };
+  return file;
 }
 
 describe("the Claude Code Session log adapter", () => {
@@ -27,17 +26,28 @@ describe("the Claude Code Session log adapter", () => {
 
   for (const [name, log] of variants) {
     test(`reads back the log it writes for a Session ${name}`, () => {
+      // #given
+      const file = writeLog(log);
+
       // #when
-      const read = readBack(log);
+      const { session, cwd, branch, messages, startsAfterCompaction, lastRecord } = readClaudeSession(file);
 
       // #then
-      expect(read).toEqual({ branch: undefined, startsAfterCompaction: false, ...log, lastRecord: new Date("2026-10-11T15:02:00Z") });
+      expect({ session, cwd, branch, messages, startsAfterCompaction, lastRecord }).toEqual({
+        branch: undefined,
+        startsAfterCompaction: false,
+        ...log,
+        lastRecord: new Date("2026-10-11T15:02:00Z"),
+      });
     });
   }
 
   test("places a project's logs in a folder named for its cwd, every character but letters and digits made a dash", () => {
+    // #given
+    const cwd = "/Users/me/Projects/brain_dump.v2";
+
     // #when
-    const folder = claudeProjectFolder("/Users/me/Projects/brain_dump.v2", "/config");
+    const folder = claudeProjectFolder(cwd, "/config");
 
     // #then
     expect(folder).toBe("/config/projects/-Users-me-Projects-brain-dump-v2");

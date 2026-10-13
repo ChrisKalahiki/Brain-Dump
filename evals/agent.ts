@@ -115,14 +115,14 @@ export function writeSessionLog(cwd: string, transcript: string): { id: string; 
   const id = crypto.randomUUID();
   const folder = claudeProjectFolder(cwd);
   mkdirSync(folder, { recursive: true });
-  writeFileSync(join(folder, `${id}.jsonl`), renderClaudeSession({ session: id, cwd, branch: "main", messages: parseSessionText(transcript) }));
+  writeFileSync(join(folder, `${id}.jsonl`), renderClaudeSession({ session: id, cwd, branch: "main", messages: parseSessionText(transcript), model: DRAFTING_MODEL }));
   return { id, remove: () => rmSync(folder, { recursive: true, force: true }) };
 }
 
 /** Removes what Claude Code kept for eval folders a killed run never cleaned up. Run before an eval starts, so never alongside a live one. */
 export function removeLeftoverSessions(): void {
-  const projects = dirname(claudeProjectFolder(EVAL_FOLDER_PREFIX));
-  const prefix = basename(claudeProjectFolder(EVAL_FOLDER_PREFIX));
+  const leftovers = claudeProjectFolder(EVAL_FOLDER_PREFIX);
+  const [projects, prefix] = [dirname(leftovers), basename(leftovers)];
   if (!existsSync(projects)) return;
   for (const name of readdirSync(projects)) if (name.startsWith(prefix)) rmSync(join(projects, name), { recursive: true, force: true });
 }
