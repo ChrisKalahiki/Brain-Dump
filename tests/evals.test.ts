@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { EVALS, inputHash, staleEvals } from "../evals/eval.ts";
+import { inputHash, staleEvals } from "../evals/eval.ts";
 import { checkPlan } from "../evals/plan.ts";
 
 describe("prompt evals", () => {
@@ -49,17 +49,6 @@ describe("prompt evals", () => {
       changed: ["toy: inputs changed since the pass recorded on 2026-10-12; run `bun run eval toy`"],
       neverPassed: ["toy: no pass recorded; run `bun run eval toy`"],
     });
-  });
-
-  test("every eval has a pass recorded against its current inputs", () => {
-    // #given
-    const evals = EVALS;
-
-    // #when
-    const stale = staleEvals(evals);
-
-    // #then
-    expect(stale).toEqual([]);
   });
 });
 

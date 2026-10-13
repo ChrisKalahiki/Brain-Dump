@@ -7,8 +7,8 @@ import { FILE_EVAL } from "./file.ts";
 import type { Grade } from "./rubric.ts";
 import { SWEEP_EVAL } from "./sweep.ts";
 
-// Prompt evals score a prompt against committed synthetic fixtures on the pinned model, by hand with `bun run eval`; `bun test` checks each one passed
-// against its current inputs.
+// Prompt evals score a prompt against committed synthetic fixtures on the pinned model, by hand with `bun run eval`; `bun run eval:check`
+// checks each one passed against its current inputs.
 
 const ROOT = join(import.meta.dir, "..");
 const PASSED_PATH = join(import.meta.dir, "passed.json");
