@@ -1,3 +1,7 @@
+## Checks
+
+See README "Checks". Run `bun run eval:check` before opening a PR; it names the `bun run eval <name>` to rerun for each stale eval.
+
 ## Agent skills
 
 ### Issue tracker
