@@ -1,4 +1,3 @@
-import { homedir } from "node:os";
 import { basename, dirname } from "node:path";
 
 const TOOLS = {
@@ -25,6 +24,15 @@ export function isChatTool(tool: ToolTag): tool is ChatToolTag {
   return TOOLS[tool].kind === "chat";
 }
 
+/** The tool's name as people know it, e.g. "Claude Code". */
+export function toolName(tool: ToolTag): string {
+  return TOOLS[tool].name;
+}
+
+export function toolNamed(name: string): ToolTag | undefined {
+  return TOOL_TAGS.find((tool) => TOOLS[tool].name === name);
+}
+
 export type DevOrigin = {
   kind: "dev";
   tool: DevToolTag;
@@ -32,8 +40,6 @@ export type DevOrigin = {
   location: string;
   branch: string | undefined;
   at: Date;
-  /** Drafted by the Sweep rather than by the user's own `dump`. */
-  swept?: boolean;
   /** What the origin line should warn about the draft, e.g. "truncated". */
   notes?: string[];
 };
@@ -59,47 +65,6 @@ export function projectOf(cwd: string): string {
   const commonDir = git(cwd, "rev-parse", "--path-format=absolute", "--git-common-dir");
   if (commonDir !== undefined && basename(commonDir) === ".git") return basename(dirname(commonDir));
   return basename(git(cwd, "rev-parse", "--show-toplevel") ?? cwd);
-}
-
-export function dumpStem(origin: Origin): string {
-  const label = origin.kind === "dev" ? origin.project : origin.tool;
-  return `${filenameStamp(origin.at)} ${label}`;
-}
-
-export function renderOriginLine(origin: Origin): string {
-  const segments = [`Session: ${TOOLS[origin.tool].name}${origin.kind === "dev" && origin.swept ? " (swept)" : ""}`];
-  if (origin.kind === "dev") {
-    const branch = origin.branch === undefined ? "" : ` @ \`${origin.branch}\``;
-    segments.push(`\`${abbreviateHome(origin.location)}\`${branch}`);
-  } else if (origin.chatUrl !== undefined) {
-    segments.push(origin.chatUrl);
-  }
-  segments.push(displayStamp(origin.at));
-  if (origin.kind === "dev") segments.push(...(origin.notes ?? []).map((note) => `(${note})`));
-  if (origin.project !== undefined) segments.push(`[[${origin.project}]]`);
-  return segments.join(" · ");
-}
-
-function filenameStamp(at: Date): string {
-  return `${datePart(at)} ${pad(at.getHours())}${pad(at.getMinutes())}`;
-}
-
-function displayStamp(at: Date): string {
-  return `${datePart(at)} ${pad(at.getHours())}:${pad(at.getMinutes())}`;
-}
-
-/** The local date as YYYY-MM-DD. */
-export function datePart(at: Date): string {
-  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
-}
-
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-function abbreviateHome(path: string): string {
-  const home = homedir();
-  return path === home || path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
 }
 
 function git(cwd: string, ...args: string[]): string | undefined {

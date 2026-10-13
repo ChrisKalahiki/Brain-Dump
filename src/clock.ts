@@ -10,3 +10,12 @@ export function now(): Date {
   if (Number.isNaN(at.getTime())) throw new UsageError(`${NOW_VARIABLE} "${override}" is not a date and time`);
   return at;
 }
+
+/** The local date as YYYY-MM-DD. */
+export function datePart(at: Date): string {
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+}
+
+export function pad(n: number): string {
+  return String(n).padStart(2, "0");
+}

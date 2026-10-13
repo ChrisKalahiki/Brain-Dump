@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { makeRepo, makeSandbox, run, writeConfig, writeDumpArgs, type Sandbox } from "./harness.ts";
+import { devOrigin, dumpFile, makeRepo, makeSandbox, run, writeConfig, writeDumpArgs, writeVaultFile, type Sandbox } from "./harness.ts";
 
 const NOW = "2026-10-12T04:00:00Z";
 const BODY = "## Learnings\n- [ ] Bun ships zstd.\n";
@@ -145,8 +145,8 @@ describe("sweep leaves out Sessions it should not draft", () => {
       "a Session covered by a filed Dump",
       (sandbox, repo) => {
         writeSessionLog(sandbox, "s-1", repo, "2026-10-11T15:00:00Z");
-        mkdirSync(join(sandbox.vault, "Inbox", "Filed"), { recursive: true });
-        writeFileSync(join(sandbox.vault, "Inbox", "Filed", "2026-10-11 1505 Brain-Dump - manual.md"), `---\ntags:\n  - dump\nsession: s-1\nthrough: 2026-10-11T15:06:00.000Z\n---\nSession: Claude Code\n\n${BODY}`);
+        const session = { id: "s-1", through: new Date("2026-10-11T15:06:00Z") };
+        writeVaultFile(sandbox, "Inbox/Filed/2026-10-11 1505 Brain-Dump - manual.md", dumpFile(devOrigin("Brain-Dump", "2026-10-11T15:05"), BODY, { session }));
       },
     ],
   ];
@@ -428,6 +428,29 @@ describe("sweep handles what the drafting agent does", () => {
     expect({ written: result.summary.written.map(({ session }) => session), errors: result.summary.errors }).toEqual({
       written: ["s-good"],
       errors: [{ session: "s-bad", error: 'invalid draft: invalid Dump body: unexpected section "## Notes"' }],
+    });
+  });
+
+  test("refuses a Session breaking the rules write-dump holds it to, before drafting it", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const repo = makeRepo(sandbox, "Brain-Dump", "main");
+    writeSessionLog(sandbox, "s odd", repo, "2026-10-11T18:00:00Z", 3, "Odd");
+    writeSessionLog(sandbox, "s-good", repo, "2026-10-11T15:00:00Z", 3, "Good");
+    const env = stubAgent(sandbox, `Slug: good\n${BODY}`);
+
+    // #when
+    const result = sweep(sandbox, env);
+
+    // #then
+    expect({
+      written: result.summary.written.map(({ session }) => session),
+      errors: result.summary.errors,
+      drafted: prompts(sandbox).some((prompt) => prompt.includes("Odd")),
+    }).toEqual({
+      written: ["s-good"],
+      errors: [{ session: "s odd", error: 'not drafted: --session "s odd" may hold only letters, digits, ".", "_" and "-"' }],
+      drafted: false,
     });
   });
 

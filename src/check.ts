@@ -5,7 +5,7 @@ import { sinceLatestDigest } from "./digest.ts";
 import { isStoredDump, readDumpOrProblem, type MalformedDump, type StoredDump } from "./inbox.ts";
 import { INBOX, ROUTES_NOTE, WEEKLY_FOLDER } from "./layout.ts";
 import { linkTarget, noteFiles, titleKey } from "./notes.ts";
-import { datePart } from "./origin.ts";
+import { datePart } from "./clock.ts";
 import { readRoutes, renderRoute } from "./routes.ts";
 import type { Vault } from "./vault.ts";
 
@@ -104,29 +104,15 @@ function malformedDump({ file, problem }: MalformedDump): Finding {
   return { kind: "Malformed Dump", note: file, detail: problem, fix: "hand edit" };
 }
 
-/** `readDump` parses only the sections, so the header is checked here. */
 function readDumps(vault: Vault, paths: string[]): { readable: StoredDump[]; malformed: MalformedDump[] } {
   const readable: StoredDump[] = [];
   const malformed: MalformedDump[] = [];
   for (const path of paths) {
     const dump = readDumpOrProblem(vault, path);
-    if ("problem" in dump) {
-      malformed.push(dump);
-      continue;
-    }
-    const problem = headerProblem(dump.lines);
-    if (problem === undefined) readable.push(dump);
-    else malformed.push({ file: dump.file, problem });
+    if ("problem" in dump) malformed.push(dump);
+    else readable.push(dump);
   }
   return { readable, malformed };
-}
-
-/** A Dump opens with a frontmatter block, then its `Session: ` origin line. */
-function headerProblem(lines: string[]): string | undefined {
-  const close = lines[0] === "---" ? lines.indexOf("---", 1) : -1;
-  if (close === -1) return "no frontmatter";
-  if (!lines[close + 1]?.startsWith("Session: ")) return "no Session: origin line after the frontmatter";
-  return undefined;
 }
 
 function openItems(dump: StoredDump): number {

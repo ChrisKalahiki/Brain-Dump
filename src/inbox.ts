@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { readHashed } from "./content-hash.ts";
-import { parseDumpBody, SECTIONS, type ItemState, type SectionName } from "./dump-body.ts";
+import { SECTIONS, type ItemState, type SectionName } from "./dump-body.ts";
+import { coveredSession, isDumpFile, parseDump, type ParsedDump } from "./dump.ts";
 import { BrainDumpError } from "./errors.ts";
 import { FILED_FOLDER, INBOX } from "./layout.ts";
 import type { Vault } from "./vault.ts";
@@ -9,7 +10,6 @@ import type { Vault } from "./vault.ts";
 export type ItemKind = "Learning" | "Decision" | "Todo";
 
 const ITEM_KINDS: Record<SectionName, ItemKind> = { Learnings: "Learning", Decisions: "Decision", Todos: "Todo" };
-const DUMP_FILENAME = /^(\d{4}-\d{2}-\d{2}) \d{4} (.+?) - .+\.md$/;
 
 export type StoredItem = {
   index: number;
@@ -20,20 +20,14 @@ export type StoredItem = {
   line: number;
 };
 
-export type StoredDump = {
+export type StoredDump = Pick<ParsedDump, "origin" | "swept" | "date" | "label" | "lines" | "eol"> & {
   file: string;
   title: string;
-  date: string;
-  project: string;
+  /** The Project its origin line names; a chat Dump may name none. */
+  project: string | null;
   items: StoredItem[];
-  lines: string[];
-  eol: string;
   hash: string;
 };
-
-export function isDumpFile(path: string): boolean {
-  return DUMP_FILENAME.test(basename(path));
-}
 
 /** A Dump in the Inbox or, once finished, in Inbox/Filed. */
 export function isStoredDump(vault: Vault, path: string): boolean {
@@ -50,15 +44,20 @@ export function listUnfiledDumps(vault: Vault): StoredDump[] {
 }
 
 export function readDump(vault: Vault, path: string): StoredDump {
-  const name = basename(path);
-  const match = DUMP_FILENAME.exec(name);
-  if (!match?.[1] || !match[2]) throw new BrainDumpError(`${name} is not a Dump`);
+  const dump = readDumpOrProblem(vault, path);
+  if ("problem" in dump) throw new BrainDumpError(`${dump.file}: ${dump.problem}`);
+  return dump;
+}
+
+/** A Dump `parseDump` can't read, left for `check` to report rather than breaking other commands. */
+export type MalformedDump = { file: string; problem: string };
+
+export function readDumpOrProblem(vault: Vault, path: string): StoredDump | MalformedDump {
+  const file = relative(vault.root, path);
   const { contents, hash } = readHashed(path);
-  const eol = contents.includes("\r\n") ? "\r\n" : "\n";
-  const lines = contents.split(eol);
-  const bodyStart = lines.findIndex((line) => line.startsWith("## "));
-  if (bodyStart === -1) throw new BrainDumpError(`${name} has no Items`);
-  const body = parseDumpBody(lines.slice(bodyStart).join("\n"), { stored: true });
+  const parsed = parseDump(path, contents);
+  if ("problem" in parsed) return { file, problem: parsed.problem };
+  const { origin, swept, date, label, body, bodyStart, lines, eol } = parsed;
   let index = 0;
   const items = SECTIONS.flatMap((section) =>
     (body.get(section) ?? []).map((item) => ({
@@ -70,25 +69,13 @@ export function readDump(vault: Vault, path: string): StoredDump {
       line: bodyStart + item.line,
     })),
   );
-  return { file: relative(vault.root, path), title: name.slice(0, -3), date: match[1], project: match[2], items, lines, eol, hash };
+  return { file, title: basename(path, ".md"), date, label, project: origin.project ?? null, origin, swept, items, lines, eol, hash };
 }
 
-/** A Dump `readDump` can't parse, left for `check` to report rather than breaking other commands. */
-export type MalformedDump = { file: string; problem: string };
+export type DumpSummary = Pick<StoredDump, "file" | "title" | "date" | "project" | "label" | "hash"> & { items: Omit<StoredItem, "line">[] };
 
-export function readDumpOrProblem(vault: Vault, path: string): StoredDump | MalformedDump {
-  try {
-    return readDump(vault, path);
-  } catch (error) {
-    if (error instanceof BrainDumpError) return { file: relative(vault.root, path), problem: error.message };
-    throw error;
-  }
-}
-
-export type DumpSummary = Omit<StoredDump, "lines" | "items" | "eol"> & { items: Omit<StoredItem, "line">[] };
-
-export function summarize({ lines, items, eol, ...dump }: StoredDump): DumpSummary {
-  return { ...dump, items: items.map(({ line, ...item }) => item) };
+export function summarize({ file, title, date, project, label, hash, items }: StoredDump): DumpSummary {
+  return { file, title, date, project, label, hash, items: items.map(({ line, ...item }) => item) };
 }
 
 /** Each Session a Dump in `Inbox/` or `Inbox/Filed/` covers, through the latest `through` among its Dumps. */
@@ -97,11 +84,9 @@ export function coveredSessions(vault: Vault): Map<string, Date> {
   for (const folder of [INBOX, FILED_FOLDER].map((name) => join(vault.root, name))) {
     if (!existsSync(folder)) continue;
     for (const name of readdirSync(folder).filter(isDumpFile)) {
-      const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(readFileSync(join(folder, name), "utf8"))?.[1] ?? "";
-      const session = /^session: (\S+)$/m.exec(frontmatter)?.[1];
-      const through = new Date(/^through: (\S+)$/m.exec(frontmatter)?.[1] ?? "");
-      const known = session === undefined ? undefined : covered.get(session);
-      if (session !== undefined && !Number.isNaN(through.getTime()) && (known === undefined || through > known)) covered.set(session, through);
+      const session = coveredSession(readFileSync(join(folder, name), "utf8"));
+      const known = session === undefined ? undefined : covered.get(session.id);
+      if (session !== undefined && (known === undefined || session.through > known)) covered.set(session.id, session.through);
     }
   }
   return covered;

@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { dumpFile, makeRepo, makeSandbox, ROUTES_NOTE, run, writeConfig, writeVaultFile, type Sandbox } from "./harness.ts";
+import { devOrigin, dumpFile, makeRepo, makeSandbox, ROUTES_NOTE, run, writeConfig, writeVaultFile, type Sandbox } from "./harness.ts";
 
 const NOW = "2026-10-12T09:00";
-const ORIGIN = "Session: Claude Code · `~/Projects/chronos` @ `main` · 2026-10-01 09:00 · [[chronos]]";
-const OTHER_ORIGIN = "Session: Codex · `~/Projects/Brain-Dump` @ `main` · 2026-10-02 10:00 · [[Brain-Dump]]";
+const ORIGIN = devOrigin("chronos", "2026-10-01T09:00");
+const OTHER_ORIGIN = devOrigin("Brain-Dump", "2026-10-02T10:00", { tool: "Codex" });
 const FILED_DUMP = "Inbox/Filed/2026-10-01 0900 chronos - queues.md";
 const OTHER_DUMP = "Inbox/Filed/2026-10-02 1000 Brain-Dump - guard.md";
 const FROM_FILED = "\t- From [[2026-10-01 0900 chronos - queues|dump 10-01-26]]";
@@ -20,7 +20,7 @@ function filedItems(count: number, label = "A chronos Learning", from = FROM_FIL
 /** chronos Items in four notes, another project's Items in a fifth, and nothing for `check` to report. */
 function seedVault(sandbox: Sandbox): void {
   writeVaultFile(sandbox, FILED_DUMP, dumpFile(ORIGIN, DONE_BODY));
-  writeVaultFile(sandbox, OTHER_DUMP, dumpFile(OTHER_ORIGIN, DONE_BODY, "Codex"));
+  writeVaultFile(sandbox, OTHER_DUMP, dumpFile(OTHER_ORIGIN, DONE_BODY));
   writeVaultFile(sandbox, "Side Projects/Scheduling.md", `# Scheduling\n${filedItems(5)}`);
   writeVaultFile(sandbox, "Research/Main Notes/Job Queues.md", `# Job Queues\n${filedItems(2)}${filedItems(4, "A Brain-Dump Learning", FROM_OTHER)}`);
   writeVaultFile(sandbox, "Resources/Retries.md", `# Retries\n${filedItems(3)}`);
@@ -62,7 +62,7 @@ describe("brain-dump pointer", () => {
     writeVaultFile(sandbox, ROUTES_NOTE, "- Chronos → [[Chronos Main Note]]\n");
     writeVaultFile(sandbox, "Inbox/2026-10-05 1200 chronos - locks.md", dumpFile(ORIGIN, OPEN_BODY));
     writeVaultFile(sandbox, "Inbox/2026-10-06 1200 chronos - leases.md", dumpFile(ORIGIN, OPEN_BODY));
-    writeVaultFile(sandbox, "Inbox/2026-10-06 1300 Brain-Dump - undo.md", dumpFile(OTHER_ORIGIN, OPEN_BODY, "Codex"));
+    writeVaultFile(sandbox, "Inbox/2026-10-06 1300 Brain-Dump - undo.md", dumpFile(OTHER_ORIGIN, OPEN_BODY));
     const repo = makeRepo(sandbox, "chronos", "main");
 
     // #when

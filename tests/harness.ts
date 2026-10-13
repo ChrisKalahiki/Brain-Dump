@@ -1,8 +1,10 @@
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { contentHash } from "../src/content-hash.ts";
+import { renderDump, type CoveredSession } from "../src/dump.ts";
 import { ROUTES_NOTE } from "../src/layout.ts";
+import type { DevOrigin, DevToolTag, Origin } from "../src/origin.ts";
 
 const CLI = join(import.meta.dir, "..", "src", "cli.ts");
 
@@ -64,6 +66,7 @@ export function writeDumpArgs(slug = "s", tool = "ClaudeCode"): string[] {
   return ["write-dump", "--tool", tool, "--slug", slug, "--at", DUMP_AT];
 }
 
+/** The origin line exactly as written, so tests of what `write-dump` writes don't read it back through the parser under test. */
 export function originLine(dumpPath: string): string | undefined {
   return readFileSync(dumpPath, "utf8")
     .split("\n")
@@ -81,8 +84,14 @@ export function readVaultFile(sandbox: Sandbox, relativePath: string): string {
   return readFileSync(join(sandbox.vault, relativePath), "utf8");
 }
 
-export function dumpFile(origin: string, body: string, tool = "ClaudeCode"): string {
-  return `---\ntags:\n  - dump\n  - AIGenerated\n  - ${tool}\n---\n${origin}\n\n${body}`;
+/** A Dump's contents as the Dump document renders them, its body as given, so a test can hold filed, dropped or broken Items. */
+export function dumpFile(origin: Origin, body: string, { session }: { session?: CoveredSession } = {}): string {
+  return renderDump({ origin, swept: false, session, slug: "s", body }).contents;
+}
+
+/** A dev Session's origin in `~/Projects/<project>`, at a local time; `branch: null` for none. */
+export function devOrigin(project: string, at: string, { tool = "ClaudeCode", branch = "main" }: { tool?: DevToolTag; branch?: string | null } = {}): DevOrigin {
+  return { kind: "dev", tool, project, location: join(homedir(), "Projects", project), branch: branch ?? undefined, at: new Date(at) };
 }
 
 export const WEEKLY_TEMPLATE = `---
@@ -111,7 +120,7 @@ tags:
 - 
 `;
 
-export const DEV_ORIGIN = "Session: Claude Code · `~/Projects/Brain-Dump` @ `main` · 2026-10-05 19:40 · [[Brain-Dump]]";
+export const DEV_ORIGIN = devOrigin("Brain-Dump", DUMP_AT);
 
 export { ROUTES_NOTE };
 
