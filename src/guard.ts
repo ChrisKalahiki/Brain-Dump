@@ -9,6 +9,22 @@ const FILE_TOOLS = new Set(["Edit", "Write", "NotebookEdit", "MultiEdit", "Read"
 const SHELL_TOOLS = new Set(["Bash", "PowerShell"]);
 const PATCH_TOOL = "apply_patch";
 
+/** The tools each agent's hook hands the guard: Codex has no file tools and its shell is Bash. */
+const AGENT_TOOLS = { claude: [...FILE_TOOLS, ...SHELL_TOOLS], codex: ["Bash", PATCH_TOOL] };
+
+export type Agent = keyof typeof AGENT_TOOLS;
+
+export const AGENTS = Object.keys(AGENT_TOOLS);
+
+export function isAgent(value: string): value is Agent {
+  return Object.hasOwn(AGENT_TOOLS, value);
+}
+
+/** The PreToolUse matcher that sends every tool the guard checks for `agent` to it. */
+export function hookMatcher(agent: Agent): string {
+  return AGENT_TOOLS[agent].join("|");
+}
+
 export type Verdict = { allow: true } | { allow: false; reason: string };
 
 const ALLOW: Verdict = { allow: true };
