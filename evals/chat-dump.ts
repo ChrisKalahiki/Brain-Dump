@@ -67,7 +67,7 @@ async function runCase({ fixture, tool, expected }: ChatCase): Promise<CaseResul
     const pasted = parsePaste(reply.reply);
     if (pasted === undefined) return { failures: [`reply is not a Slug line and a markdown block: "${reply.reply.trim().split("\n")[0]}"`] };
     try {
-      prepareDump({ kind: "chat", tool, chatUrl: undefined, project: undefined, at: new Date("2026-10-05T10:00:00Z") }, pasted.slug, pasted.body);
+      prepareDump({ origin: { kind: "chat", tool, chatUrl: undefined, project: undefined, at: new Date("2026-10-05T10:00:00Z") }, slug: pasted.slug, body: pasted.body });
     } catch (error) {
       if (error instanceof SecretRefusedError) return { failures: [`write-dump refused the body: line ${error.line} looks like it holds ${error.kind}`] };
       if (error instanceof BrainDumpError) return { failures: [`invalid body: ${error.message}`] };

@@ -17,7 +17,7 @@ Then run `brain-dump check --json`, which reports Vault problems and writes noth
 
 Then run these once per run:
 
-- `brain-dump list-dumps`: each unfiled Dump's `file`, `title`, `date`, `project`, `hash`, and `items` (`index`, `kind`, `text`, `rationale`, `state`). Only `open` Items are filed. An open Item that nearly duplicates one already in the Vault or in another unfiled Dump also has `similar`: `{note, text, score, done}`, its best match, where `note` is the path of the note or Dump holding it (a Dump when it starts with `Inbox/`), `text` the existing Item's text, and `done` true when that Item is a ticked Todo.
+- `brain-dump list-dumps`: each unfiled Dump's `file`, `title`, `date`, `project`, `label`, `hash`, and `items` (`index`, `kind`, `text`, `rationale`, `state`). Only `open` Items are filed. An open Item that nearly duplicates one already in the Vault or in another unfiled Dump also has `similar`: `{note, text, score, done}`, its best match, where `note` is the path of the note or Dump holding it (a Dump when it starts with `Inbox/`), `text` the existing Item's text, and `done` true when that Item is a ticked Todo. `project` is the **Project** the Dump's Session was about, `null` for a chat Dump that names none; `label` is the name in its title before the slug: its Project for a dev Dump, its tool (e.g. `ClaudeWeb`) for a chat Dump.
 - `brain-dump list-notes`: every note's `note` (path), `title`, `folder`, `tags` and `hash`.
 - `brain-dump routes`: `{hash, routes}`, the Routes note's `hash` (`null` when it doesn't exist yet) and the user's **Routes**, mapping a project or subject to where it belongs: `{key, title}` for a note's title, `{key, group}` for a Todo Group path.
 
@@ -38,9 +38,9 @@ Then `brain-dump todo-groups --date <today, YYYY-MM-DD>`: the **Todo Groups** of
 
 - **Todo** → this week's Weekly Note, section `# To-Do:`, inside the Todo Group it belongs to (see below).
 - **Learning** → the **Topic Note** it best belongs in.
-- **Decision** → a Topic Note when it is really about a general subject (a tool, a technique); otherwise the **Project Note** for the Dump's project. When unsure, the Project Note.
+- **Decision** → a Topic Note when it is really about a general subject (a tool, a technique); otherwise the **Project Note** for the Dump's Project. When unsure, the Project Note.
 
-To find a note: check the Routes first (a Route whose key matches the Dump's `project` or the Item's subject), then match titles, folders and tags from `list-notes`. Project Note titles vary ("Context Bridge MCP Main Note", "Virtual Assistant Project"), so look inside the project's folder.
+To find a note: check the Routes first (a Route whose key matches the Dump's `project`, or its `label` when `project` is `null` or matches none, or the Item's subject), then match titles, folders and tags from `list-notes`. Project Note titles vary ("Context Bridge MCP Main Note", "Virtual Assistant Project"), so look inside the project's folder.
 
 When no existing note fits, propose a **NEW** note:
 
@@ -48,7 +48,7 @@ When no existing note fits, propose a **NEW** note:
 - **Topic Note** for a research subject → `Research/Main Notes/<Subject>.md`.
 - **Tags**: pick from tags already in `list-notes` (CamelCase topics like `LLMs`, plus `SideProject` / `project` for projects). A tag that doesn't exist yet is only a proposal: list it separately; it is used only if the user accepts.
 
-To pick a Todo's group, decide per Todo, not per Dump: one chat Dump can hold Todos for several projects, and the Dump's `project` is only a hint. Check group Routes first (`{key, group}` whose key matches the Todo's project or subject), then the names in `thisWeek`, then `lastWeek`. A group is named by its path, written `Dissertation › IRB`; names match ignoring case and a trailing colon.
+To pick a Todo's group, decide per Todo, not per Dump: one chat Dump can hold Todos for several projects, and the Dump's `project` (or `label`) is only a hint. Check group Routes first (`{key, group}` whose key matches the Todo's project or subject), then the names in `thisWeek`, then `lastWeek`. A group is named by its path, written `Dissertation › IRB`; names match ignoring case and a trailing colon.
 
 - A group found only in `lastWeek` is **NEW** in this week's note under the same name (with every missing level along its path).
 - When no group fits, propose a **NEW** group or subgroup, at any depth, e.g. **NEW** `IRB` inside an existing `Dissertation`.
@@ -74,7 +74,7 @@ What each row appends:
 - **Todo**: `- [ ] <text> #todo` (the Item's text with its `#todo` moved to the end), in its Todo Group under `# To-Do:`. The helper indents it one level below the group and places it after the group's last direct Todo; a NEW group goes at the end of its parent. No backlink.
 - **Learning**: `- <text>` then `\t- From [[<title>|dump MM-DD-YY]]`, at the end of the note.
 - **Decision**: `- <text>`, `\t- Why: <rationale>`, then `\t- From [[<title>|dump MM-DD-YY]]`, at the end of the note.
-- **Link line** → the Session's week, section `# Notes:`, as `- Filed [[<title>|<project> <slug>]]`, where `<slug>` is the part of the title after ` - `. Add it only when this plan finishes the Dump (no Item left open) and at least one of its Items is filed, now or in an earlier run; that way each Dump gets exactly one. Show it as a row marked `+`.
+- **Link line** → the Session's week, section `# Notes:`, as `- Filed [[<title>|<label> <slug>]]`, where `<slug>` is the part of the title after ` - `. Add it only when this plan finishes the Dump (no Item left open) and at least one of its Items is filed, now or in an earlier run; that way each Dump gets exactly one. Show it as a row marked `+`.
 
 Mark every destination that doesn't exist yet with **NEW**, including each new level of a group path. Anything NEW always goes in the table, never in the Routine list.
 
@@ -148,7 +148,7 @@ brain-dump apply <<'PLAN'
     { "index": 3, "outcome": "skipped" }
   ],
   "inserts": [
-    { "note": "<the Session's week note>", "section": "# Notes:", "lines": ["- Filed [[<title>|<project> <slug>]]"] }
+    { "note": "<the Session's week note>", "section": "# Notes:", "lines": ["- Filed [[<title>|<label> <slug>]]"] }
   ],
   "createGroups": [["Dissertation", "IRB"]],
   "routes": [{ "key": "<project or subject>", "title": "<note title>" }, { "key": "<project or subject>", "group": ["Dissertation", "IRB"] }]

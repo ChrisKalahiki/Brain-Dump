@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { DEV_ORIGIN, dumpFile, makeRepo, makeSandbox, run, writeVaultFile, type Sandbox } from "./harness.ts";
+import { DEV_ORIGIN, devOrigin, dumpFile, makeRepo, makeSandbox, run, writeVaultFile, type Sandbox } from "./harness.ts";
 
 const GUARD_DUMP = "Inbox/Filed/2026-10-01 0900 Brain-Dump - guard.md";
-const GUARD_ORIGIN = "Session: Codex · `~/Projects/Brain-Dump` @ `main` · 2026-10-01 09:00 · [[Brain-Dump]]";
+const GUARD_ORIGIN = devOrigin("Brain-Dump", "2026-10-01T09:00", { tool: "Codex" });
+const GUARD_LINE = "Session: Codex · `~/Projects/Brain-Dump` @ `main` · 2026-10-01 09:00 · [[Brain-Dump]]";
+const DEV_LINE = "Session: Claude Code · `~/Projects/Brain-Dump` @ `main` · 2026-10-05 19:40 · [[Brain-Dump]]";
 const RECALL_DUMP = "Inbox/2026-10-05 1940 Brain-Dump - recall.md";
 const CHRONOS_DUMP = "Inbox/2026-10-03 1200 chronos - queues.md";
-const CHRONOS_ORIGIN = "Session: Claude Code · `~/Projects/chronos` · 2026-10-03 12:00 · [[chronos]]";
+const CHRONOS_ORIGIN = devOrigin("chronos", "2026-10-03T12:00", { branch: null });
+const CHRONOS_LINE = "Session: Claude Code · `~/Projects/chronos` · 2026-10-03 12:00 · [[chronos]]";
 const TOPIC = "Side Projects/Brain-Dump.md";
 const WEEK = "Research/Weekly Meetings/09-28-26 Weekly Update.md";
 const FROM_GUARD = "\t- From [[2026-10-01 0900 Brain-Dump - guard|dump 10-01-26]]";
@@ -15,7 +18,7 @@ function seedVault(sandbox: Sandbox): void {
   writeVaultFile(
     sandbox,
     GUARD_DUMP,
-    dumpFile(GUARD_ORIGIN, "## Learnings\n- [x] Codex hooks need a trust step.\n\n## Decisions\n- [x] The guard fails closed.\n\t- Why: a hook bug must not open the Vault.\n\n## Todos\n- [x] #todo Ship the Codex guard.\n- [-] #todo Port the guard to Cursor.\n", "Codex"),
+    dumpFile(GUARD_ORIGIN, "## Learnings\n- [x] Codex hooks need a trust step.\n\n## Decisions\n- [x] The guard fails closed.\n\t- Why: a hook bug must not open the Vault.\n\n## Todos\n- [x] #todo Ship the Codex guard.\n- [-] #todo Port the guard to Cursor.\n"),
   );
   writeVaultFile(sandbox, TOPIC, `# Brain-Dump\n- Codex hooks need a trust step.\n${FROM_GUARD}\n- The guard fails closed.\n\t- Why: a hook bug must not open the Vault.\n${FROM_GUARD}\n- A hand-written guard thought.\n- Keep the guard in one binary.\n\t- Why: one install step.\n`);
   writeVaultFile(sandbox, WEEK, "# To-Do: #todo\n- Brain Dump\n\t- [ ] Ship the Codex guard. #todo\n");
@@ -24,12 +27,12 @@ function seedVault(sandbox: Sandbox): void {
   writeVaultFile(sandbox, "Private/Journal.md", `- The guard is personal.\n${FROM_GUARD}\n`);
 }
 
-const GUARD_LEARNING = { note: TOPIC, kind: "learning", text: "Codex hooks need a trust step.", why: null, unfiled: false, dump: GUARD_DUMP, origin: GUARD_ORIGIN };
-const GUARD_DECISION = { note: TOPIC, kind: "decision", text: "The guard fails closed.", why: "a hook bug must not open the Vault.", unfiled: false, dump: GUARD_DUMP, origin: GUARD_ORIGIN };
-const GUARD_TODO = { note: WEEK, kind: "todo", text: "[ ] Ship the Codex guard. #todo", why: null, unfiled: false, dump: GUARD_DUMP, origin: GUARD_ORIGIN };
+const GUARD_LEARNING = { note: TOPIC, kind: "learning", text: "Codex hooks need a trust step.", why: null, unfiled: false, dump: GUARD_DUMP, origin: GUARD_LINE };
+const GUARD_DECISION = { note: TOPIC, kind: "decision", text: "The guard fails closed.", why: "a hook bug must not open the Vault.", unfiled: false, dump: GUARD_DUMP, origin: GUARD_LINE };
+const GUARD_TODO = { note: WEEK, kind: "todo", text: "[ ] Ship the Codex guard. #todo", why: null, unfiled: false, dump: GUARD_DUMP, origin: GUARD_LINE };
 const HAND_DECISION = { note: TOPIC, kind: "decision", text: "Keep the guard in one binary.", why: "one install step.", unfiled: false, dump: null, origin: null };
-const RECALL_LEARNING = { note: RECALL_DUMP, kind: "learning", text: "Recall ranks guard hits by count, guard first.", why: null, unfiled: true, dump: RECALL_DUMP, origin: DEV_ORIGIN };
-const CHRONOS_LEARNING = { note: CHRONOS_DUMP, kind: "learning", text: "Job queues need a guard against double runs.", why: null, unfiled: true, dump: CHRONOS_DUMP, origin: CHRONOS_ORIGIN };
+const RECALL_LEARNING = { note: RECALL_DUMP, kind: "learning", text: "Recall ranks guard hits by count, guard first.", why: null, unfiled: true, dump: RECALL_DUMP, origin: DEV_LINE };
+const CHRONOS_LEARNING = { note: CHRONOS_DUMP, kind: "learning", text: "Job queues need a guard against double runs.", why: null, unfiled: true, dump: CHRONOS_DUMP, origin: CHRONOS_LINE };
 
 function recall(sandbox: Sandbox, args: string[], cwd?: string) {
   const result = run(sandbox, ["recall", ...args], { cwd });
@@ -81,7 +84,7 @@ describe("brain-dump recall provenance", () => {
     // #given
     const sandbox = makeSandbox();
     seedVault(sandbox);
-    writeVaultFile(sandbox, "Inbox/Filed/2026-10-02 0900 Brain-Dump - again.md", dumpFile(GUARD_ORIGIN, "## Todos\n- [x] #todo Ship the Codex guard.\n", "Codex"));
+    writeVaultFile(sandbox, "Inbox/Filed/2026-10-02 0900 Brain-Dump - again.md", dumpFile(GUARD_ORIGIN, "## Todos\n- [x] #todo Ship the Codex guard.\n"));
 
     // #when
     const result = recall(sandbox, ["Ship"]);

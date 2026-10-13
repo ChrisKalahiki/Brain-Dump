@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { basename, dirname, relative } from "node:path";
 import { curatedBullets, curatedNotes, itemKey, TODO_TAG } from "./curated.ts";
+import { renderOriginLine } from "./dump.ts";
 import { UsageError } from "./errors.ts";
 import { isStoredDump, readDumpOrProblem, type StoredDump } from "./inbox.ts";
 import { INBOX } from "./layout.ts";
@@ -10,7 +11,6 @@ import type { Vault } from "./vault.ts";
 // Recall (ADR 0007): agents look up the Items the Vault holds through the helper, never with their own file tools.
 
 const RESULT_CAP = 20;
-const PROJECT_LINK = / · \[\[([^\]]+)\]\]$/;
 
 export type RecallQuery = { mode: "terms"; terms: string[] } | { mode: "project"; name: string } | { mode: "links"; note: string };
 
@@ -48,7 +48,7 @@ export function recall(vault: Vault, query: RecallQuery): Recall {
   return capped(scored.map(({ item }) => item));
 }
 
-type DumpInfo = { file: string; stamp: string; origin: string | null; project: string | undefined };
+type DumpInfo = { file: string; stamp: string; origin: string; project: string | null };
 
 /** An Item plus what recall sorts and filters it by. */
 type FoundItem = RecalledItem & { dumpInfo: DumpInfo | undefined; position: number };
@@ -117,10 +117,8 @@ function toFoundItem({ note, text, why, unfiled, dumpInfo, position }: ItemSourc
   return { note, kind, text, why: why ?? null, unfiled, dump: dumpInfo?.file ?? null, origin: dumpInfo?.origin ?? null, dumpInfo, position };
 }
 
-export function describeDump(dump: StoredDump): DumpInfo {
-  const origin = dump.lines.find((line) => line.startsWith("Session: ")) ?? null;
-  const project = origin === null ? undefined : PROJECT_LINK.exec(origin)?.[1];
-  return { file: dump.file, stamp: dump.title.slice(0, "YYYY-MM-DD HHMM".length), origin, project };
+function describeDump(dump: StoredDump): DumpInfo {
+  return { file: dump.file, stamp: dump.title.slice(0, "YYYY-MM-DD HHMM".length), origin: renderOriginLine(dump.origin, dump.swept), project: dump.project };
 }
 
 /** Every line in the allowlist with a wikilink to `note`, whatever its folder, alias or heading. */

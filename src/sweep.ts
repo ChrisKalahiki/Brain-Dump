@@ -4,13 +4,13 @@ import { basename, join } from "node:path";
 import { countOf } from "./check.ts";
 import { claudeSessionFiles, readClaudeSession } from "./claude-sessions.ts";
 import { codexSessionFiles, readCodexSession } from "./codex-sessions.ts";
-import { now } from "./clock.ts";
+import { datePart, now } from "./clock.ts";
 import { prepareDump, SecretRefusedError, writeDumps, type CoveredSession, type PreparedDump } from "./dump.ts";
 import { BrainDumpError, errnoCode } from "./errors.ts";
 import { canonical, isInside } from "./guard.ts";
 import { coveredSessions } from "./inbox.ts";
 import { INBOX } from "./layout.ts";
-import { datePart, detectDevOrigin, type DevOrigin } from "./origin.ts";
+import { detectDevOrigin, type DevOrigin } from "./origin.ts";
 import { NO_ITEMS_REPLY, sweepDraftPrompt } from "./prompts.ts";
 import { stateFolder } from "./runs.ts";
 import type { SessionMessage, Transcript } from "./transcript.ts";
@@ -182,7 +182,7 @@ export type DraftOutcome =
   | { kind: "agent-failed"; error: string };
 
 function draft({ transcript, messages }: Candidate): DraftOutcome {
-  const origin: DevOrigin = { ...sessionOrigin(transcript), swept: true, notes: transcript.startsAfterCompaction ? ["earlier part missing"] : [] };
+  const origin: DevOrigin = { ...sessionOrigin(transcript), notes: transcript.startsAfterCompaction ? ["earlier part missing"] : [] };
   return draftText(renderTranscript(messages), origin, { id: transcript.session, through: transcript.lastRecord });
 }
 
@@ -196,7 +196,7 @@ export function draftText(text: string, origin: DevOrigin, session: CoveredSessi
   if (parsed.kind === "off-contract") return { kind: "agent-failed", error: `drafting agent replied outside its output contract: ${parsed.firstLine}` };
   const notes = [...(origin.notes ?? []), ...(truncated ? ["truncated"] : [])];
   try {
-    return { kind: "dump", slug: parsed.slug, body: parsed.body, dump: prepareDump({ ...origin, notes }, parsed.slug, parsed.body, session) };
+    return { kind: "dump", slug: parsed.slug, body: parsed.body, dump: prepareDump({ origin: { ...origin, notes }, swept: true, slug: parsed.slug, body: parsed.body, session: session.id, through: session.through }) };
   } catch (error) {
     if (error instanceof SecretRefusedError) return { kind: "secret", line: error.line, secretKind: error.kind };
     if (error instanceof BrainDumpError) return { kind: "invalid", error: `invalid draft: ${error.message}` };
@@ -205,7 +205,7 @@ export function draftText(text: string, origin: DevOrigin, session: CoveredSessi
 }
 
 /** The Session's own place and branch, at its last record; a folder that is gone since is named as it was. */
-function sessionOrigin({ tool, cwd, branch, lastRecord }: Candidate["transcript"]): Omit<DevOrigin, "swept"> {
+function sessionOrigin({ tool, cwd, branch, lastRecord }: Candidate["transcript"]): DevOrigin {
   if (!existsSync(cwd)) return { kind: "dev", tool, project: basename(cwd), location: cwd, branch, at: lastRecord };
   return { ...detectDevOrigin(tool, cwd, lastRecord), branch };
 }

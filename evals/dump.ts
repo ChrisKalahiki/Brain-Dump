@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { parseDump } from "../src/dump.ts";
 import { INBOX } from "../src/layout.ts";
 import { DRAFTING_MODEL } from "../src/sweep.ts";
 import { makeSkillSandbox, removeSkillSandbox, runClaude, writeSessionLog } from "./agent.ts";
@@ -82,18 +83,13 @@ async function runCase({ fixture, focus, expected }: DumpCase): Promise<CaseResu
     const dumps = existsSync(inbox) ? readdirSync(inbox).filter((name) => name.endsWith(".md")) : [];
     if (dumps.length !== 1) return { failures: [`wrote ${dumps.length} Dumps, expected 1; the skill replied: "${reply.reply.trim().split("\n")[0]}"`] };
     const [name = ""] = dumps;
-    const { slug, body } = readDump(name, readFileSync(join(inbox, name), "utf8"));
+    const dump = parseDump(name, readFileSync(join(inbox, name), "utf8"));
+    if ("problem" in dump) return { failures: [`wrote an unreadable Dump: ${dump.problem}`] };
+    const { slug } = dump;
+    const body = `${dump.lines.slice(dump.bodyStart).join("\n").trim()}\n`;
     const graded = focus === undefined ? transcript : `${transcript}\n\n[The user then ran \`/dump ${focus}\`.]`;
     return { failures: checkDraft(slug, body, expected), grade: grade(DUMP_RUBRIC, graded, body) };
   } finally {
     removeSkillSandbox(sandbox);
   }
-}
-
-/** The slug back from the filename (`<stamp> <project> - <slug>.md`), and the body below the origin line. */
-function readDump(name: string, contents: string): { slug: string; body: string } {
-  const slug = name.replace(/\.md$/, "").split(" - ").slice(1).join(" - ");
-  const lines = contents.split("\n");
-  const origin = lines.findIndex((line) => line.startsWith("Session: "));
-  return { slug, body: `${lines.slice(origin + 1).join("\n").trim()}\n` };
 }

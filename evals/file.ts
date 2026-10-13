@@ -128,7 +128,7 @@ function setUpVault(vault: string, { name, slug, project, daysAgo }: FileCase): 
     project === undefined
       ? { kind: "chat", tool: "ChatGPT", chatUrl: undefined, project: undefined, at }
       : { kind: "dev", tool: "ClaudeCode", project, location: join(homedir(), "Projects", project), branch: "main", at };
-  const dump = prepareDump(origin, slug, readFileSync(join(FIXTURES_PATH, "dumps", `${name}.md`), "utf8"));
+  const dump = prepareDump({ origin, slug, body: readFileSync(join(FIXTURES_PATH, "dumps", `${name}.md`), "utf8") });
   writeFileSync(join(vault, INBOX, `${dump.stem}.md`), dump.contents);
   return { thisWeek, sessionWeek: weeklyTitle(at) };
 }

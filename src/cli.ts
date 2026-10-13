@@ -106,9 +106,6 @@ async function main(argv: string[]): Promise<number> {
   }
 }
 
-/** A Session id the frontmatter can hold unquoted: Claude Code's are UUIDs, Codex's thread ids alike. */
-const SESSION_ID = /^[\w.-]+$/;
-
 /** The running tool's id for this Session, so a manual dump needs no shell expansion; a chat isn't this Session. */
 function sessionFromEnvironment(tool: ToolTag): string | undefined {
   if (tool === "ClaudeCode") return process.env.CLAUDE_CODE_SESSION_ID;
@@ -138,16 +135,12 @@ async function runWriteDump(args: string[]): Promise<string> {
     throw new UsageError(`--chat-url and --project are only for chat tools (${TOOL_TAGS.filter(isChatTool).join(", ")})`);
   }
   const session = (values.session ?? sessionFromEnvironment(values.tool)) || undefined;
-  if (session !== undefined && !SESSION_ID.test(session)) throw new UsageError(`--session "${session}" may hold only letters, digits, ".", "_" and "-"`);
-  if (values.through !== undefined && session === undefined) throw new UsageError("--through needs --session");
-  const through = values.through === undefined ? at : new Date(values.through);
-  if (Number.isNaN(through.getTime())) throw new UsageError(`--through "${values.through}" is not a date and time`);
-  if (values.swept && isChatTool(values.tool)) throw new UsageError(`--swept is only for ${TOOL_TAGS.filter((tool) => !isChatTool(tool)).join(" and ")}`);
-  if (values.swept && session === undefined) throw new UsageError("--swept needs --session");
+  const through = values.through === undefined ? undefined : new Date(values.through);
+  if (through !== undefined && Number.isNaN(through.getTime())) throw new UsageError(`--through "${values.through}" is not a date and time`);
   const origin: Origin = isChatTool(values.tool)
     ? { kind: "chat", tool: values.tool, chatUrl: values["chat-url"], project: values.project, at }
-    : { ...detectDevOrigin(values.tool, process.cwd(), at), swept: values.swept };
-  return writeDump(origin, values.slug, await Bun.stdin.text(), session === undefined ? undefined : { id: session, through });
+    : detectDevOrigin(values.tool, process.cwd(), at);
+  return writeDump({ origin, swept: values.swept, slug: values.slug, body: await Bun.stdin.text(), session, through });
 }
 
 /** Exit 1 means findings, so a Vault that can't be checked exits 2. */

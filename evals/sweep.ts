@@ -41,7 +41,7 @@ const CASES: SweepCase[] = [
   },
 ];
 
-const ORIGIN: DevOrigin = { kind: "dev", tool: "ClaudeCode", project: "harbor", location: "/fixtures/harbor", branch: "main", at: new Date("2026-10-01T18:00:00Z"), swept: true, notes: [] };
+const ORIGIN: DevOrigin = { kind: "dev", tool: "ClaudeCode", project: "harbor", location: "/fixtures/harbor", branch: "main", at: new Date("2026-10-01T18:00:00Z"), notes: [] };
 const SESSION = { id: "fixture", through: ORIGIN.at };
 
 export const SWEEP_EVAL: Eval = {

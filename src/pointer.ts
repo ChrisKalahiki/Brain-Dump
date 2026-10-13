@@ -6,7 +6,6 @@ import { BrainDumpError, errnoCode } from "./errors.ts";
 import { isStoredDump, readDumpOrProblem, type StoredDump } from "./inbox.ts";
 import { INBOX } from "./layout.ts";
 import { noteFiles, titleKey } from "./notes.ts";
-import { describeDump } from "./recall.ts";
 import { readRoutes, type Route } from "./routes.ts";
 import { lastSweep, type SweepSummary } from "./sweep.ts";
 import { findVault, type Vault } from "./vault.ts";
@@ -68,7 +67,7 @@ function projectDumps(vault: Vault, project: string): StoredDump[] {
     .filter((path) => isStoredDump(vault, path))
     .flatMap((path) => {
       const dump = readDumpOrProblem(vault, path);
-      return "problem" in dump || describeDump(dump).project !== project ? [] : [dump];
+      return "problem" in dump || dump.project !== project ? [] : [dump];
     });
 }
 
