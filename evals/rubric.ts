@@ -1,7 +1,6 @@
-import { readFileSync, rmSync } from "node:fs";
-import { claudeProjectFolder } from "../src/claude-sessions.ts";
+import { readFileSync } from "node:fs";
 import { ITEM_RULES_PATH } from "../src/prompts.ts";
-import { makeEvalFolder, runClaude } from "./agent.ts";
+import { makeEvalFolder, removeEvalFolder, runClaude } from "./agent.ts";
 
 // The advisory grade: the pinned model scores a draft 1–5 per criterion. It is printed beside the result and never gates.
 
@@ -16,13 +15,10 @@ export const DUMP_RUBRIC: Criterion[] = [
   { name: "rationale", ask: "Each Decision's Why line gives the real reason it was chosen over the alternatives." },
 ];
 
-/** A tool-less run in a throwaway eval folder, so no project's settings reach the grader and nothing it leaves outlives the eval. */
+/** One tool-less run in a throwaway eval folder, so no project's settings reach the grader. */
 export async function grade(criteria: Criterion[], transcript: string, body: string): Promise<Grade> {
   const cwd = makeEvalFolder();
-  const graded = await runClaude({ prompt: gradingPrompt(criteria, transcript, body), cwd, tools: [] }).finally(() => {
-    rmSync(cwd, { recursive: true, force: true });
-    rmSync(claudeProjectFolder(cwd), { recursive: true, force: true });
-  });
+  const graded = await runClaude({ prompt: gradingPrompt(criteria, transcript, body), cwd, tools: [] }).finally(() => removeEvalFolder(cwd));
   if (!graded.ok) return { error: graded.error };
   const { reply } = graded;
   const scores: Record<string, number> = {};

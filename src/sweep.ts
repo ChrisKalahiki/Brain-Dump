@@ -66,7 +66,7 @@ export function sweep(vault: Vault): SweepSummary {
       const outcome = draftCandidate(candidate);
       const { session } = candidate.transcript;
       if (outcome.kind === "agent-failed" || outcome.kind === "off-contract") {
-        summary.errors.push({ session, error: outcome.kind === "agent-failed" ? outcome.error : `drafting agent replied outside its output contract: ${outcome.firstLine}` });
+        summary.errors.push({ session, error: outcome.error });
         summary.carriedOver.push(...candidates.slice(index, SESSION_CAP).map(({ transcript }) => ({ session: transcript.session })));
         stopped = true;
         break;

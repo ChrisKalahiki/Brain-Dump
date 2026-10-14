@@ -39,7 +39,13 @@ export function makeSkillSandbox(skills: string[], project = "harbor"): SkillSan
   return { home, vault, project: projectDir, path: `${bin}:${process.env.PATH ?? ""}` };
 }
 
-/** Removes the sandbox, and what Claude Code kept for its project (a Session log, auto-memory) in the real `~/.claude/projects`. */
+/** Removes the folder, and what Claude Code kept for it (a Session log, auto-memory) in the real `~/.claude/projects`. */
+export function removeEvalFolder(folder: string): void {
+  rmSync(folder, { recursive: true, force: true });
+  rmSync(claudeProjectFolder(folder), { recursive: true, force: true });
+}
+
+/** Removes the sandbox, and what Claude Code kept for its project in the real `~/.claude/projects`. */
 export function removeSkillSandbox({ home, project }: SkillSandbox): void {
   rmSync(home, { recursive: true, force: true });
   rmSync(claudeProjectFolder(project), { recursive: true, force: true });

@@ -20,7 +20,7 @@ export type Draft =
   | { kind: "dump"; slug: string; body: string; dump: PreparedDump }
   | { kind: "no-items" }
   /** The reply neither starts with a `Slug:` line nor says `No Items`: the agent failing (an error printed with exit 0), not a bad draft. */
-  | { kind: "off-contract"; firstLine: string }
+  | { kind: "off-contract"; error: string }
   | { kind: "secret"; line: number; secretKind: string }
   | { kind: "invalid"; error: string }
   | { kind: "agent-failed"; error: string };
@@ -68,14 +68,14 @@ function runAgent(prompt: string): { ok: true; stdout: string } | { ok: false; e
   }
 }
 
-type Reply = { kind: "draft"; slug: string; body: string } | { kind: "no-items" } | { kind: "off-contract"; firstLine: string };
+type Reply = { kind: "draft"; slug: string; body: string } | { kind: "no-items" } | { kind: "off-contract"; error: string };
 
 function parseReply(stdout: string): Reply {
   const reply = stdout.trim();
   if (reply === NO_ITEMS_REPLY) return { kind: "no-items" };
   const [first = "", ...rest] = reply.split("\n");
   const slug = /^Slug:\s*(.+)$/.exec(first.trim())?.[1];
-  if (slug === undefined) return { kind: "off-contract", firstLine: first.trim() };
+  if (slug === undefined) return { kind: "off-contract", error: `drafting agent replied outside its output contract: ${first.trim()}` };
   const body = rest.join("\n").trim().replace(/^```(?:markdown)?\n([\s\S]*)\n```$/, "$1");
   return { kind: "draft", slug, body: `${body}\n` };
 }

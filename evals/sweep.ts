@@ -65,9 +65,8 @@ async function runCase({ fixture, expected }: SweepCase): Promise<CaseResult> {
       return { failures: checkDraft(outcome.slug, outcome.body, expected), grade: await grade(DUMP_RUBRIC, capText(text).text, outcome.body) };
     case "secret":
       return { failures: [`write-dump refused the body: line ${outcome.line} looks like it holds ${outcome.secretKind}`] };
-    case "off-contract":
-      return { failures: [`replied outside its output contract: ${outcome.firstLine}`] };
     case "invalid":
+    case "off-contract":
     case "agent-failed":
       return { failures: [outcome.error] };
   }
