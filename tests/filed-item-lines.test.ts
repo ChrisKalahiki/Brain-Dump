@@ -34,12 +34,15 @@ describe("filed-Item lines", () => {
     expect(rendered).toEqual(texts.map(() => ["- [ ] Ship it. #todo"]));
   });
 
-  test("reads back what it writes: the Item's text, Why and Dump, as Recall, check and duplicates see them", () => {
+  test("reads back what it writes, for an Item's own wording and edited wording: its text, Why and Dump, as Recall, check and duplicates see them", () => {
     // #given
     const items = [
       { kind: "Todo" as const, text: "#todo Ship the file skill.", rationale: null },
       { kind: "Learning" as const, text: "Codex reads ~/.agents/skills.", rationale: null },
       { kind: "Decision" as const, text: "Filing is append-only.", rationale: "undo stays exact." },
+      { kind: "Todo" as const, text: "Ship the #todo skill by Friday", rationale: null },
+      { kind: "Learning" as const, text: "Codex reads skills from `~/.agents` [[Agent Skills]] too", rationale: null },
+      { kind: "Decision" as const, text: "Keep filing append-only, even for Digests", rationale: "undo stays exact." },
     ];
 
     // #when
@@ -53,6 +56,9 @@ describe("filed-Item lines", () => {
       { key: itemKey(items[0]?.text ?? ""), todo: true, why: null, from: null },
       { key: itemKey(items[1]?.text ?? ""), todo: false, why: null, from: DUMP.title },
       { key: itemKey(items[2]?.text ?? ""), todo: false, why: "undo stays exact.", from: DUMP.title },
+      { key: itemKey(items[3]?.text ?? ""), todo: true, why: null, from: null },
+      { key: itemKey(items[4]?.text ?? ""), todo: false, why: null, from: DUMP.title },
+      { key: itemKey(items[5]?.text ?? ""), todo: false, why: "undo stays exact.", from: DUMP.title },
     ]);
   });
 

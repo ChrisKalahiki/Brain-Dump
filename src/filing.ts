@@ -53,11 +53,11 @@ export type FilingResult = {
   hashes: Record<string, string>;
 };
 
-/** What a plan would append, from `apply --dry-run`: each filed Item's lines before any group indent, and the link line with whether this plan adds it. */
-export type FilingPreview = {
-  items: { index: number; lines: string[] }[];
-  link: { note: string; section: string; line: string; due: boolean };
-};
+/** A Dump's link line in its Session's Weekly Note; `due` when this plan adds it. */
+type LinkLine = { note: string; section: string; line: string; due: boolean };
+
+/** What a plan would append, from `apply --dry-run`: each filed Item's lines before any group indent, and the link line. */
+export type FilingDryRun = { items: { index: number; lines: string[] }[]; link: LinkLine };
 
 const PLAN_SHAPE =
   'expected {"dump": string, "expect": {[path: string]: string}, "items": [{"index": number, "outcome": "filed", "note": string, "section"?: string, "group"?: string[], "route"?: string, "text"?: string} | {"index": number, "outcome": "dropped"|"skipped"}], "routes"?: [{"key": string, "title": string} | {"key": string, "group": string[]}], "creates"?: [{"note": string, "from": "weekly-template"} | {"note": string, "tags": string[]}], "createGroups"?: string[][], "confirmLarge"?: boolean}';
@@ -86,20 +86,24 @@ export function applyFilingPlan(vault: Vault, plan: FilingPlan): FilingResult {
   return { filed: count("filed"), dropped: count("dropped"), skipped: count("skipped"), movedTo: movedTo && relative(vault.root, movedTo), hashes };
 }
 
-/** Validates the plan as `applyFilingPlan` does, short of the write gateway's own checks, and writes nothing. */
-export function previewFilingPlan(vault: Vault, plan: FilingPlan): FilingPreview {
-  return stageFiling(vault, plan).preview;
+/** Validates the plan as `applyFilingPlan` does, short of the write gateway's own checks (the write allowlist and the plan size limit), and writes nothing. */
+export function dryRunFilingPlan(vault: Vault, plan: FilingPlan): FilingDryRun {
+  return stageFiling(vault, plan).dryRun;
 }
 
-type StagedFiling = { dump: StoredDump; writes: Exclude<Write, { mode: "revert" }>[]; movedTo: string | null; preview: FilingPreview };
+type StagedFiling = { dump: StoredDump; writes: Exclude<Write, { mode: "revert" }>[]; movedTo: string | null; dryRun: FilingDryRun };
 
 function stageFiling(vault: Vault, plan: FilingPlan): StagedFiling {
   const dumpPath = resolveInVault(vault, plan.dump);
   if (dirname(dumpPath) !== vault.inbox) reject(`${plan.dump} is not an unfiled Dump in the Inbox`);
-  const dump = readDump(vault, dumpPath);
-  const link = linkLine(vault, dump, plan);
   const newRoutes = unknownRoutes(vault, plan.routes ?? []);
-  checkFresh(vault, plan, [...(link.due ? [link.note] : []), ...(newRoutes.length > 0 ? [ROUTES_NOTE] : [])]);
+  const filedNotes = plan.items.flatMap((item) => (item.outcome === "filed" ? [item.note] : []));
+  checkFresh(vault, plan, [plan.dump, ...filedNotes, ...(newRoutes.length > 0 ? [ROUTES_NOTE] : [])]);
+  const dump = readDump(vault, dumpPath);
+  const finished = finishes(dump, plan);
+  const link = linkLine(vault, dump, plan, finished);
+  // Only the Dump says whether the link line is due, so its note is checked once the Dump, itself checked above, is read.
+  if (link.due) checkFresh(vault, plan, [link.note]);
   checkRoutineItems(vault, dump, plan.items);
   const dumpLines = markItems(dump, plan.items);
   const filed = plan.items.flatMap((item) => (item.outcome === "filed" ? [{ item, lines: renderItem(dump, item) }] : []));
@@ -119,7 +123,7 @@ function stageFiling(vault: Vault, plan: FilingPlan): StagedFiling {
   notes.requireCreatedNotesUsed();
 
   const filedPath = join(vault.root, FILED_FOLDER, basename(dumpPath));
-  if (link.finished && existsSync(filedPath)) reject(`${FILED_FOLDER} already has ${basename(dumpPath)}`);
+  if (finished && existsSync(filedPath)) reject(`${FILED_FOLDER} already has ${basename(dumpPath)}`);
   const lineOf = new Map(dump.items.map((item) => [item.index, item.line]));
   const planned = new Map(
     plan.items.flatMap(({ index, outcome }): [number, ClosedMark][] => {
@@ -127,22 +131,23 @@ function stageFiling(vault: Vault, plan: FilingPlan): StagedFiling {
       return outcome === "skipped" || line === undefined ? [] : [[line, CLOSED_MARKS[outcome]]];
     }),
   );
-  const movedTo = link.finished ? filedPath : null;
+  const movedTo = finished ? filedPath : null;
   const filedDump: Write = { mode: "file-dump", path: dumpPath, contents: dumpLines.join(dump.eol), planned, moveTo: movedTo ?? undefined };
-  const preview: FilingPreview = {
-    items: filed.map(({ item, lines }) => ({ index: item.index, lines })),
-    link: { note: link.note, section: link.section, line: link.line, due: link.due },
-  };
-  return { dump, writes: [...notes.writes(), filedDump], movedTo, preview };
+  const dryRun: FilingDryRun = { items: filed.map(({ item, lines }) => ({ index: item.index, lines })), link };
+  return { dump, writes: [...notes.writes(), filedDump], movedTo, dryRun };
 }
 
-/** The Dump's link line in its Session's Weekly Note, due when the plan finishes the Dump and one of its Items is filed, now or in an earlier Run, so each Dump gets exactly one. */
-function linkLine(vault: Vault, dump: StoredDump, plan: FilingPlan): Placement & { section: string; line: string; finished: boolean; due: boolean } {
+/** True when the plan leaves none of the Dump's Items open, so the Dump moves to Filed. */
+function finishes(dump: StoredDump, plan: FilingPlan): boolean {
   const closed = new Set(plan.items.filter(({ outcome }) => outcome !== "skipped").map(({ index }) => index));
-  const finished = dump.items.every((item) => item.state !== "open" || closed.has(item.index));
+  return dump.items.every((item) => item.state !== "open" || closed.has(item.index));
+}
+
+/** Due when the plan finishes the Dump and one of its Items is filed, now or in an earlier Run, so each Dump gets exactly one. */
+function linkLine(vault: Vault, dump: StoredDump, plan: FilingPlan, finished: boolean): LinkLine {
   const filed = plan.items.some(({ outcome }) => outcome === "filed") || dump.items.some(({ state }) => state === "filed");
   const line = renderLinkLine({ title: dump.title, label: dump.label, slug: dump.slug });
-  return { note: locateWeeklyNote(vault, dump.date).note, section: LINK_SECTION, line, finished, due: finished && filed };
+  return { note: locateWeeklyNote(vault, dump.date).note, section: LINK_SECTION, line, due: finished && filed };
 }
 
 function renderItem(dump: StoredDump, { index, text }: Extract<PlannedItem, { outcome: "filed" }>): string[] {
@@ -152,11 +157,9 @@ function renderItem(dump: StoredDump, { index, text }: Extract<PlannedItem, { ou
 }
 
 /** Every existing file the plan writes needs the hash it had when the agent read it; if any changed since, the whole plan is refused before anything is staged. */
-function checkFresh(vault: Vault, plan: FilingPlan, alsoWritten: string[]): void {
+function checkFresh(vault: Vault, plan: FilingPlan, notes: string[]): void {
   const expected = new Map(Object.entries(plan.expect).map(([note, hash]) => [resolveInVault(vault, note), hash]));
   const created = new Set((plan.creates ?? []).map(({ note }) => resolveInVault(vault, note)));
-  const filed = plan.items.flatMap((item) => (item.outcome === "filed" ? [item.note] : []));
-  const notes = [plan.dump, ...filed, ...alsoWritten];
   const written = new Map(notes.map((note) => [resolveInVault(vault, note), note]));
   const routesPath = resolveInVault(vault, ROUTES_NOTE);
   const stale: string[] = [];

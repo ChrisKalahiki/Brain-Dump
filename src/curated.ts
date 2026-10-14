@@ -8,7 +8,7 @@ import type { Vault } from "./vault.ts";
 // The Items Filing leaves in curated notes, written and read back here: a bullet with a `From [[dump]]` or `Why:` line under it, or a `#todo` bullet.
 
 export const TODO_TAG = /(^|\s)#todo(?=\s|$)/;
-const TODO_TAGS = new RegExp(TODO_TAG.source, "g");
+const EVERY_TODO_TAG = new RegExp(TODO_TAG.source, "g");
 const BULLET = /^(\s*)- (.+)$/;
 const WHY_LINE = /^- Why: (.+)$/;
 /** A filed Learning's or Decision's backlink to its Dump, as its trimmed child line. */
@@ -45,7 +45,7 @@ export function curatedBullets(lines: string[]): CuratedBullet[] {
 
 /** The lines Filing appends for an Item from the Dump `dump`; `text` is the Item's own wording or the user's edit of it. */
 export function renderFiledItem({ kind, text, rationale }: { kind: ItemKind; text: string; rationale: string | null }, dump: { title: string; date: string }): string[] {
-  if (kind === "Todo") return [`- [ ] ${text.replace(TODO_TAGS, "").trim()} #todo`];
+  if (kind === "Todo") return [`- [ ] ${text.replace(EVERY_TODO_TAG, "").trim()} #todo`];
   const [year = "", month = "", day = ""] = dump.date.split("-");
   const from = `\t- From [[${dump.title}|dump ${month}-${day}-${year.slice(-2)}]]`;
   return kind === "Decision" ? [`- ${text}`, `\t- Why: ${rationale}`, from] : [`- ${text}`, from];

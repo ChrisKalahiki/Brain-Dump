@@ -129,6 +129,19 @@ describe("brain-dump apply checks expect", () => {
     expect(result.stderr).toBe(`brain-dump: Filing Plan stale: ${WEEK} changed since it was read\n`);
   });
 
+  test("reports a Dump deleted since it was read as changed, rather than failing to read it", () => {
+    // #given
+    const sandbox = setup();
+    const plan = pinned(sandbox, { dump: DUMP, items: [fileTodo(1)] });
+    rmSync(join(sandbox.vault, DUMP));
+
+    // #when
+    const result = apply(sandbox, plan);
+
+    // #then
+    expect([result.exitCode, result.stderr]).toEqual([1, `brain-dump: Filing Plan stale: ${DUMP} changed since it was read\n`]);
+  });
+
   test("names the changed files even when another file the plan writes has no expect entry", () => {
     // #given
     const sandbox = setup();

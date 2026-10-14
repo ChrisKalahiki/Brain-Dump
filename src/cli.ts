@@ -7,7 +7,7 @@ import { writeDump } from "./dump.ts";
 import { listDumps } from "./duplicates.ts";
 import { BrainDumpError, describeFsError, DumpNotWrittenError, errnoCode, UsageError } from "./errors.ts";
 import { detectDevOrigin, isChatTool, isToolTag, projectOf, TOOL_TAGS, type Origin, type ToolTag } from "./origin.ts";
-import { applyFilingPlan, parseFilingPlan, previewFilingPlan } from "./filing.ts";
+import { applyFilingPlan, parseFilingPlan, dryRunFilingPlan } from "./filing.ts";
 import { AGENTS, guard, hookMatcher, isAgent } from "./guard.ts";
 import { listUnfiledDumps } from "./inbox.ts";
 import { listNotes } from "./notes.ts";
@@ -66,7 +66,7 @@ async function main(argv: string[]): Promise<number> {
     case "apply": {
       const { "dry-run": dryRun } = parseOptions(rest, { "dry-run": { type: "boolean" } });
       const plan = parseFilingPlan(await Bun.stdin.text());
-      writeJson(dryRun ? previewFilingPlan(locateVault(), plan) : applyFilingPlan(locateVault(), plan));
+      writeJson(dryRun ? dryRunFilingPlan(locateVault(), plan) : applyFilingPlan(locateVault(), plan));
       return 0;
     }
     case "guard": {

@@ -60,7 +60,7 @@ Done when every open Item has a destination note, existing or NEW, every Todo a 
 
 ## 4. Show the Filing Plan
 
-Build this Dump's plan as step 6 describes and preview it, passing the plan on stdin as in step 6:
+Build this Dump's plan as step 6 describes and run it through a dry run, passing the plan on stdin as in step 6:
 
 ```bash
 brain-dump apply --dry-run <<'PLAN'
@@ -68,7 +68,7 @@ brain-dump apply --dry-run <<'PLAN'
 PLAN
 ```
 
-It checks the plan exactly as `apply` would and writes nothing. It prints `items`, each filed Item's `index` and the exact `lines` it would append (a grouped Todo's lines before the helper indents them), and `link`: `{note, section, line, due}`, the Dump's **link line** (`- Filed [[<title>|<label> <slug>]]` under `# Notes:` in the Session's week) and whether this plan adds it. The helper adds it, once per Dump, when the plan finishes the Dump (no Item left open) and at least one of its Items is filed, now or in an earlier run. When it fails, the plan can't be applied: fix the plan (step 6 names the rules), or tell the user the reason and offer to adjust the plan or skip this Dump.
+It checks the plan as `apply` would, except for the write refusals `apply` alone makes (a note outside the folders Brain-Dump may write, a plan over 8 notes), and writes nothing. It prints `items`, each filed Item's `index` and the exact `lines` it would append (a grouped Todo's lines before the helper indents them), and `link`: `{note, section, line, due}`, the Dump's **link line** (`- Filed [[<title>|<label> <slug>]]` under `# Notes:` in the Session's week) and whether this plan adds it. The helper adds it, once per Dump, when the plan finishes the Dump (no Item left open) and at least one of its Items is filed, now or in an earlier run. When it fails, the plan can't be applied: fix the plan (step 6 names the rules), or tell the user the reason and offer to adjust the plan or skip this Dump.
 
 Then show one numbered table per Dump, one row per open Item that isn't a Routine Item, numbered by the Item's `index`. **As** is the Item's first line from the dry run, then `+ Why` and `+ backlink` for the lines under it:
 
@@ -133,7 +133,7 @@ After anything but `ok` or `cancel`, rebuild the plan, run the dry run again, sh
 
 ## 6. Apply
 
-Build the plan as JSON and pass it on stdin, the same plan you last previewed with `--dry-run`:
+Build the plan as JSON and pass it on stdin, the same plan you last ran with `--dry-run`:
 
 ```bash
 brain-dump apply <<'PLAN'
