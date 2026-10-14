@@ -93,21 +93,61 @@ describe("the Glossary check", () => {
     expect(hits).toEqual([]);
   });
 
-  test("the command fails naming every hit, and passes on a clean tree", () => {
+  test("reads past a non-null assertion or postfix increment before a division", () => {
     // #given
-    const dirty = tree({ "README.md": "Capture it.\n" });
-    const clean = tree({ "README.md": "Dump it.\n" });
+    const root = tree({
+      "src/count.ts": [
+        'const ratio = total! / count; const message = "capture failed";',
+        'const half = i++ / 2 + "a/b" + capture;',
+        "",
+      ].join("\n"),
+    });
 
     // #when
-    const [failed, passed] = [dirty, clean].map((root) => Bun.spawnSync(["bun", SCRIPT, root]));
+    const hits = glossaryHits(root);
 
     // #then
-    expect({
-      failed: { exitCode: failed?.exitCode, stderr: failed?.stderr.toString() },
-      passed: passed?.exitCode,
-    }).toEqual({
-      failed: { exitCode: 1, stderr: 'README.md:1: "Capture" is an avoided Glossary term\n' },
-      passed: 0,
+    expect(hits).toEqual([{ file: "src/count.ts", line: 1, term: "Capture" }]);
+  });
+
+  test("a stray backtick or a longer fence hides nothing past its own extent", () => {
+    // #given
+    const root = tree({
+      "README.md": "Press the ` key.\n\nCapture here.\n\n````md\n```\nfenced\n```\nCapture, still fenced.\n````\n\nAnd `x`, in the knowledge base.\n",
     });
+
+    // #when
+    const hits = glossaryHits(root);
+
+    // #then
+    expect(hits).toEqual([
+      { file: "README.md", line: 3, term: "Capture" },
+      { file: "README.md", line: 12, term: "knowledge base" },
+    ]);
+  });
+
+  test("the command fails naming every hit", () => {
+    // #given
+    const root = tree({ "README.md": "Capture it.\n" });
+
+    // #when
+    const result = Bun.spawnSync(["bun", SCRIPT, root]);
+
+    // #then
+    expect({ exitCode: result.exitCode, stderr: result.stderr.toString() }).toEqual({
+      exitCode: 1,
+      stderr: 'README.md:1: "Capture" is an avoided Glossary term\n',
+    });
+  });
+
+  test("the command passes on a clean tree", () => {
+    // #given
+    const root = tree({ "README.md": "Dump it.\n" });
+
+    // #when
+    const result = Bun.spawnSync(["bun", SCRIPT, root]);
+
+    // #then
+    expect(result.exitCode).toBe(0);
   });
 });

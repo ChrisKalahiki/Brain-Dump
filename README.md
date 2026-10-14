@@ -1,7 +1,7 @@
 # Brain-Dump
 This is a tool to help me dump my work into my Obsidian Vault more efficiently.
 
-## Capturing a chat
+## Dumping a chat
 
 `dump --paste` is the way to dump a Session from Claude web, ChatGPT or Gemini, however long it is:
 

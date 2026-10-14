@@ -5,7 +5,7 @@ import { Glob } from "bun";
 // `bun run glossary`: fails when an avoided Glossary term appears where users or agents read it. GLOSSARY itself, ADRs and code identifiers
 // are out of scope; in the helper's source only string literals are read.
 
-const PROSE = ["skills/**/*.md", "prompts/**/*.md", "README.md", "docs/spec/**/*.md"];
+const PROSE = ["skills/**/*.{md,yaml}", "prompts/**/*.md", "README.md", "docs/spec/**/*.md"];
 const SOURCE = ["src/**/*.ts"];
 
 /** Past specs are records, like ADRs: their wording stays as it was. */
@@ -44,6 +44,7 @@ function avoidedTerms(glossary: string): string[] {
   return [...new Map(checked.map((term) => [term.toLowerCase(), term])).values()];
 }
 
+/** The term and its plural only: verb forms such as "captured" are left to review, since the Glossary itself uses some in their plain sense. */
 function termPattern(term: string): RegExp {
   const words = term.split(/\s+/).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   return new RegExp(`(?<![\\w-])${words.join("\\s+")}(?:s|es)?(?![\\w-])`, "gi");
@@ -53,8 +54,8 @@ const blank = (text: string): string => text.replace(/[^\n]/g, " ");
 
 function proseText(markdown: string): string {
   return markdown
-    .replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, blank)
-    .replace(/(`+)[\s\S]*?\1/g, blank)
+    .replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, blank)
+    .replace(/(`+)[^\n]*?\1/g, blank)
     .replace(/\[\[[^\]\n]*\]\]/g, blank)
     .replace(/\]\([^)\n]*\)/g, blank);
 }
@@ -73,6 +74,7 @@ function stringLiterals(source: string): string {
   let depth = 0;
   let previous = "";
   let i = 0;
+  const afterOperand = () => previous === ")" || previous === "]" || (/^[\w$]+$/.test(previous) && !BEFORE_REGEX.has(previous));
 
   const scanTemplate = () => {
     const start = i;
@@ -128,6 +130,10 @@ function stringLiterals(source: string): string {
       const start = i;
       while (i < source.length && /[\w$]/.test(source[i] ?? "")) i++;
       previous = source.slice(start, i);
+    } else if ((source.startsWith("++", i) || source.startsWith("--", i)) && afterOperand()) {
+      i += 2;
+    } else if (char === "!" && !/\s/.test(source[i - 1] ?? " ") && afterOperand()) {
+      i++;
     } else {
       i++;
       if (char === "{") depth++;
