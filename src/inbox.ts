@@ -20,7 +20,7 @@ export type StoredItem = {
   line: number;
 };
 
-export type StoredDump = Pick<ParsedDump, "origin" | "swept" | "date" | "label" | "lines" | "eol"> & {
+export type StoredDump = Pick<ParsedDump, "origin" | "swept" | "date" | "label" | "slug" | "lines" | "eol"> & {
   file: string;
   title: string;
   /** The Project its origin line names; a chat Dump may name none. */
@@ -57,7 +57,7 @@ export function readDumpOrProblem(vault: Vault, path: string): StoredDump | Malf
   const { contents, hash } = readHashed(path);
   const parsed = parseDump(path, contents);
   if ("problem" in parsed) return { file, problem: parsed.problem };
-  const { origin, swept, date, label, body, bodyStart, lines, eol } = parsed;
+  const { origin, swept, date, label, slug, body, bodyStart, lines, eol } = parsed;
   let index = 0;
   const items = SECTIONS.flatMap((section) =>
     (body.get(section) ?? []).map((item) => ({
@@ -69,7 +69,7 @@ export function readDumpOrProblem(vault: Vault, path: string): StoredDump | Malf
       line: bodyStart + item.line,
     })),
   );
-  return { file, title: basename(path, ".md"), date, label, project: origin.project ?? null, origin, swept, items, lines, eol, hash };
+  return { file, title: basename(path, ".md"), date, label, slug, project: origin.project ?? null, origin, swept, items, lines, eol, hash };
 }
 
 export type DumpSummary = Pick<StoredDump, "file" | "title" | "date" | "project" | "label" | "hash"> & { items: Omit<StoredItem, "line">[] };

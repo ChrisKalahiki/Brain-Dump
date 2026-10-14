@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, normalize, relative } from "node:path";
 import type { ClosedMark } from "./append-only.ts";
 import { contentHash, readHashed } from "./content-hash.ts";
+import { renderFiledItem, renderLinkLine } from "./curated.ts";
 import { STATE_MARKS } from "./dump-body.ts";
 import { BrainDumpError, UsageError } from "./errors.ts";
 import { commit, type Write } from "./gateway.ts";
@@ -12,14 +13,22 @@ import { titleKey } from "./notes.ts";
 import { readRoutes, renderRoute, routeIdentity, type Route } from "./routes.ts";
 import { findSection } from "./sections.ts";
 import { formatGroupPath, parseTodoGroups, pathKey, resolveGroupPath, type GroupNode, type GroupPath } from "./todo-groups.ts";
-import { isMondayWeeklyNote, readWeeklyTemplate } from "./weekly.ts";
+import { isMondayWeeklyNote, locateWeeklyNote, readWeeklyTemplate } from "./weekly.ts";
 import type { Vault } from "./vault.ts";
 
 /** Where lines go: a note's section, or the end of the note when `section` is absent. */
 type Placement = { note: string; section?: string };
 
 export type PlannedItem =
-  | ({ index: number; outcome: "filed"; lines: string[]; group?: GroupPath; /** The key of the Route a Routine Item's destination came from. */ route?: string } & Placement)
+  | ({
+      index: number;
+      outcome: "filed";
+      group?: GroupPath;
+      /** The key of the Route a Routine Item's destination came from. */
+      route?: string;
+      /** The user's edit of the Item's wording; the Dump keeps the original. */
+      text?: string;
+    } & Placement)
   | { index: number; outcome: "dropped" | "skipped" };
 
 export type NoteCreation = { note: string } & ({ from: "weekly-template" } | { tags: string[] });
@@ -30,7 +39,6 @@ export type FilingPlan = {
   expect: Record<string, string>;
   creates?: NoteCreation[];
   items: PlannedItem[];
-  inserts: (Placement & { lines: string[] })[];
   routes?: Route[];
   createGroups?: GroupPath[];
   confirmLarge?: boolean;
@@ -45,18 +53,26 @@ export type FilingResult = {
   hashes: Record<string, string>;
 };
 
+/** A Dump's link line in its Session's Weekly Note; `due` when this plan adds it. */
+type LinkLine = { note: string; section: string; line: string; due: boolean };
+
+/** What a plan would append, from `apply --dry-run`: each filed Item's lines before any group indent, and the link line. */
+export type FilingDryRun = { items: { index: number; lines: string[] }[]; link: LinkLine };
+
 const PLAN_SHAPE =
-  'expected {"dump": string, "expect": {[path: string]: string}, "items": [{"index": number, "outcome": "filed", "note": string, "section"?: string, "group"?: string[], "lines": string[], "route"?: string} | {"index": number, "outcome": "dropped"|"skipped"}], "inserts": [{"note": string, "section"?: string, "lines": string[]}], "routes"?: [{"key": string, "title": string} | {"key": string, "group": string[]}], "creates"?: [{"note": string, "from": "weekly-template"} | {"note": string, "tags": string[]}], "createGroups"?: string[][], "confirmLarge"?: boolean}';
+  'expected {"dump": string, "expect": {[path: string]: string}, "items": [{"index": number, "outcome": "filed", "note": string, "section"?: string, "group"?: string[], "route"?: string, "text"?: string} | {"index": number, "outcome": "dropped"|"skipped"}], "routes"?: [{"key": string, "title": string} | {"key": string, "group": string[]}], "creates"?: [{"note": string, "from": "weekly-template"} | {"note": string, "tags": string[]}], "createGroups"?: string[][], "confirmLarge"?: boolean}';
 const CLOSED_MARKS: Record<"filed" | "dropped", ClosedMark> = { filed: "x", dropped: "-" };
 const PLACEHOLDER = /^- (\[ \] ?)?$/;
+const LINK_SECTION = "# Notes:";
 const TAG = /^[^\s#]+$/;
 
+/** Reads a plan as YAML, which JSON is a subset of; block YAML lets the file skill pass it in a Bash command without the braces Claude Code asks about. */
 export function parseFilingPlan(text: string): FilingPlan {
   let value: unknown;
   try {
-    value = JSON.parse(text);
+    value = Bun.YAML.parse(text);
   } catch {
-    throw new UsageError("invalid Filing Plan: stdin is not JSON");
+    throw new UsageError("invalid Filing Plan: stdin is not YAML");
   }
   if (!isFilingPlan(value)) throw new UsageError(`invalid Filing Plan: ${PLAN_SHAPE}`);
   return value;
@@ -64,30 +80,51 @@ export function parseFilingPlan(text: string): FilingPlan {
 
 /** Validates the whole plan against the Vault, then writes notes before the Dump, so an interrupted apply can only duplicate a line on the next run, never lose one. */
 export function applyFilingPlan(vault: Vault, plan: FilingPlan): FilingResult {
+  const { dump, writes, movedTo } = stageFiling(vault, plan);
+  commit(vault, "approved-plan", { command: "apply", label: dump.title }, writes, { confirmLarge: plan.confirmLarge });
+  const count = (outcome: PlannedItem["outcome"]): number => plan.items.filter((item) => item.outcome === outcome).length;
+  const hashes = Object.fromEntries(writes.map((write) => [relative(vault.root, (write.mode === "file-dump" && write.moveTo) || write.path), contentHash(write.contents)]));
+  return { filed: count("filed"), dropped: count("dropped"), skipped: count("skipped"), movedTo: movedTo && relative(vault.root, movedTo), hashes };
+}
+
+/** Validates the plan as `applyFilingPlan` does, short of the write gateway's own checks (the write allowlist and the plan size limit), and writes nothing. */
+export function dryRunFilingPlan(vault: Vault, plan: FilingPlan): FilingDryRun {
+  return stageFiling(vault, plan).dryRun;
+}
+
+type StagedFiling = { dump: StoredDump; writes: Exclude<Write, { mode: "revert" }>[]; movedTo: string | null; dryRun: FilingDryRun };
+
+function stageFiling(vault: Vault, plan: FilingPlan): StagedFiling {
   const dumpPath = resolveInVault(vault, plan.dump);
   if (dirname(dumpPath) !== vault.inbox) reject(`${plan.dump} is not an unfiled Dump in the Inbox`);
   const newRoutes = unknownRoutes(vault, plan.routes ?? []);
-  checkFresh(vault, plan, newRoutes.length > 0);
+  const filedNotes = plan.items.flatMap((item) => (item.outcome === "filed" ? [item.note] : []));
+  checkFresh(vault, plan, [plan.dump, ...filedNotes, ...(newRoutes.length > 0 ? [ROUTES_NOTE] : [])]);
   const dump = readDump(vault, dumpPath);
+  const finished = finishes(dump, plan);
+  const link = linkLine(vault, dump, plan, finished);
+  // Only the Dump says whether the link line is due, so its note is checked once the Dump, itself checked above, is read.
+  if (link.due) checkFresh(vault, plan, [link.note]);
   checkRoutineItems(vault, dump, plan.items);
   const dumpLines = markItems(dump, plan.items);
+  const filed = plan.items.flatMap((item) => (item.outcome === "filed" ? [{ item, lines: renderItem(dump, item) }] : []));
   const notes = new NoteEdits(vault);
   const groups = plannedGroups(plan);
   for (const creation of plan.creates ?? []) notes.create(creation);
-  for (const item of plan.items) {
-    if (item.outcome !== "filed") continue;
-    if (item.group === undefined) notes.insert(item, item.lines);
-    else notes.insertInGroup(item, item.group, item.lines, groups);
+  for (const { item, lines } of filed) {
+    if (item.group === undefined) notes.insert(item, lines);
+    else notes.insertInGroup(item, item.group, lines, groups);
   }
-  for (const insert of plan.inserts) notes.insert(insert, insert.lines);
+  if (link.due) {
+    const created = (plan.creates ?? []).some(({ note }) => resolveInVault(vault, note) === resolveInVault(vault, link.note));
+    if (!created && !existsSync(resolveInVault(vault, link.note))) reject(`the link line goes in ${link.note}, which doesn't exist and isn't in creates`);
+    notes.insert(link, [link.line]);
+  }
   if (newRoutes.length > 0) notes.insert({ note: ROUTES_NOTE }, newRoutes.map(renderRoute), { create: true });
   notes.requireCreatedNotesUsed();
 
-  const closed = new Set(plan.items.filter(({ outcome }) => outcome !== "skipped").map(({ index }) => index));
-  const finished = dump.items.every((item) => item.state !== "open" || closed.has(item.index));
   const filedPath = join(vault.root, FILED_FOLDER, basename(dumpPath));
   if (finished && existsSync(filedPath)) reject(`${FILED_FOLDER} already has ${basename(dumpPath)}`);
-
   const lineOf = new Map(dump.items.map((item) => [item.index, item.line]));
   const planned = new Map(
     plan.items.flatMap(({ index, outcome }): [number, ClosedMark][] => {
@@ -95,20 +132,35 @@ export function applyFilingPlan(vault: Vault, plan: FilingPlan): FilingResult {
       return outcome === "skipped" || line === undefined ? [] : [[line, CLOSED_MARKS[outcome]]];
     }),
   );
-  const filedDump: Write = { mode: "file-dump", path: dumpPath, contents: dumpLines.join(dump.eol), planned, moveTo: finished ? filedPath : undefined };
-  const writes = [...notes.writes(), filedDump];
-  commit(vault, "approved-plan", { command: "apply", label: dump.title }, writes, { confirmLarge: plan.confirmLarge });
-  const count = (outcome: PlannedItem["outcome"]): number => plan.items.filter((item) => item.outcome === outcome).length;
-  const hashes = Object.fromEntries(writes.map((write) => [relative(vault.root, (write.mode === "file-dump" && write.moveTo) || write.path), contentHash(write.contents)]));
-  return { filed: count("filed"), dropped: count("dropped"), skipped: count("skipped"), movedTo: finished ? relative(vault.root, filedPath) : null, hashes };
+  const movedTo = finished ? filedPath : null;
+  const filedDump: Write = { mode: "file-dump", path: dumpPath, contents: dumpLines.join(dump.eol), planned, moveTo: movedTo ?? undefined };
+  const dryRun: FilingDryRun = { items: filed.map(({ item, lines }) => ({ index: item.index, lines })), link };
+  return { dump, writes: [...notes.writes(), filedDump], movedTo, dryRun };
+}
+
+/** True when the plan leaves none of the Dump's Items open, so the Dump moves to Filed. */
+function finishes(dump: StoredDump, plan: FilingPlan): boolean {
+  const closed = new Set(plan.items.filter(({ outcome }) => outcome !== "skipped").map(({ index }) => index));
+  return dump.items.every((item) => item.state !== "open" || closed.has(item.index));
+}
+
+/** Due when the plan finishes the Dump and one of its Items is filed, now or in an earlier Run, so each Dump gets exactly one. */
+function linkLine(vault: Vault, dump: StoredDump, plan: FilingPlan, finished: boolean): LinkLine {
+  const filed = plan.items.some(({ outcome }) => outcome === "filed") || dump.items.some(({ state }) => state === "filed");
+  const line = renderLinkLine({ title: dump.title, label: dump.label, slug: dump.slug });
+  return { note: locateWeeklyNote(vault, dump.date).note, section: LINK_SECTION, line, due: finished && filed };
+}
+
+function renderItem(dump: StoredDump, { index, text }: Extract<PlannedItem, { outcome: "filed" }>): string[] {
+  const stored = dump.items.find((item) => item.index === index);
+  if (stored === undefined) reject(`${dump.title} has no Item ${index}`);
+  return renderFiledItem({ ...stored, text: text ?? stored.text }, dump);
 }
 
 /** Every existing file the plan writes needs the hash it had when the agent read it; if any changed since, the whole plan is refused before anything is staged. */
-function checkFresh(vault: Vault, plan: FilingPlan, writesRoutes: boolean): void {
+function checkFresh(vault: Vault, plan: FilingPlan, notes: string[]): void {
   const expected = new Map(Object.entries(plan.expect).map(([note, hash]) => [resolveInVault(vault, note), hash]));
   const created = new Set((plan.creates ?? []).map(({ note }) => resolveInVault(vault, note)));
-  const filed = plan.items.flatMap((item) => (item.outcome === "filed" ? [item.note] : []));
-  const notes = [plan.dump, ...filed, ...plan.inserts.map(({ note }) => note), ...(writesRoutes ? [ROUTES_NOTE] : [])];
   const written = new Map(notes.map((note) => [resolveInVault(vault, note), note]));
   const routesPath = resolveInVault(vault, ROUTES_NOTE);
   const stale: string[] = [];
@@ -333,7 +385,8 @@ function isFilingPlan(value: unknown): value is FilingPlan {
   const routesOk = value.routes === undefined || (Array.isArray(value.routes) && value.routes.every(isRoute));
   const groupsOk = value.createGroups === undefined || (Array.isArray(value.createGroups) && value.createGroups.every(isGroupPath));
   const confirmLargeOk = value.confirmLarge === undefined || typeof value.confirmLarge === "boolean";
-  return expectOk && Array.isArray(value.items) && value.items.every(isPlannedItem) && Array.isArray(value.inserts) && value.inserts.every(hasPlacedLines) && routesOk && createsOk && groupsOk && confirmLargeOk;
+  // The helper renders every line it writes, so a plan from before it did, with `inserts` or an Item's `lines`, is refused rather than half-applied.
+  return expectOk && !("inserts" in value) && Array.isArray(value.items) && value.items.every(isPlannedItem) && routesOk && createsOk && groupsOk && confirmLargeOk;
 }
 
 function isNoteCreation(value: unknown): boolean {
@@ -347,23 +400,16 @@ function isPlannedItem(value: unknown): boolean {
   if (value.outcome === "dropped" || value.outcome === "skipped") return true;
   const groupOk = value.group === undefined || (isGroupPath(value.group) && typeof value.section === "string");
   const routeOk = value.route === undefined || (typeof value.route === "string" && value.route.trim() !== "");
-  return value.outcome === "filed" && hasPlacedLines(value) && groupOk && routeOk;
+  const textOk = value.text === undefined || (typeof value.text === "string" && value.text.trim() !== "" && !/[\r\n]/.test(value.text));
+  return value.outcome === "filed" && isPlacement(value) && !("lines" in value) && groupOk && routeOk && textOk;
 }
 
 function isGroupPath(value: unknown): boolean {
   return Array.isArray(value) && value.length > 0 && value.every((name) => typeof name === "string" && name.trim() !== "");
 }
 
-function hasPlacedLines(value: unknown): boolean {
-  return isRecord(value) && isPlacement(value) && isLines(value.lines);
-}
-
 function isPlacement(value: Record<string, unknown>): boolean {
   return typeof value.note === "string" && (value.section === undefined || typeof value.section === "string");
-}
-
-function isLines(value: unknown): boolean {
-  return Array.isArray(value) && value.length > 0 && value.every((line) => typeof line === "string");
 }
 
 function isRoute(value: unknown): boolean {

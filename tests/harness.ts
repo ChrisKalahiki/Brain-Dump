@@ -1,6 +1,6 @@
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { contentHash } from "../src/content-hash.ts";
 import { renderDump, type CoveredSession } from "../src/dump.ts";
 import { ROUTES_NOTE } from "../src/layout.ts";
@@ -128,12 +128,13 @@ export function vaultFileHash(sandbox: Sandbox, relativePath: string): string {
   return contentHash(readFileSync(join(sandbox.vault, relativePath)));
 }
 
-/** Adds `expect`, pinning the Dump, every note the plan names and the Routes note to their hashes on disk now, as the file skill does from its reads. A plan that already has `expect`, or isn't an object, is left as it is. */
+/** Adds `expect`, pinning every note in the Vault to its hash on disk now, as the file skill does from its reads; entries for notes the plan doesn't write are ignored. A plan that already has `expect`, or isn't an object, is left as it is. */
 export function pinned(sandbox: Sandbox, plan: unknown): unknown {
   if (!isRecord(plan) || "expect" in plan) return plan;
-  const noted = [plan.items, plan.inserts].flatMap((list) => (Array.isArray(list) ? list.map((entry) => (isRecord(entry) ? entry.note : undefined)) : []));
-  const existing = [plan.dump, ROUTES_NOTE, ...noted].filter((note): note is string => typeof note === "string" && existsSync(join(sandbox.vault, note)));
-  return { ...plan, expect: Object.fromEntries(existing.map((note) => [note, vaultFileHash(sandbox, note)])) };
+  const notes = readdirSync(sandbox.vault, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .map((entry) => relative(sandbox.vault, join(entry.parentPath, entry.name)));
+  return { ...plan, expect: Object.fromEntries(notes.map((note) => [note, vaultFileHash(sandbox, note)])) };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

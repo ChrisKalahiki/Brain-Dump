@@ -1,12 +1,14 @@
 import { readFileSync } from "node:fs";
 import { relative } from "node:path";
+import type { ItemKind } from "./inbox.ts";
 import { INBOX } from "./layout.ts";
 import { noteFiles } from "./notes.ts";
 import type { Vault } from "./vault.ts";
 
-// The Items Filing leaves in curated notes: a bullet with a `From [[dump]]` or `Why:` line under it, or a `#todo` bullet.
+// The Items Filing leaves in curated notes, written and read back here: a bullet with a `From [[dump]]` or `Why:` line under it, or a `#todo` bullet.
 
 export const TODO_TAG = /(^|\s)#todo(?=\s|$)/;
+const EVERY_TODO_TAG = new RegExp(TODO_TAG.source, "g");
 const BULLET = /^(\s*)- (.+)$/;
 const WHY_LINE = /^- Why: (.+)$/;
 /** A filed Learning's or Decision's backlink to its Dump, as its trimmed child line. */
@@ -39,6 +41,19 @@ export function curatedBullets(lines: string[]): CuratedBullet[] {
     if (from === undefined && why === undefined && !TODO_TAG.test(text)) return [];
     return [{ text, why, from, line: index }];
   });
+}
+
+/** The lines Filing appends for an Item from the Dump `dump`; `text` is the Item's own wording or the user's edit of it. */
+export function renderFiledItem({ kind, text, rationale }: { kind: ItemKind; text: string; rationale: string | null }, dump: { title: string; date: string }): string[] {
+  if (kind === "Todo") return [`- [ ] ${text.replace(EVERY_TODO_TAG, "").trim()} #todo`];
+  const [year = "", month = "", day = ""] = dump.date.split("-");
+  const from = `\t- From [[${dump.title}|dump ${month}-${day}-${year.slice(-2)}]]`;
+  return kind === "Decision" ? [`- ${text}`, `\t- Why: ${rationale}`, from] : [`- ${text}`, from];
+}
+
+/** A Weekly Note's link to a Dump Filing finished, aliased by its label and slug. */
+export function renderLinkLine({ title, label, slug }: { title: string; label: string; slug: string }): string {
+  return `- Filed [[${title}|${label} ${slug}]]`;
 }
 
 /** An Item's text without its checkbox or `#todo`, in lower case with whitespace collapsed: a filed Todo gains a checkbox and moves its `#todo` to the end. */

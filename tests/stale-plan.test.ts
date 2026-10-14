@@ -15,8 +15,8 @@ function apply(sandbox: Sandbox, plan: unknown) {
   return run(sandbox, ["apply"], { stdin: JSON.stringify(plan) });
 }
 
-function fileTodo(index: number, line: string) {
-  return { index, outcome: "filed", note: WEEK, section: "# To-Do:", lines: [line] };
+function fileTodo(index: number) {
+  return { index, outcome: "filed", note: WEEK, section: "# To-Do:" };
 }
 
 function setup(): Sandbox {
@@ -74,7 +74,7 @@ describe("brain-dump apply checks expect", () => {
   test("refuses a plan that writes an existing file with no expect entry for it, writing nothing", () => {
     // #given
     const sandbox = setup();
-    const plan = { dump: DUMP, items: [fileTodo(1, "- [ ] Ship it. #todo")], inserts: [], expect: { [DUMP]: vaultFileHash(sandbox, DUMP) } };
+    const plan = { dump: DUMP, items: [fileTodo(1)], expect: { [DUMP]: vaultFileHash(sandbox, DUMP) } };
 
     // #when
     const result = apply(sandbox, plan);
@@ -83,14 +83,27 @@ describe("brain-dump apply checks expect", () => {
     expect([result.exitCode, result.stderr, readVaultFile(sandbox, WEEK)]).toEqual([1, `brain-dump: Filing Plan rejected: expect has no hash for ${WEEK}\n`, WEEKLY_TEMPLATE]);
   });
 
+  test("needs an expect entry for the Session's Weekly Note when only the link line writes it", () => {
+    // #given
+    const sandbox = makeSandbox();
+    writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Todos\n- [x] #todo Ship it.\n- [ ] #todo Test it.\n"));
+    writeVaultFile(sandbox, WEEK, WEEKLY_TEMPLATE);
+    const plan = { dump: DUMP, items: [{ index: 2, outcome: "dropped" }], expect: { [DUMP]: vaultFileHash(sandbox, DUMP) } };
+
+    // #when
+    const result = apply(sandbox, plan);
+
+    // #then
+    expect([result.exitCode, result.stderr]).toEqual([1, `brain-dump: Filing Plan rejected: expect has no hash for ${WEEK}\n`]);
+  });
+
   test("refuses the whole plan when files changed since they were read, naming every one and writing nothing", () => {
     // #given
     const sandbox = setup();
     writeVaultFile(sandbox, TOPIC, "- Skills\n");
     const plan = pinned(sandbox, {
       dump: DUMP,
-      items: [fileTodo(1, "- [ ] Ship it. #todo"), { index: 2, outcome: "filed", note: TOPIC, lines: ["- Test it."] }],
-      inserts: [],
+      items: [fileTodo(1), { index: 2, outcome: "filed", note: TOPIC }],
     });
     const dump = readVaultFile(sandbox, DUMP);
     writeVaultFile(sandbox, WEEK, `${WEEKLY_TEMPLATE}- edited in Obsidian\n`);
@@ -106,7 +119,7 @@ describe("brain-dump apply checks expect", () => {
   test("treats a pinned file that was deleted since it was read as changed", () => {
     // #given
     const sandbox = setup();
-    const plan = pinned(sandbox, { dump: DUMP, items: [fileTodo(1, "- [ ] Ship it. #todo")], inserts: [] });
+    const plan = pinned(sandbox, { dump: DUMP, items: [fileTodo(1)] });
     rmSync(join(sandbox.vault, WEEK));
 
     // #when
@@ -116,11 +129,24 @@ describe("brain-dump apply checks expect", () => {
     expect(result.stderr).toBe(`brain-dump: Filing Plan stale: ${WEEK} changed since it was read\n`);
   });
 
+  test("reports a Dump deleted since it was read as changed, rather than failing to read it", () => {
+    // #given
+    const sandbox = setup();
+    const plan = pinned(sandbox, { dump: DUMP, items: [fileTodo(1)] });
+    rmSync(join(sandbox.vault, DUMP));
+
+    // #when
+    const result = apply(sandbox, plan);
+
+    // #then
+    expect([result.exitCode, result.stderr]).toEqual([1, `brain-dump: Filing Plan stale: ${DUMP} changed since it was read\n`]);
+  });
+
   test("names the changed files even when another file the plan writes has no expect entry", () => {
     // #given
     const sandbox = setup();
     writeVaultFile(sandbox, TOPIC, "- Skills\n");
-    const plan = { dump: DUMP, items: [fileTodo(1, "- [ ] Ship it. #todo"), { index: 2, outcome: "filed", note: TOPIC, lines: ["- Test it."] }], inserts: [], expect: { [DUMP]: "0000000000000000" } };
+    const plan = { dump: DUMP, items: [fileTodo(1), { index: 2, outcome: "filed", note: TOPIC }], expect: { [DUMP]: "0000000000000000" } };
 
     // #when
     const result = apply(sandbox, plan);
@@ -132,7 +158,7 @@ describe("brain-dump apply checks expect", () => {
   test("treats a Routes note that appeared since the read as changed", () => {
     // #given
     const sandbox = setup();
-    const plan = pinned(sandbox, { dump: DUMP, items: [fileTodo(1, "- [ ] Ship it. #todo")], inserts: [], routes: [{ key: "Brain-Dump", title: "Brain-Dump" }] });
+    const plan = pinned(sandbox, { dump: DUMP, items: [fileTodo(1)], routes: [{ key: "Brain-Dump", title: "Brain-Dump" }] });
     writeVaultFile(sandbox, ROUTES_NOTE, "Talky → [[Talky]]\n");
 
     // #when
@@ -149,8 +175,7 @@ describe("brain-dump apply checks expect", () => {
     const first = pinned(sandbox, {
       dump: DUMP,
       creates: [{ note: NEW_TOPIC, tags: [] }],
-      items: [fileTodo(1, "- [ ] Ship it. #todo"), { index: 2, outcome: "filed", note: NEW_TOPIC, lines: ["- Test it."] }],
-      inserts: [],
+      items: [fileTodo(1), { index: 2, outcome: "filed", note: NEW_TOPIC }],
       routes: [{ key: "Brain-Dump", title: "Brain-Dump" }],
     });
     const otherDump = vaultFileHash(sandbox, OTHER_DUMP);
@@ -158,7 +183,7 @@ describe("brain-dump apply checks expect", () => {
     // #when
     const { hashes } = JSON.parse(apply(sandbox, first).stdout);
     const onDisk = Object.fromEntries([NEW_TOPIC, ROUTES_NOTE, WEEK, FILED].map((path) => [path, vaultFileHash(sandbox, path)]));
-    const second = apply(sandbox, { dump: OTHER_DUMP, items: [fileTodo(1, "- [ ] Later. #todo")], inserts: [], expect: { [OTHER_DUMP]: otherDump, [WEEK]: hashes[WEEK] } });
+    const second = apply(sandbox, { dump: OTHER_DUMP, items: [fileTodo(1)], expect: { [OTHER_DUMP]: otherDump, [WEEK]: hashes[WEEK] } });
 
     // #then
     expect([hashes, second.exitCode]).toEqual([onDisk, 0]);

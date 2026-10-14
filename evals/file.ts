@@ -81,9 +81,12 @@ export const FILE_EVAL: Eval = {
   name: "file",
   model: DRAFTING_MODEL,
   // The Dumps are built as `write-dump` builds them, and the expectations hinge on the helper's Dump parsing, near-duplicate matching, Routes, Todo
-  // Groups and Weekly Note lookup.
+  // Groups, Weekly Note lookup, and the dry run that renders each Item's lines and the link line.
   inputs: [
     "skills/file/SKILL.md",
+    "src/cli.ts",
+    "src/curated.ts",
+    "src/filing.ts",
     "src/dump.ts",
     "src/inbox.ts",
     "src/duplicates.ts",
