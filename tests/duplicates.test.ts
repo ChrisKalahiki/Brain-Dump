@@ -129,10 +129,10 @@ describe("apply refuses a near-duplicate claimed as routine", () => {
     writeVaultFile(sandbox, TOPIC, "# Agent Skills\n- Codex reads skills from the agents folder.\n\t- Why: seen before.\n");
     writeVaultFile(sandbox, ROUTES_NOTE, "Agent Skills → [[Agent Skills]]\n");
     const before = [DUMP, TOPIC].map((note) => readVaultFile(sandbox, note));
-    const items = [{ index: 1, outcome: "filed", note: TOPIC, lines: ["- Codex reads skills from the agents folder."], route: "Agent Skills" }];
+    const items = [{ index: 1, outcome: "filed", note: TOPIC, route: "Agent Skills" }];
 
     // #when
-    const result = run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: DUMP, inserts: [], items })) });
+    const result = run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: DUMP, items })) });
 
     // #then
     expect({ exitCode: result.exitCode, stderr: result.stderr, vault: [DUMP, TOPIC].map((note) => readVaultFile(sandbox, note)) }).toEqual({
@@ -147,15 +147,17 @@ describe("apply refuses a near-duplicate claimed as routine", () => {
     const sandbox = makeSandbox();
     writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Learnings\n- [ ] Codex reads skills from the agents folder.\n"));
     writeVaultFile(sandbox, TOPIC, "# Agent Skills\n- Codex reads skills from the agents folder.\n\t- Why: seen before.\n");
-    const items = [{ index: 1, outcome: "filed", note: TOPIC, lines: ["- Codex reads skills from the agents folder."] }];
+    writeVaultFile(sandbox, WEEK, "# Notes:\n- \n");
+    const items = [{ index: 1, outcome: "filed", note: TOPIC }];
 
     // #when
-    const result = run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: DUMP, inserts: [], items })) });
+    const result = run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: DUMP, items })) });
 
     // #then
     expect({ exitCode: result.exitCode, topic: readVaultFile(sandbox, TOPIC) }).toEqual({
       exitCode: 0,
-      topic: "# Agent Skills\n- Codex reads skills from the agents folder.\n\t- Why: seen before.\n- Codex reads skills from the agents folder.\n",
+      topic:
+        "# Agent Skills\n- Codex reads skills from the agents folder.\n\t- Why: seen before.\n- Codex reads skills from the agents folder.\n\t- From [[2026-10-05 1940 Brain-Dump - filing|dump 10-05-26]]\n",
     });
   });
 });

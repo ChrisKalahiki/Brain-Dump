@@ -20,15 +20,19 @@ describe("brain-dump apply creating notes", () => {
     const plan = {
       dump: DUMP,
       creates: [{ note: NEW_WEEK, from: "weekly-template" }],
-      items: [{ index: 1, outcome: "filed", note: NEW_WEEK, section: "# To-Do:", lines: ["- [ ] Plan the week. #todo"] }],
-      inserts: [],
+      items: [{ index: 1, outcome: "filed", note: NEW_WEEK, section: "# To-Do:" }],
     };
 
     // #when
     apply(sandbox, plan);
 
     // #then
-    expect(readVaultFile(sandbox, NEW_WEEK)).toBe(WEEKLY_TEMPLATE.replace("# To-Do: #todo \n- [ ] \n", "# To-Do: #todo \n- [ ] Plan the week. #todo\n"));
+    expect(readVaultFile(sandbox, NEW_WEEK)).toBe(
+      WEEKLY_TEMPLATE.replace("# To-Do: #todo \n- [ ] \n", "# To-Do: #todo \n- [ ] Plan the week. #todo\n").replace(
+        "# Notes:\n- \n",
+        "# Notes:\n- Filed [[2026-10-12 0900 Brain-Dump - new week|Brain-Dump new week]]\n",
+      ),
+    );
   });
 
   test("creates a new Topic Note in a new folder with tags-only frontmatter, followed by the filed Learning", () => {
@@ -36,12 +40,12 @@ describe("brain-dump apply creating notes", () => {
     const sandbox = makeSandbox();
     const topic = "Research/Main Notes/Agent Skills/Agent Skills.md";
     writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Learnings\n- [ ] Codex reads ~/.agents/skills.\n"));
+    writeVaultFile(sandbox, NEW_WEEK, WEEKLY_TEMPLATE);
     const lines = ["- Codex reads ~/.agents/skills.", "\t- From [[2026-10-12 0900 Brain-Dump - new week|dump 10-12-26]]"];
     const plan = {
       dump: DUMP,
       creates: [{ note: topic, tags: ["LLMs", "VibeCoding"] }],
-      items: [{ index: 1, outcome: "filed", note: topic, lines }],
-      inserts: [],
+      items: [{ index: 1, outcome: "filed", note: topic }],
     };
 
     // #when
@@ -56,38 +60,39 @@ describe("brain-dump apply creating notes", () => {
     const sandbox = makeSandbox();
     const topic = "Research/Main Notes/Plain.md";
     writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Learnings\n- [ ] A.\n"));
+    writeVaultFile(sandbox, NEW_WEEK, WEEKLY_TEMPLATE);
 
     // #when
-    apply(sandbox, { dump: DUMP, creates: [{ note: topic, tags: [] }], items: [{ index: 1, outcome: "filed", note: topic, lines: ["- A."] }], inserts: [] });
+    apply(sandbox, { dump: DUMP, creates: [{ note: topic, tags: [] }], items: [{ index: 1, outcome: "filed", note: topic }] });
 
     // #then
-    expect(readVaultFile(sandbox, topic)).toBe("- A.\n");
+    expect(readVaultFile(sandbox, topic)).toBe("- A.\n\t- From [[2026-10-12 0900 Brain-Dump - new week|dump 10-12-26]]\n");
   });
 
   describe("rejects the plan without writing", () => {
-    const filedInto = (note: string) => ({ index: 1, outcome: "filed", note, lines: ["- A."] });
+    const filedInto = (note: string) => ({ index: 1, outcome: "filed", note });
     const cases: [string, (sandbox: Sandbox) => unknown, string][] = [
       [
         "a new note that would overwrite an existing file",
         (sandbox) => {
           writeVaultFile(sandbox, "Research/Main Notes/Taken.md", "mine\n");
-          return { dump: DUMP, creates: [{ note: "Research/Main Notes/Taken.md", tags: ["X"] }], items: [filedInto("Research/Main Notes/Taken.md")], inserts: [] };
+          return { dump: DUMP, creates: [{ note: "Research/Main Notes/Taken.md", tags: ["X"] }], items: [filedInto("Research/Main Notes/Taken.md")] };
         },
         "Research/Main Notes/Taken.md already exists",
       ],
       [
         "a Weekly Note when the template is missing",
-        () => ({ dump: DUMP, creates: [{ note: NEW_WEEK, from: "weekly-template" }], items: [filedInto(NEW_WEEK)], inserts: [] }),
+        () => ({ dump: DUMP, creates: [{ note: NEW_WEEK, from: "weekly-template" }], items: [filedInto(NEW_WEEK)] }),
         `the Weekly Note template ${TEMPLATE} does not exist`,
       ],
       [
         "a new note nothing is filed into",
-        () => ({ dump: DUMP, creates: [{ note: "Research/Main Notes/Orphan.md", tags: [] }], items: [{ index: 1, outcome: "dropped" }], inserts: [] }),
+        () => ({ dump: DUMP, creates: [{ note: "Research/Main Notes/Orphan.md", tags: [] }], items: [{ index: 1, outcome: "dropped" }] }),
         "Research/Main Notes/Orphan.md would be created with nothing filed into it",
       ],
       [
         "a new note that is not Markdown",
-        () => ({ dump: DUMP, creates: [{ note: "Research/Main Notes/Orphan.txt", tags: [] }], items: [filedInto("Research/Main Notes/Orphan.txt")], inserts: [] }),
+        () => ({ dump: DUMP, creates: [{ note: "Research/Main Notes/Orphan.txt", tags: [] }], items: [filedInto("Research/Main Notes/Orphan.txt")] }),
         "Research/Main Notes/Orphan.txt is not a Markdown note",
       ],
       [
@@ -96,7 +101,6 @@ describe("brain-dump apply creating notes", () => {
           dump: DUMP,
           creates: [{ note: "Research/Main Notes/Orphan.md", tags: [] }, { note: "Research/Main Notes/Orphan.md", tags: [] }],
           items: [filedInto("Research/Main Notes/Orphan.md")],
-          inserts: [],
         }),
         "Research/Main Notes/Orphan.md already exists",
       ],
@@ -104,7 +108,7 @@ describe("brain-dump apply creating notes", () => {
         "a template copy that is not a Monday Weekly Note",
         (sandbox) => {
           writeVaultFile(sandbox, TEMPLATE, WEEKLY_TEMPLATE);
-          return { dump: DUMP, creates: [{ note: "Research/Weekly Meetings/10-14-26 Weekly Update.md", from: "weekly-template" }], items: [filedInto("Research/Weekly Meetings/10-14-26 Weekly Update.md")], inserts: [] };
+          return { dump: DUMP, creates: [{ note: "Research/Weekly Meetings/10-14-26 Weekly Update.md", from: "weekly-template" }], items: [filedInto("Research/Weekly Meetings/10-14-26 Weekly Update.md")] };
         },
         "Research/Weekly Meetings/10-14-26 Weekly Update.md is not a Monday Weekly Note in Research/Weekly Meetings",
       ],
@@ -135,7 +139,7 @@ describe("brain-dump apply creating notes", () => {
     const sandbox = makeSandbox();
 
     // #when
-    const result = apply(sandbox, { dump: DUMP, creates: [{ note: "X.md", tags: ["Two Words"] }], items: [], inserts: [] });
+    const result = apply(sandbox, { dump: DUMP, creates: [{ note: "X.md", tags: ["Two Words"] }], items: [] });
 
     // #then
     expect([result.exitCode, existsSync(join(sandbox.vault, "X.md"))]).toEqual([2, false]);

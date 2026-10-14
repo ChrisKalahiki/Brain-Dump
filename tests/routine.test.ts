@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { DEV_ORIGIN as ORIGIN, dumpFile, makeSandbox, pinned, readVaultFile, ROUTES_NOTE, run, type Sandbox, writeVaultFile } from "./harness.ts";
+import { devOrigin, dumpFile, makeSandbox, pinned, readVaultFile, ROUTES_NOTE, run, type Sandbox, writeVaultFile } from "./harness.ts";
 
-const DUMP = "Inbox/2026-10-05 1940 Brain-Dump - filing.md";
+// The Dump's Session was the week before, so its link line goes in that week's note and this week's holds only the Todos.
+const ORIGIN = devOrigin("Brain-Dump", "2026-09-28T19:40");
+const DUMP = "Inbox/2026-09-28 1940 Brain-Dump - filing.md";
+const SESSION_WEEK = "Research/Weekly Meetings/09-28-26 Weekly Update.md";
+const FILED_LEARNING = "- Codex reads skills.\n\t- From [[2026-09-28 1940 Brain-Dump - filing|dump 09-28-26]]\n";
 const TOPIC = "Research/Main Notes/Agent Skills.md";
 const OTHER = "Research/Main Notes/Zotero.md";
 const WEEK = "Research/Weekly Meetings/10-05-26 Weekly Update.md";
@@ -15,15 +19,16 @@ function setup(routes = ROUTES): Sandbox {
   writeVaultFile(sandbox, TOPIC, "# Agent Skills\n");
   writeVaultFile(sandbox, OTHER, "# Zotero\n");
   writeVaultFile(sandbox, WEEK, "# To-Do:\n- Dissertation\n\t- [ ] Update consent form\n");
+  writeVaultFile(sandbox, SESSION_WEEK, "# Notes:\n- \n");
   writeVaultFile(sandbox, ROUTES_NOTE, routes);
   return sandbox;
 }
 
-const learning = (extra: object = {}) => ({ index: 1, outcome: "filed", note: TOPIC, lines: ["- Codex reads skills."], ...extra });
-const todo = (extra: object = {}) => ({ index: 2, outcome: "filed", note: WEEK, section: "# To-Do:", group: ["Dissertation"], lines: ["- [ ] Finish IRB. #todo"], ...extra });
+const learning = (extra: object = {}) => ({ index: 1, outcome: "filed", note: TOPIC, ...extra });
+const todo = (extra: object = {}) => ({ index: 2, outcome: "filed", note: WEEK, section: "# To-Do:", group: ["Dissertation"], ...extra });
 
 function apply(sandbox: Sandbox, plan: object) {
-  return run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: DUMP, inserts: [], ...plan })) });
+  return run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: DUMP, ...plan })) });
 }
 
 function vaultState(sandbox: Sandbox) {
@@ -41,7 +46,7 @@ describe("brain-dump apply verifies the Route each routine Item claims", () => {
     // #then
     expect({ exitCode: result.exitCode, topic: readVaultFile(sandbox, TOPIC), week: readVaultFile(sandbox, WEEK) }).toEqual({
       exitCode: 0,
-      topic: "# Agent Skills\n- Codex reads skills.\n",
+      topic: `# Agent Skills\n${FILED_LEARNING}`,
       week: "# To-Do:\n- Dissertation\n\t- [ ] Update consent form\n\t- [ ] Finish IRB. #todo\n",
     });
   });
@@ -56,7 +61,7 @@ describe("brain-dump apply verifies the Route each routine Item claims", () => {
     // #then
     expect({ exitCode: result.exitCode, topic: readVaultFile(sandbox, TOPIC), week: readVaultFile(sandbox, WEEK) }).toEqual({
       exitCode: 0,
-      topic: "# Agent Skills\n- Codex reads skills.\n",
+      topic: `# Agent Skills\n${FILED_LEARNING}`,
       week: "# To-Do:\n- Dissertation\n\t- [ ] Update consent form\n\t- [ ] Finish IRB. #todo\n",
     });
   });
@@ -177,10 +182,10 @@ describe("routine Items count toward the 8-note limit", () => {
     // #given
     const sandbox = makeSandbox();
     const notes = Array.from({ length: 9 }, (_, n) => `Resources/Note ${n + 1}.md`);
-    writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, `## Learnings\n${notes.map((_, n) => `- [ ] L${n + 1}.\n`).join("")}`));
+    writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, `## Learnings\n${notes.map((_, n) => `- [ ] L${n + 1}.\n`).join("")}- [ ] Later.\n`));
     for (const note of notes) writeVaultFile(sandbox, note, "# Note\n");
     writeVaultFile(sandbox, ROUTES_NOTE, notes.map((_, n) => `k${n + 1} → [[Note ${n + 1}]]\n`).join(""));
-    const items = notes.map((note, n) => ({ index: n + 1, outcome: "filed", note, lines: [`- L${n + 1}.`], route: `k${n + 1}` }));
+    const items = [...notes.map((note, n) => ({ index: n + 1, outcome: "filed", note, route: `k${n + 1}` })), { index: notes.length + 1, outcome: "skipped" }];
 
     // #when
     const result = apply(sandbox, { items });

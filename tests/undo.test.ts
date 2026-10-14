@@ -40,8 +40,7 @@ function fileDump(sandbox: Sandbox): { before: Snapshot; id: string } {
   const before = vaultFiles(sandbox);
   const plan = {
     dump: DUMP,
-    items: [{ index: 1, outcome: "filed", note: WEEK, section: "# To-Do:", lines: ["- [ ] Ship it. #todo"] }],
-    inserts: [],
+    items: [{ index: 1, outcome: "filed", note: WEEK, section: "# To-Do:" }],
     routes: [{ key: "Brain-Dump", title: "Brain-Dump" }],
   };
   const result = run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, plan)), now: APPLIED_AT });
@@ -151,7 +150,7 @@ describe("brain-dump undo", () => {
     const sandbox = makeSandbox();
     const { id } = fileDump(sandbox);
     writeVaultFile(sandbox, OTHER_DUMP, dumpFile(ORIGIN, "## Todos\n- [ ] #todo Later.\n"));
-    const later = { dump: OTHER_DUMP, items: [{ index: 1, outcome: "filed", note: WEEK, section: "# To-Do:", lines: ["- [ ] Later. #todo"] }], inserts: [] };
+    const later = { dump: OTHER_DUMP, items: [{ index: 1, outcome: "filed", note: WEEK, section: "# To-Do:" }] };
     run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, later)), now: LATER });
     const laterId = runId(sandbox, "2026-10-05 2000 Brain-Dump - other");
     writeFileSync(join(sandbox.vault, ROUTES), `${readVaultFile(sandbox, ROUTES)}- edited by hand\n`);
@@ -178,7 +177,7 @@ describe("brain-dump undo", () => {
     const sandbox = makeSandbox();
     const { id } = fileDump(sandbox);
     writeVaultFile(sandbox, OTHER_DUMP, dumpFile(ORIGIN, "## Todos\n- [ ] #todo Later.\n"));
-    run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: OTHER_DUMP, items: [{ index: 1, outcome: "filed", note: WEEK, section: "# To-Do:", lines: ["- [ ] Later. #todo"] }], inserts: [] })), now: LATER });
+    run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: OTHER_DUMP, items: [{ index: 1, outcome: "filed", note: WEEK, section: "# To-Do:" }] })), now: LATER });
     writeFileSync(join(sandbox.vault, WEEK), `${readVaultFile(sandbox, WEEK)}- edited by hand\n`);
 
     // #when

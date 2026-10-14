@@ -1,18 +1,25 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { DEV_ORIGIN as ORIGIN, dumpFile, makeSandbox, readVaultFile, run, WEEKLY_TEMPLATE, writeVaultFile, type Sandbox, pinned, vaultFileHash } from "./harness.ts";
+import { DEV_ORIGIN as ORIGIN, DUMP_AT, dumpFile, makeSandbox, readVaultFile, run, WEEKLY_TEMPLATE, writeVaultFile, type Sandbox, pinned, vaultFileHash } from "./harness.ts";
 
 const DUMP = "Inbox/2026-10-05 1940 Brain-Dump - filing.md";
 const WEEK = "Research/Weekly Meetings/10-05-26 Weekly Update.md";
+const TOPIC = "Research/Main Notes/Agent Skills.md";
 const LINK = "- Filed [[2026-10-05 1940 Brain-Dump - filing|Brain-Dump filing]]";
+const FROM = "\t- From [[2026-10-05 1940 Brain-Dump - filing|dump 10-05-26]]";
 
-function apply(sandbox: Sandbox, plan: unknown) {
-  return run(sandbox, ["apply"], { stdin: typeof plan === "string" ? plan : JSON.stringify(pinned(sandbox, plan)) });
+function apply(sandbox: Sandbox, plan: unknown, args: string[] = []) {
+  return run(sandbox, ["apply", ...args], { stdin: typeof plan === "string" ? plan : JSON.stringify(pinned(sandbox, plan)) });
 }
 
-function fileTodo(index: number, line: string, note = WEEK) {
-  return { index, outcome: "filed", note, section: "# To-Do:", lines: [line] };
+function fileTodo(index: number, note = WEEK) {
+  return { index, outcome: "filed", note, section: "# To-Do:" };
+}
+
+/** The template with `todo` filling its To-Do placeholder and `link` its Notes placeholder. */
+function filledWeek(todo: string, link = LINK): string {
+  return WEEKLY_TEMPLATE.replace("# To-Do: #todo \n- [ ] \n", `# To-Do: #todo \n${todo}\n`).replace("# Notes:\n- \n", `# Notes:\n${link}\n`);
 }
 
 describe("brain-dump apply", () => {
@@ -21,18 +28,13 @@ describe("brain-dump apply", () => {
     const sandbox = makeSandbox();
     writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Todos\n- [ ] #todo Ship the file skill.\n"));
     writeVaultFile(sandbox, WEEK, WEEKLY_TEMPLATE);
-    const plan = {
-      dump: DUMP,
-      items: [fileTodo(1, "- [ ] Ship the file skill. #todo")],
-      inserts: [{ note: WEEK, section: "# Notes:", lines: [LINK] }],
-    };
 
     // #when
-    apply(sandbox, plan);
+    apply(sandbox, { dump: DUMP, items: [fileTodo(1)] });
 
     // #then
     expect([readVaultFile(sandbox, WEEK), existsSync(join(sandbox.vault, DUMP)), readVaultFile(sandbox, "Inbox/Filed/2026-10-05 1940 Brain-Dump - filing.md")]).toEqual([
-      WEEKLY_TEMPLATE.replace("# To-Do: #todo \n- [ ] \n", "# To-Do: #todo \n- [ ] Ship the file skill. #todo\n").replace("# Notes:\n- \n", `# Notes:\n${LINK}\n`),
+      filledWeek("- [ ] Ship the file skill. #todo"),
       false,
       dumpFile(ORIGIN, "## Todos\n- [x] #todo Ship the file skill.\n"),
     ]);
@@ -46,23 +48,24 @@ describe("brain-dump apply", () => {
     writeVaultFile(sandbox, WEEK, note);
 
     // #when
-    apply(sandbox, { dump: DUMP, items: [fileTodo(1, "- [ ] New task. #todo")], inserts: [] });
+    apply(sandbox, { dump: DUMP, items: [fileTodo(1)] });
 
     // #then
-    expect(readVaultFile(sandbox, WEEK)).toBe("# To-Do: #todo\n- [ ] Existing task\n\t- detail\n- [ ] New task. #todo\n\n---\n# Notes:\n- kept\n");
+    expect(readVaultFile(sandbox, WEEK)).toBe(`# To-Do: #todo\n- [ ] Existing task\n\t- detail\n- [ ] New task. #todo\n\n---\n# Notes:\n- kept\n${LINK}\n`);
   });
 
   test("treats a lower-level heading as part of the section", () => {
     // #given
     const sandbox = makeSandbox();
-    writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Todos\n- [ ] #todo A.\n"));
+    writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Learnings\n- [ ] A.\n"));
+    writeVaultFile(sandbox, TOPIC, "# Agent Skills\n");
     writeVaultFile(sandbox, WEEK, "# Notes:\n- intro\n## Papers\n- paper\n\n---\n# Key Takeaways\n");
 
     // #when
-    apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "skipped" }], inserts: [{ note: WEEK, section: "# Notes:", lines: ["- added"] }] });
+    apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "filed", note: TOPIC }] });
 
     // #then
-    expect(readVaultFile(sandbox, WEEK)).toBe("# Notes:\n- intro\n## Papers\n- paper\n- added\n\n---\n# Key Takeaways\n");
+    expect(readVaultFile(sandbox, WEEK)).toBe(`# Notes:\n- intro\n## Papers\n- paper\n${LINK}\n\n---\n# Key Takeaways\n`);
   });
 
   test("keeps a CRLF Dump's line endings when ticking", () => {
@@ -71,7 +74,7 @@ describe("brain-dump apply", () => {
     writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Todos\n- [ ] #todo A.\n- [ ] #todo B.\n").replaceAll("\n", "\r\n"));
 
     // #when
-    apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "dropped" }], inserts: [] });
+    apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "dropped" }] });
 
     // #then
     expect(readVaultFile(sandbox, DUMP)).toBe(dumpFile(ORIGIN, "## Todos\n- [-] #todo A.\n- [ ] #todo B.\n").replaceAll("\n", "\r\n"));
@@ -83,11 +86,7 @@ describe("brain-dump apply", () => {
     const dump = dumpFile(ORIGIN, "## Todos\n- [ ] #todo A.\n- [ ] #todo B.\n");
     writeVaultFile(sandbox, DUMP, dump);
     writeVaultFile(sandbox, WEEK, WEEKLY_TEMPLATE);
-    const plan = {
-      dump: DUMP,
-      items: [fileTodo(1, "- [ ] A. #todo"), fileTodo(2, "- [ ] B. #todo", "Research/Weekly Meetings/09-28-26 Weekly Update.md")],
-      inserts: [],
-    };
+    const plan = { dump: DUMP, items: [fileTodo(1), fileTodo(2, "Research/Weekly Meetings/09-28-26 Weekly Update.md")] };
 
     // #when
     const result = apply(sandbox, plan);
@@ -102,7 +101,7 @@ describe("brain-dump apply", () => {
     writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Todos\n- [ ] #todo A.\n- [ ] #todo B.\n"));
 
     // #when
-    const result = apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "dropped" }, { index: 2, outcome: "skipped" }], inserts: [] });
+    const result = apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "dropped" }, { index: 2, outcome: "skipped" }] });
 
     // #then
     expect([JSON.parse(result.stdout), readVaultFile(sandbox, DUMP)]).toEqual([
@@ -115,28 +114,181 @@ describe("brain-dump apply", () => {
     // #given
     const sandbox = makeSandbox();
     writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Todos\n- [x] #todo A.\n- [ ] #todo B.\n"));
+    writeVaultFile(sandbox, WEEK, WEEKLY_TEMPLATE);
 
     // #when
-    const result = apply(sandbox, { dump: DUMP, items: [{ index: 2, outcome: "dropped" }], inserts: [] });
+    const result = apply(sandbox, { dump: DUMP, items: [{ index: 2, outcome: "dropped" }] });
 
     // #then
     expect(JSON.parse(result.stdout).movedTo).toBe("Inbox/Filed/2026-10-05 1940 Brain-Dump - filing.md");
   });
 
+  test("renders Items from the Dump, with the user's edited wording in place of an Item's own", () => {
+    // #given
+    const sandbox = makeSandbox();
+    writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Learnings\n- [ ] Codex reads ~/.agents/skills.\n\n## Decisions\n- [ ] Use Bun.\n\t- Why: one runtime.\n\n## Todos\n- [ ] #todo Ship it.\n"));
+    writeVaultFile(sandbox, TOPIC, "# Agent Skills\n");
+    writeVaultFile(sandbox, WEEK, WEEKLY_TEMPLATE);
+    const items = [
+      { index: 1, outcome: "filed", note: TOPIC },
+      { index: 2, outcome: "filed", note: TOPIC, text: "Use Bun everywhere." },
+      { ...fileTodo(3), text: "Ship it #todo today." },
+    ];
+
+    // #when
+    apply(sandbox, { dump: DUMP, items });
+
+    // #then
+    expect([readVaultFile(sandbox, TOPIC), readVaultFile(sandbox, WEEK)]).toEqual([
+      `# Agent Skills\n- Codex reads ~/.agents/skills.\n${FROM}\n- Use Bun everywhere.\n\t- Why: one runtime.\n${FROM}\n`,
+      filledWeek("- [ ] Ship it today. #todo"),
+    ]);
+  });
+
+  describe("the link line", () => {
+    test("is added once an earlier Run filed an Item and this plan finishes the Dump", () => {
+      // #given
+      const sandbox = makeSandbox();
+      writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Todos\n- [ ] #todo A.\n- [ ] #todo B.\n"));
+      writeVaultFile(sandbox, WEEK, WEEKLY_TEMPLATE);
+
+      // #when
+      apply(sandbox, { dump: DUMP, items: [fileTodo(1), { index: 2, outcome: "skipped" }] });
+      const afterFirst = readVaultFile(sandbox, WEEK);
+      apply(sandbox, { dump: DUMP, items: [{ index: 2, outcome: "dropped" }] });
+
+      // #then
+      expect([afterFirst, readVaultFile(sandbox, WEEK)]).toEqual([filledWeek("- [ ] A. #todo", "- "), filledWeek("- [ ] A. #todo")]);
+    });
+
+    test("is not added when the Dump is finished with nothing filed", () => {
+      // #given
+      const sandbox = makeSandbox();
+      writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Todos\n- [ ] #todo A.\n"));
+      writeVaultFile(sandbox, WEEK, WEEKLY_TEMPLATE);
+
+      // #when
+      apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "dropped" }] });
+
+      // #then
+      expect(readVaultFile(sandbox, WEEK)).toBe(WEEKLY_TEMPLATE);
+    });
+
+    test("names a chat Dump by its tool, whatever Project it names", () => {
+      // #given
+      const sandbox = makeSandbox();
+      const dump = "Inbox/2026-10-05 1940 ClaudeWeb - rate limits.md";
+      const origin = { kind: "chat" as const, tool: "ClaudeWeb" as const, chatUrl: undefined, project: "Brain-Dump", at: new Date(DUMP_AT) };
+      writeVaultFile(sandbox, dump, dumpFile(origin, "## Todos\n- [ ] #todo A.\n"));
+      writeVaultFile(sandbox, WEEK, WEEKLY_TEMPLATE);
+
+      // #when
+      apply(sandbox, { dump, items: [fileTodo(1)] });
+
+      // #then
+      expect(readVaultFile(sandbox, WEEK)).toBe(filledWeek("- [ ] A. #todo", "- Filed [[2026-10-05 1940 ClaudeWeb - rate limits|ClaudeWeb rate limits]]"));
+    });
+
+    test("goes in the Session's week, which the plan may create from the template", () => {
+      // #given
+      const sandbox = makeSandbox();
+      writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Learnings\n- [ ] A.\n"));
+      writeVaultFile(sandbox, TOPIC, "# Agent Skills\n");
+      writeVaultFile(sandbox, "Research/Other/Templates/XX-XX-XX Weekly Update.md", WEEKLY_TEMPLATE);
+
+      // #when
+      apply(sandbox, { dump: DUMP, creates: [{ note: WEEK, from: "weekly-template" }], items: [{ index: 1, outcome: "filed", note: TOPIC }] });
+
+      // #then
+      expect(readVaultFile(sandbox, WEEK)).toBe(WEEKLY_TEMPLATE.replace("# Notes:\n- \n", `# Notes:\n${LINK}\n`));
+    });
+
+    test("refuses a plan whose Session's week doesn't exist and isn't created", () => {
+      // #given
+      const sandbox = makeSandbox();
+      writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Learnings\n- [ ] A.\n"));
+      writeVaultFile(sandbox, TOPIC, "# Agent Skills\n");
+
+      // #when
+      const result = apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "filed", note: TOPIC }] });
+
+      // #then
+      expect([result.exitCode, result.stderr, readVaultFile(sandbox, TOPIC)]).toEqual([
+        1,
+        `brain-dump: Filing Plan rejected: the link line goes in ${WEEK}, which doesn't exist and isn't in creates\n`,
+        "# Agent Skills\n",
+      ]);
+    });
+  });
+
+  describe("--dry-run", () => {
+    test("returns each filed Item's lines and the link line, and writes nothing", () => {
+      // #given
+      const sandbox = makeSandbox();
+      const dump = dumpFile(ORIGIN, "## Learnings\n- [ ] A.\n\n## Todos\n- [ ] #todo B.\n");
+      writeVaultFile(sandbox, DUMP, dump);
+      writeVaultFile(sandbox, TOPIC, "# Agent Skills\n");
+      writeVaultFile(sandbox, WEEK, WEEKLY_TEMPLATE);
+
+      // #when
+      const result = apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "filed", note: TOPIC }, { ...fileTodo(2), group: ["Brain Dump"] }], createGroups: [["Brain Dump"]] }, ["--dry-run"]);
+
+      // #then
+      expect([JSON.parse(result.stdout), readVaultFile(sandbox, DUMP), readVaultFile(sandbox, TOPIC), readVaultFile(sandbox, WEEK)]).toEqual([
+        {
+          items: [
+            { index: 1, lines: ["- A.", FROM] },
+            { index: 2, lines: ["- [ ] B. #todo"] },
+          ],
+          link: { note: WEEK, section: "# Notes:", line: LINK, due: true },
+        },
+        dump,
+        "# Agent Skills\n",
+        WEEKLY_TEMPLATE,
+      ]);
+    });
+
+    test("says the link line isn't due while the plan leaves an Item open", () => {
+      // #given
+      const sandbox = makeSandbox();
+      writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Todos\n- [ ] #todo A.\n- [ ] #todo B.\n"));
+      writeVaultFile(sandbox, WEEK, WEEKLY_TEMPLATE);
+
+      // #when
+      const result = apply(sandbox, { dump: DUMP, items: [fileTodo(1), { index: 2, outcome: "skipped" }] }, ["--dry-run"]);
+
+      // #then
+      expect(JSON.parse(result.stdout).link).toEqual({ note: WEEK, section: "# Notes:", line: LINK, due: false });
+    });
+
+    test("refuses a plan apply would refuse", () => {
+      // #given
+      const sandbox = makeSandbox();
+      writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Todos\n- [ ] #todo A.\n"));
+      writeVaultFile(sandbox, WEEK, WEEKLY_TEMPLATE);
+
+      // #when
+      const result = apply(sandbox, { dump: DUMP, items: [{ ...fileTodo(1), section: "# Ideas:" }] }, ["--dry-run"]);
+
+      // #then
+      expect([result.exitCode, result.stderr]).toEqual([1, `brain-dump: Filing Plan rejected: ${WEEK} has no "# Ideas:" section\n`]);
+    });
+  });
+
   describe("rejects the plan without writing", () => {
     const cases: [string, (sandbox: Sandbox) => unknown, string][] = [
-      ["an Item that is already filed", () => ({ dump: DUMP, items: [{ index: 1, outcome: "dropped" }], inserts: [] }), "Item 1 of 2026-10-05 1940 Brain-Dump - filing is already filed"],
-      ["an Item the Dump does not have", () => ({ dump: DUMP, items: [{ index: 9, outcome: "dropped" }], inserts: [] }), "2026-10-05 1940 Brain-Dump - filing has no Item 9"],
-      ["an Item listed twice", () => ({ dump: DUMP, items: [{ index: 2, outcome: "dropped" }, { index: 2, outcome: "skipped" }], inserts: [] }), "Item 2 appears twice in the plan"],
-      ["a section the note does not have", () => ({ dump: DUMP, items: [{ ...fileTodo(2, "- [ ] B. #todo"), section: "# Ideas:" }], inserts: [] }), `${WEEK} has no "# Ideas:" section`],
-      ["a section given only by its prefix", () => ({ dump: DUMP, items: [{ ...fileTodo(2, "- [ ] B. #todo"), section: "# To" }], inserts: [] }), `${WEEK} has no "# To" section`],
-      ["a Dump outside the Inbox", () => ({ dump: WEEK, items: [], inserts: [] }), `${WEEK} is not an unfiled Dump in the Inbox`],
-      ["a note path outside the Vault", () => ({ dump: DUMP, items: [], inserts: [{ note: "../escape.md", section: "# To-Do:", lines: ["x"] }] }), "../escape.md is outside the Vault"],
+      ["an Item that is already filed", () => ({ dump: DUMP, items: [{ index: 1, outcome: "dropped" }] }), "Item 1 of 2026-10-05 1940 Brain-Dump - filing is already filed"],
+      ["an Item the Dump does not have", () => ({ dump: DUMP, items: [{ index: 9, outcome: "dropped" }] }), "2026-10-05 1940 Brain-Dump - filing has no Item 9"],
+      ["an Item listed twice", () => ({ dump: DUMP, items: [{ index: 2, outcome: "dropped" }, { index: 2, outcome: "skipped" }] }), "Item 2 appears twice in the plan"],
+      ["a section the note does not have", () => ({ dump: DUMP, items: [{ ...fileTodo(2), section: "# Ideas:" }] }), `${WEEK} has no "# Ideas:" section`],
+      ["a section given only by its prefix", () => ({ dump: DUMP, items: [{ ...fileTodo(2), section: "# To" }] }), `${WEEK} has no "# To" section`],
+      ["a Dump outside the Inbox", () => ({ dump: WEEK, items: [] }), `${WEEK} is not an unfiled Dump in the Inbox`],
+      ["a note path outside the Vault", () => ({ dump: DUMP, items: [{ index: 2, outcome: "filed", note: "../escape.md" }] }), "../escape.md is outside the Vault"],
       [
         "a finished Dump whose name is taken in Filed",
         (sandbox) => {
           writeVaultFile(sandbox, "Inbox/Filed/2026-10-05 1940 Brain-Dump - filing.md", "");
-          return { dump: DUMP, items: [{ index: 2, outcome: "dropped" }], inserts: [] };
+          return { dump: DUMP, items: [{ index: 2, outcome: "dropped" }] };
         },
         "Inbox/Filed already has 2026-10-05 1940 Brain-Dump - filing.md",
       ],
@@ -170,7 +322,7 @@ describe("brain-dump apply", () => {
     const sandbox = makeSandbox();
 
     // #when
-    const result = apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "filed" }], inserts: [] });
+    const result = apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "filed" }] });
 
     // #then
     expect(result.exitCode).toBe(2);
@@ -179,16 +331,15 @@ describe("brain-dump apply", () => {
   test("appends a filed Learning with its backlink at the end of a Topic Note, without a section", () => {
     // #given
     const sandbox = makeSandbox();
-    const topic = "Research/Main Notes/Agent Skills.md";
     writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Learnings\n- [ ] Codex reads ~/.agents/skills.\n"));
-    writeVaultFile(sandbox, topic, "---\ntags:\n  - LLMs\n---\n# Agent Skills\n- existing\n\n");
-    const lines = ["- Codex reads ~/.agents/skills.", "\t- From [[2026-10-05 1940 Brain-Dump - filing|dump 10-05-26]]"];
+    writeVaultFile(sandbox, TOPIC, "---\ntags:\n  - LLMs\n---\n# Agent Skills\n- existing\n\n");
+    writeVaultFile(sandbox, WEEK, WEEKLY_TEMPLATE);
 
     // #when
-    apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "filed", note: topic, lines }], inserts: [] });
+    apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "filed", note: TOPIC }] });
 
     // #then
-    expect(readVaultFile(sandbox, topic)).toBe(`---\ntags:\n  - LLMs\n---\n# Agent Skills\n- existing\n${lines.join("\n")}\n\n`);
+    expect(readVaultFile(sandbox, TOPIC)).toBe(`---\ntags:\n  - LLMs\n---\n# Agent Skills\n- existing\n- Codex reads ~/.agents/skills.\n${FROM}\n\n`);
   });
 
   test("keeps a multi-line Item together when it fills a placeholder that other bullets follow", () => {
@@ -196,34 +347,33 @@ describe("brain-dump apply", () => {
     const sandbox = makeSandbox();
     writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Decisions\n- [ ] Decision.\n\t- Why: reason.\n"));
     writeVaultFile(sandbox, WEEK, "# Notes:\n- \n- later bullet\n\n---\n");
-    const lines = ["- Decision.", "\t- Why: reason."];
 
     // #when
-    apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "filed", note: WEEK, section: "# Notes:", lines }], inserts: [] });
+    apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "filed", note: WEEK, section: "# Notes:" }] });
 
     // #then
-    expect(readVaultFile(sandbox, WEEK)).toBe("# Notes:\n- Decision.\n\t- Why: reason.\n- later bullet\n\n---\n");
+    expect(readVaultFile(sandbox, WEEK)).toBe(`# Notes:\n- Decision.\n\t- Why: reason.\n${FROM}\n- later bullet\n${LINK}\n\n---\n`);
   });
 
   test("appends to a note that has no trailing newline", () => {
     // #given
     const sandbox = makeSandbox();
-    const topic = "Research/Main Notes/Agent Skills.md";
     writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Learnings\n- [ ] A.\n"));
-    writeVaultFile(sandbox, topic, "# Agent Skills\n- existing");
+    writeVaultFile(sandbox, TOPIC, "# Agent Skills\n- existing");
+    writeVaultFile(sandbox, WEEK, WEEKLY_TEMPLATE);
 
     // #when
-    apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "filed", note: topic, lines: ["- A."] }], inserts: [] });
+    apply(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "filed", note: TOPIC }] });
 
     // #then
-    expect(readVaultFile(sandbox, topic)).toBe("# Agent Skills\n- existing\n- A.");
+    expect(readVaultFile(sandbox, TOPIC)).toBe(`# Agent Skills\n- existing\n- A.\n${FROM}`);
   });
 
   test("appends new Routes to the Routes note, creating it when missing and skipping ones it has", () => {
     // #given
     const sandbox = makeSandbox();
     writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Learnings\n- [ ] A.\n- [ ] B.\n"));
-    const plan = { dump: DUMP, items: [{ index: 1, outcome: "skipped" }], inserts: [], routes: [{ key: "Brain-Dump", title: "Brain-Dump" }] };
+    const plan = { dump: DUMP, items: [{ index: 1, outcome: "skipped" }], routes: [{ key: "Brain-Dump", title: "Brain-Dump" }] };
     const second = { ...plan, items: [{ index: 2, outcome: "skipped" }], routes: [{ key: "Brain-Dump", title: "Brain-Dump" }, { key: "context-bridge", title: "Context Bridge MCP Main Note" }] };
 
     // #when
@@ -238,9 +388,12 @@ describe("brain-dump apply", () => {
 
   describe("rejects a malformed plan", () => {
     const cases: [string, unknown][] = [
-      ["a filed Item with no lines", { dump: DUMP, items: [{ index: 1, outcome: "filed", note: WEEK, lines: [] }], inserts: [] }],
-      ["a Route with a blank key", { dump: DUMP, items: [], inserts: [], routes: [{ key: " ", title: "X" }] }],
-      ["routes that are not a list", { dump: DUMP, items: [], inserts: [], routes: { key: "a", title: "b" } }],
+      ["a filed Item with its own lines", { dump: DUMP, items: [{ index: 1, outcome: "filed", note: WEEK, lines: ["- A."] }] }],
+      ["inserts, even empty", { dump: DUMP, items: [], inserts: [] }],
+      ["edited text over two lines", { dump: DUMP, items: [{ index: 1, outcome: "filed", note: WEEK, text: "A.\n- injected" }] }],
+      ["blank edited text", { dump: DUMP, items: [{ index: 1, outcome: "filed", note: WEEK, text: " " }] }],
+      ["a Route with a blank key", { dump: DUMP, items: [], routes: [{ key: " ", title: "X" }] }],
+      ["routes that are not a list", { dump: DUMP, items: [], routes: { key: "a", title: "b" } }],
     ];
 
     for (const [name, plan] of cases) {

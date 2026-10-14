@@ -48,8 +48,7 @@ describe("every gateway commit is recorded as a Run", () => {
     writeVaultFile(sandbox, WEEK, WEEKLY_TEMPLATE);
     const plan = {
       dump: DUMP,
-      items: [{ index: 1, outcome: "filed", note: WEEK, section: "# To-Do:", lines: ["- [ ] Ship it. #todo"] }],
-      inserts: [],
+      items: [{ index: 1, outcome: "filed", note: WEEK, section: "# To-Do:" }],
       routes: [{ key: "Brain-Dump", title: "Brain-Dump" }],
     };
 
@@ -87,7 +86,7 @@ describe("every gateway commit is recorded as a Run", () => {
     writeVaultFile(sandbox, DUMP, dump);
 
     // #when
-    const result = run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "dropped" }], inserts: [] })), now: NOW });
+    const result = run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "dropped" }] })), now: NOW });
 
     // #then
     expect({ exitCode: result.exitCode, files: journals(sandbox).map(({ files }) => files) }).toEqual({
@@ -125,9 +124,11 @@ describe("every gateway commit is recorded as a Run", () => {
     // #given
     const sandbox = makeSandbox();
     writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Todos\n- [ ] #todo A.\n"));
+    writeVaultFile(sandbox, "Journal/Today.md", "");
+    writeVaultFile(sandbox, WEEK, WEEKLY_TEMPLATE);
 
     // #when
-    const result = run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: DUMP, items: [], inserts: [{ note: "Journal/Today.md", lines: ["- leaked"] }] })), now: NOW });
+    const result = run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "filed", note: "Journal/Today.md" }] })), now: NOW });
 
     // #then
     expect({ exitCode: result.exitCode, journals: journals(sandbox) }).toEqual({ exitCode: 1, journals: [] });
@@ -142,7 +143,7 @@ describe("every gateway commit is recorded as a Run", () => {
     writeFileSync(join(sandbox.home, ".local", "state", "brain-dump"), "not a folder");
 
     // #when
-    const result = run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "dropped" }], inserts: [] })), now: NOW });
+    const result = run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: DUMP, items: [{ index: 1, outcome: "dropped" }] })), now: NOW });
 
     // #then
     expect({

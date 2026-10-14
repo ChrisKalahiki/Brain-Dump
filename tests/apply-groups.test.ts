@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { DEV_ORIGIN as ORIGIN, dumpFile, makeSandbox, readVaultFile, run, type Sandbox, writeVaultFile, pinned } from "./harness.ts";
+import { devOrigin, dumpFile, makeSandbox, readVaultFile, run, type Sandbox, writeVaultFile, pinned } from "./harness.ts";
 
-const DUMP = "Inbox/2026-10-05 1940 Brain-Dump - filing.md";
+// The Dump's Session was the week before, so its link line goes in that week's note and this week's holds only the Todos.
+const ORIGIN = devOrigin("Brain-Dump", "2026-09-28T19:40");
+const DUMP = "Inbox/2026-09-28 1940 Brain-Dump - filing.md";
+const SESSION_WEEK = "Research/Weekly Meetings/09-28-26 Weekly Update.md";
 const WEEK = "Research/Weekly Meetings/10-05-26 Weekly Update.md";
 
 function setup(note: string, todos = 1): Sandbox {
@@ -9,15 +12,16 @@ function setup(note: string, todos = 1): Sandbox {
   const body = Array.from({ length: todos }, (_, i) => `- [ ] #todo T${i + 1}.\n`).join("");
   writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, `## Todos\n${body}`));
   writeVaultFile(sandbox, WEEK, note);
+  writeVaultFile(sandbox, SESSION_WEEK, "# Notes:\n- \n");
   return sandbox;
 }
 
-function todoIn(index: number, group: string[], line = `- [ ] T${index}. #todo`) {
-  return { index, outcome: "filed", note: WEEK, section: "# To-Do:", group, lines: [line] };
+function todoIn(index: number, group: string[]) {
+  return { index, outcome: "filed", note: WEEK, section: "# To-Do:", group };
 }
 
 function apply(sandbox: Sandbox, plan: unknown) {
-  return run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: DUMP, inserts: [], ...(plan as object) })) });
+  return run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, { dump: DUMP, ...(plan as object) })) });
 }
 
 describe("brain-dump apply into Todo Groups", () => {
@@ -221,7 +225,7 @@ describe("brain-dump apply rejects a Todo Group plan and writes nothing", () => 
     const sandbox = setup(NOTE);
 
     // #when
-    const result = apply(sandbox, { items: [{ index: 1, outcome: "filed", note: WEEK, group: ["SaTC"], lines: ["- [ ] T1. #todo"] }] });
+    const result = apply(sandbox, { items: [{ index: 1, outcome: "filed", note: WEEK, group: ["SaTC"] }] });
 
     // #then
     expect({ ...outcome(sandbox, result), stderr: result.stderr.startsWith("brain-dump: invalid Filing Plan: expected {") }).toEqual({
