@@ -40,6 +40,31 @@ describe("brain-dump apply", () => {
     ]);
   });
 
+  test("reads a plan written as block YAML, which a Bash command can carry without braces", () => {
+    // #given
+    const sandbox = makeSandbox();
+    writeVaultFile(sandbox, DUMP, dumpFile(ORIGIN, "## Todos\n- [ ] #todo Ship the file skill.\n"));
+    writeVaultFile(sandbox, WEEK, WEEKLY_TEMPLATE);
+    const plan = [
+      `dump: "${DUMP}"`,
+      "expect:",
+      `  "${DUMP}": "${vaultFileHash(sandbox, DUMP)}"`,
+      `  "${WEEK}": "${vaultFileHash(sandbox, WEEK)}"`,
+      "items:",
+      "  - index: 1",
+      '    outcome: "filed"',
+      `    note: "${WEEK}"`,
+      '    section: "# To-Do:"',
+      "",
+    ].join("\n");
+
+    // #when
+    const result = apply(sandbox, plan);
+
+    // #then
+    expect([result.exitCode, result.stderr, readVaultFile(sandbox, WEEK)]).toEqual([0, "", filledWeek("- [ ] Ship the file skill. #todo")]);
+  });
+
   test("appends after a section's last line, before its ---, leaving existing text untouched", () => {
     // #given
     const sandbox = makeSandbox();
@@ -410,14 +435,14 @@ describe("brain-dump apply", () => {
     }
   });
 
-  test("rejects stdin that is not JSON", () => {
+  test("rejects stdin that is not YAML", () => {
     // #given
     const sandbox = makeSandbox();
 
     // #when
-    const result = apply(sandbox, "ok");
+    const result = apply(sandbox, "dump: [");
 
     // #then
-    expect([result.exitCode, result.stderr]).toEqual([2, "brain-dump: invalid Filing Plan: stdin is not JSON\n"]);
+    expect([result.exitCode, result.stderr]).toEqual([2, "brain-dump: invalid Filing Plan: stdin is not YAML\n"]);
   });
 });

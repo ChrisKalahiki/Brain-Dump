@@ -66,12 +66,13 @@ const PLACEHOLDER = /^- (\[ \] ?)?$/;
 const LINK_SECTION = "# Notes:";
 const TAG = /^[^\s#]+$/;
 
+/** Reads a plan as YAML, which JSON is a subset of; block YAML lets the file skill pass it in a Bash command without the braces Claude Code asks about. */
 export function parseFilingPlan(text: string): FilingPlan {
   let value: unknown;
   try {
-    value = JSON.parse(text);
+    value = Bun.YAML.parse(text);
   } catch {
-    throw new UsageError("invalid Filing Plan: stdin is not JSON");
+    throw new UsageError("invalid Filing Plan: stdin is not YAML");
   }
   if (!isFilingPlan(value)) throw new UsageError(`invalid Filing Plan: ${PLAN_SHAPE}`);
   return value;

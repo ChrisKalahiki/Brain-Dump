@@ -121,7 +121,7 @@ Done when the plan is on screen and nothing has been written.
 - `drop N`: Item N will never be filed (marked `[-]`); remove its row.
 - `N → [[Note]]`: send Item N to that note instead: an existing one, or a NEW note another row in this plan proposes. Then offer the redirect back as a Route, e.g. "Remember `<project or subject> → [[Note]]`?"; a yes adds it to this plan's `routes`.
 - `N → <folder>/`: keep Item N's NEW note but create it in that folder.
-- `N → <group path>` (e.g. `5 → Dissertation › IRB`): put Todo N in that Todo Group instead, marking any level that doesn't exist as **NEW**. Then offer it back as a Route, e.g. "Remember `<project or subject> → To-Do › Dissertation › IRB`?"; a yes adds `{ "key": …, "group": [ … ] }` to this plan's `routes`.
+- `N → <group path>` (e.g. `5 → Dissertation › IRB`): put Todo N in that Todo Group instead, marking any level that doesn't exist as **NEW**. Then offer it back as a Route, e.g. "Remember `<project or subject> → To-Do › Dissertation › IRB`?"; a yes adds an entry with its `key` and `group` path to this plan's `routes`.
 - `N → ungrouped`: Todo N goes at the top level of `# To-Do:`, outside any group.
 - `add tags`: accept the proposed new tags; without it, NEW notes get only existing tags.
 - `show N`: print Item N's `lines` from the dry run, exactly.
@@ -135,32 +135,59 @@ After anything but `ok` or `cancel`, rebuild the plan, run the dry run again, sh
 
 ## 6. Apply
 
-Build the plan as JSON and pass it on stdin, the same plan you last ran with `--dry-run`:
+Build the plan as block YAML and pass it on stdin, the same plan you last ran with `--dry-run`:
 
 ```bash
 brain-dump apply <<'PLAN'
-{
-  "dump": "<file>",
-  "expect": { "<file>": "<its hash>", "<this week's note>": "<its hash>", "<the Session's week note>": "<its hash>", "<Topic Note path>": "<its hash>" },
-  "creates": [
-    { "note": "Research/Weekly Meetings/10-12-26 Weekly Update.md", "from": "weekly-template" },
-    { "note": "Research/Main Notes/Agent Skills.md", "tags": ["LLMs", "VibeCoding"] }
-  ],
-  "items": [
-    { "index": 1, "outcome": "filed", "note": "<Topic Note path>" },
-    { "index": 4, "outcome": "filed", "note": "<this week's note>", "section": "# To-Do:", "group": ["Brain Dump"] },
-    { "index": 5, "outcome": "filed", "note": "<this week's note>", "section": "# To-Do:", "group": ["Dissertation", "IRB"], "text": "Finish the IRB application by Friday. #todo" },
-    { "index": 7, "outcome": "filed", "note": "<this week's note>", "section": "# To-Do:", "group": ["Brain Dump"], "route": "brain-dump" },
-    { "index": 2, "outcome": "dropped" },
-    { "index": 3, "outcome": "skipped" }
-  ],
-  "createGroups": [["Dissertation", "IRB"]],
-  "routes": [{ "key": "<project or subject>", "title": "<note title>" }, { "key": "<project or subject>", "group": ["Dissertation", "IRB"] }]
-}
+dump: "<file>"
+expect:
+  "<file>": "<its hash>"
+  "<this week's note>": "<its hash>"
+  "<the Session's week note>": "<its hash>"
+  "<Topic Note path>": "<its hash>"
+creates:
+  - note: "Research/Weekly Meetings/10-12-26 Weekly Update.md"
+    from: "weekly-template"
+  - note: "Research/Main Notes/Agent Skills.md"
+    tags: ["LLMs", "VibeCoding"]
+items:
+  - index: 1
+    outcome: "filed"
+    note: "<Topic Note path>"
+  - index: 4
+    outcome: "filed"
+    note: "<this week's note>"
+    section: "# To-Do:"
+    group: ["Brain Dump"]
+  - index: 5
+    outcome: "filed"
+    note: "<this week's note>"
+    section: "# To-Do:"
+    group: ["Dissertation", "IRB"]
+    text: "Finish the IRB application by Friday. #todo"
+  - index: 7
+    outcome: "filed"
+    note: "<this week's note>"
+    section: "# To-Do:"
+    group: ["Brain Dump"]
+    route: "brain-dump"
+  - index: 2
+    outcome: "dropped"
+  - index: 3
+    outcome: "skipped"
+createGroups:
+  - ["Dissertation", "IRB"]
+routes:
+  - key: "<project or subject>"
+    title: "<note title>"
+  - key: "<project or subject>"
+    group: ["Dissertation", "IRB"]
 PLAN
 ```
 
-The plan says only where each Item goes; the helper writes every line from the Dump, so a plan carries no `lines` and no link line, and the helper refuses one that does. `expect` maps every existing file the plan writes to its `hash`: the Dump, each existing note an Item goes into, the Session's week note when the link line is due (listing it whenever it exists is fine: a hash for a file the plan doesn't write is ignored), and the Routes note when the plan adds Routes to it. Use the hash from your latest read, or from an earlier `apply` in this run that wrote the file (its `hashes`). NEW notes and a Routes note that doesn't exist yet need none; the helper refuses a plan missing any other. `creates` lists every NEW note still in the plan, each once, including the Session's week when the link line is due and that note doesn't exist yet; a NEW note nothing is filed into any more (its Items skipped or redirected, or the link line no longer due) is left out, and the helper rejects one left in. Every open Item appears once in `items`, in table order: `filed` with its note path, its `section` only for Weekly Note sections, and `text` only after an `edit N`, holding the user's wording; `dropped` for a `drop`; `skipped` for everything else. A grouped Todo carries its `group` path, and no `group` when ungrouped. `createGroups` lists each NEW group path once, its full path; every missing level along it is created, and the helper rejects a path a Todo names that neither exists nor is listed, a listed path that already exists, one no Todo is filed into, and a path matching two bullets. Each Routine Item carries `"route"`, the `key` of the Route its destination came from; the helper refuses the whole plan if that Route isn't in the Routes note, doesn't point at the Item's note or Todo Group, points at one that doesn't exist yet, or the Item nearly duplicates another. Items that aren't routine carry no `route`. `routes` holds only the Routes the user accepted (ones already in the Routes note are skipped). `"confirmLarge": true` goes in only after the user's separate yes to a plan over 8 notes (step 5); never set it otherwise.
+Write it exactly in this form: every string in double quotes (a `"` or `\` inside one escaped as `\"` or `\\`), numbers and `true` bare, and no `{` anywhere in the plan, since Claude Code asks before running a command that holds both `{` and `"`. Omit a key rather than leaving it empty.
+
+The plan says only where each Item goes; the helper writes every line from the Dump, so a plan carries no `lines` and no link line, and the helper refuses one that does. `expect` maps every existing file the plan writes to its `hash`: the Dump, each existing note an Item goes into, the Session's week note when the link line is due (listing it whenever it exists is fine: a hash for a file the plan doesn't write is ignored), and the Routes note when the plan adds Routes to it. Use the hash from your latest read, or from an earlier `apply` in this run that wrote the file (its `hashes`). NEW notes and a Routes note that doesn't exist yet need none; the helper refuses a plan missing any other. `creates` lists every NEW note still in the plan, each once, including the Session's week when the link line is due and that note doesn't exist yet; a NEW note nothing is filed into any more (its Items skipped or redirected, or the link line no longer due) is left out, and the helper rejects one left in. Every open Item appears once in `items`, in table order: `filed` with its note path, its `section` only for Weekly Note sections, and `text` only after an `edit N`, holding the user's wording; `dropped` for a `drop`; `skipped` for everything else. A grouped Todo carries its `group` path, and no `group` when ungrouped. `createGroups` lists each NEW group path once, its full path; every missing level along it is created, and the helper rejects a path a Todo names that neither exists nor is listed, a listed path that already exists, one no Todo is filed into, and a path matching two bullets. Each Routine Item carries `route`, the `key` of the Route its destination came from; the helper refuses the whole plan if that Route isn't in the Routes note, doesn't point at the Item's note or Todo Group, points at one that doesn't exist yet, or the Item nearly duplicates another. Items that aren't routine carry no `route`. `routes` holds only the Routes the user accepted (ones already in the Routes note are skipped). `confirmLarge: true` goes in only after the user's separate yes to a plan over 8 notes (step 5); never set it otherwise.
 
 - **Exit 0**: it prints `filed`, `dropped`, `skipped`, `movedTo` (set when the Dump is finished and moved to `Inbox/Filed/`) and `hashes`, the new hash of every file it wrote. Swap those into your hashes for the later plans in this run. Report the counts, then go to the next Dump.
 - **`Filing Plan stale: <note> changed since it was read`** (one or more notes): nothing was written; the user or Sync changed those files after you read them. Re-run the reads from steps 1 and 2, rebuild this Dump's plan from what's there now, and show it again headed `Re-planned: [[X]] changed since you last saw it` (each changed note's title). Carry over the user's earlier replies (redirects, drops, edits, accepted Routes and tags) where they still apply, and wait for a fresh `ok`; the earlier `ok` no longer counts.
