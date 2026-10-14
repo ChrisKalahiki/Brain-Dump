@@ -9,6 +9,8 @@ When the user asks to undo a Filing or a Consolidation ("undo the last Filing"),
 
 Otherwise, work through every unfiled **Dump** in the Vault's Inbox, oldest first. For each one, show a **Filing Plan**, take the user's reply, and hand the approved plan to the `brain-dump` helper, which writes every line and does every write. Vocabulary (Dump, Item, Filing, Filing Plan, Weekly Note, Todo Group, Topic Note, Project Note, Route) follows the Brain-Dump glossary. Filing is append-only: the helper adds lines; nothing existing is rewritten.
 
+Run each `brain-dump` command as its own Bash call, exactly as this skill writes it: nothing chained before or after it (no `echo`, `;`, `&&` or `|`), since its exit status and output already say how it went. A plan goes in only on stdin through the quoted `<<'PLAN'` heredoc shown in step 6, never through `echo` or a pipe.
+
 ## 1. Load the Inbox and the Vault's map
 
 First run `brain-dump sweep --last`, which prints this machine's last **Sweep** summary as JSON: `time`, and lists `written`, `skipped`, `unreadable`, `secretRefused`, `carriedOver` and `errors`. Show one line: `Last Sweep <its time, local>: <count> Dumps written, …`, naming only the non-empty lists (as Dumps written, skipped, unreadable logs, refused for a secret, carried over, errors), or `Last Sweep <time>: nothing new` when all are empty; add `; run brain-dump sweep --last for details` when any of `unreadable`, `secretRefused` or `errors` is non-empty. Swept Dumps sit in the Inbox like any other and are filed in this run. If it exits 1 saying no Sweep has run on this machine, show nothing; any other failure, say `Last Sweep: unreadable (<its error>)` and go on.
