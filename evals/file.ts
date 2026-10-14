@@ -5,7 +5,7 @@ import { contentHash } from "../src/content-hash.ts";
 import { prepareDump } from "../src/dump.ts";
 import { INBOX, WEEKLY_FOLDER } from "../src/layout.ts";
 import type { Origin } from "../src/origin.ts";
-import { DRAFTING_MODEL } from "../src/sweep.ts";
+import { DRAFTING_MODEL } from "../src/drafting.ts";
 import { makeSkillSandbox, removeSkillSandbox, runClaude } from "./agent.ts";
 import type { CaseResult, Eval } from "./eval.ts";
 import { checkPlan, type ExpectedRow } from "./plan.ts";

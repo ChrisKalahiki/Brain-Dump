@@ -4,7 +4,7 @@ import { prepareDump, SecretRefusedError } from "../src/dump.ts";
 import { BrainDumpError } from "../src/errors.ts";
 import type { ChatToolTag } from "../src/origin.ts";
 import { CHAT_DUMP_PATH } from "../src/prompts.ts";
-import { DRAFTING_MODEL } from "../src/sweep.ts";
+import { DRAFTING_MODEL } from "../src/drafting.ts";
 import { makeEvalFolder, runClaude, writeSessionLog } from "./agent.ts";
 import { checkDraft, type DraftExpectation } from "./assertions.ts";
 import type { CaseResult, Eval } from "./eval.ts";
@@ -74,7 +74,7 @@ async function runCase({ fixture, tool, expected }: ChatCase): Promise<CaseResul
       if (error instanceof BrainDumpError) return { failures: [`invalid body: ${error.message}`] };
       throw error;
     }
-    return { failures: checkDraft(pasted.slug, pasted.body, expected), grade: grade(DUMP_RUBRIC, chat, pasted.body) };
+    return { failures: checkDraft(pasted.slug, pasted.body, expected), grade: await grade(DUMP_RUBRIC, chat, pasted.body) };
   } finally {
     session?.remove();
     rmSync(folder, { recursive: true, force: true });

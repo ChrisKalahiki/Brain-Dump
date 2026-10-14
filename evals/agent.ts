@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSyn
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { claudeProjectFolder, renderClaudeSession } from "../src/claude-sessions.ts";
-import { DRAFTING_MODEL } from "../src/sweep.ts";
+import { DRAFTING_MODEL } from "../src/drafting.ts";
 import { parseSessionText } from "../src/transcript.ts";
 
 // Skill evals run a skill as the user would, in a headless Claude Code run on the pinned model: the repo's own skills and nothing of the user's

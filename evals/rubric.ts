@@ -1,6 +1,7 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
+import { claudeProjectFolder } from "../src/claude-sessions.ts";
 import { ITEM_RULES_PATH } from "../src/prompts.ts";
-import { runAgent } from "../src/sweep.ts";
+import { makeEvalFolder, runClaude } from "./agent.ts";
 
 // The advisory grade: the pinned model scores a draft 1–5 per criterion. It is printed beside the result and never gates.
 
@@ -15,18 +16,24 @@ export const DUMP_RUBRIC: Criterion[] = [
   { name: "rationale", ask: "Each Decision's Why line gives the real reason it was chosen over the alternatives." },
 ];
 
-export function grade(criteria: Criterion[], transcript: string, body: string): Grade {
-  const reply = runAgent(gradingPrompt(criteria, transcript, body));
-  if (!reply.ok) return { error: reply.error };
+/** A tool-less run in a throwaway eval folder, so no project's settings reach the grader and nothing it leaves outlives the eval. */
+export async function grade(criteria: Criterion[], transcript: string, body: string): Promise<Grade> {
+  const cwd = makeEvalFolder();
+  const graded = await runClaude({ prompt: gradingPrompt(criteria, transcript, body), cwd, tools: [] }).finally(() => {
+    rmSync(cwd, { recursive: true, force: true });
+    rmSync(claudeProjectFolder(cwd), { recursive: true, force: true });
+  });
+  if (!graded.ok) return { error: graded.error };
+  const { reply } = graded;
   const scores: Record<string, number> = {};
-  for (const line of reply.stdout.split("\n")) {
+  for (const line of reply.split("\n")) {
     const scored = /^\s*(?:\d+[.)]\s+)?(.+?)\s*:\s*([1-5])\s*$/.exec(line.replaceAll("*", ""));
     const label = scored?.[1]?.toLowerCase();
     const criterion = criteria.find(({ name }, index) => label === name || label === String(index + 1));
     if (scored?.[2] && criterion) scores[criterion.name] = Number(scored[2]);
   }
   const missing = criteria.filter(({ name }) => scores[name] === undefined);
-  if (missing.length > 0) return { error: `grader gave no score for ${missing.map(({ name }) => name).join(", ")}: "${reply.stdout.trim().split("\n")[0]}"` };
+  if (missing.length > 0) return { error: `grader gave no score for ${missing.map(({ name }) => name).join(", ")}: "${reply.trim().split("\n")[0]}"` };
   return { scores };
 }
 
