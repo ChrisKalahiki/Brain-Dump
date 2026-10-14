@@ -1,6 +1,6 @@
 ---
 name: dump
-description: Capture this Session's Learnings, Decisions and Todos as one Dump in the Vault's Inbox.
+description: Save this Session's Learnings, Decisions and Todos as one Dump in the Vault's Inbox.
 disable-model-invocation: true
 allowed-tools: Bash(brain-dump:*)
 ---

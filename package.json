@@ -7,10 +7,11 @@
   },
   "scripts": {
     "prepare": "git config core.hooksPath .githooks",
-    "check": "bun run typecheck && bun test",
+    "check": "bun run typecheck && bun run glossary && bun test",
     "test": "bun test",
     "test:file": "bun test",
     "typecheck": "tsc --noEmit",
+    "glossary": "bun scripts/glossary.ts",
     "prompts": "bun src/prompts.ts",
     "eval": "bun evals/run.ts",
     "eval:check": "bun evals/check.ts"

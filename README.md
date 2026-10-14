@@ -1,9 +1,9 @@
 # Brain-Dump
 This is a tool to help me dump my work into my Obsidian Vault more efficiently.
 
-## Capturing a chat
+## Dumping a chat
 
-`dump --paste` is the way to capture a chat from Claude web, ChatGPT or Gemini, however long it is:
+`dump --paste` is the way to dump a Session from Claude web, ChatGPT or Gemini, however long it is:
 
 1. Paste `prompts/chat-dump.md` into the chat app once: a Claude Project's instructions, or the chat itself in ChatGPT or Gemini.
 2. Say "dump" in the chat. It replies with a `Slug:` line and the Dump body.
@@ -37,7 +37,7 @@ sweep-opt-out = ~/Projects/client-work, ~/Projects/secret
 
 ## Checks
 
-`bun run check` runs the typecheck, then the full test suite. `bun install` points git at `.githooks`, whose pre-commit hook runs it on every commit. CI runs `check` and `bun run eval:check` (see below) on every push and PR.
+`bun run check` runs the typecheck, the Glossary check, then the full test suite. The Glossary check (`bun run glossary`) fails on any `_Avoid_:` term from `GLOSSARY.md` in the skills, prompts, README, current spec, or string literals in `src/`; terms with a common other sense, and the superseded v1 and v2 specs, are listed as unchecked in `scripts/glossary.ts`. `bun install` points git at `.githooks`, whose pre-commit hook runs it on every commit. CI runs `check` and `bun run eval:check` (see below) on every push and PR.
 
 ## Prompt evals
 
