@@ -7,7 +7,7 @@ import { titleKey } from "./notes.ts";
 import { readRoutes, type Route } from "./routes.ts";
 import { lastSweep, type SweepSummary } from "./sweep.ts";
 import { readVaultItems, type VaultItem, type VaultItems } from "./vault-items.ts";
-import { findVault, type Vault } from "./vault.ts";
+import { findVault } from "./vault.ts";
 
 // The SessionStart pointer: at most a line naming this project's Vault notes, a line on the last Sweep and a line with the `check` count, so a Session knows the Vault has context.
 
@@ -24,13 +24,13 @@ export function pointerLines(project: string): string[] {
   const vault = quietly(findVault);
   if (vault === undefined) return [];
   const lines: string[] = [];
-  const read = quietly(() => readVaultItems(vault));
-  const notesLine = read && quietly(() => projectLine(vault, read, project));
+  const read = quietly(() => ({ vaultItems: readVaultItems(vault), routes: readRoutes(vault) }));
+  const notesLine = read && quietly(() => projectLine(read.vaultItems, read.routes, project));
   if (notesLine !== undefined && inTime()) lines.push(notesLine);
   const sweptLine = quietly(() => sweepLine(lastSweep(), now()));
   if (sweptLine !== undefined && inTime()) lines.push(sweptLine);
   if (!inTime()) return lines;
-  const findings = read && quietly(() => checkVault(vault, read).length);
+  const findings = read && quietly(() => checkVault(vault, read.vaultItems, read.routes).length);
   if (findings && inTime()) lines.push(`brain-dump: ${countOf(findings, "Vault finding")} (run brain-dump check)`);
   return lines;
 }
@@ -51,8 +51,8 @@ function quietly<T>(read: () => T): T | undefined {
   }
 }
 
-function projectLine(vault: Vault, { items, dumps, files }: VaultItems, project: string): string | undefined {
-  const notes = projectNotes(vault, project, items, files);
+function projectLine({ items, dumps, files }: VaultItems, routes: Route[], project: string): string | undefined {
+  const notes = projectNotes(project, routes, items, files);
   const unfiled = dumps.filter((dump) => dump.project === project && dirname(dump.file) === INBOX).length;
   const segments: string[] = [];
   if (notes.length > 0) segments.push(`Vault notes for ${project}: ${notes.join(", ")}`);
@@ -62,9 +62,9 @@ function projectLine(vault: Vault, { items, dumps, files }: VaultItems, project:
 }
 
 /** The project's Route target if it exists, then the notes holding the most Items backlinked to its Dumps. Keys and titles match whole, ignoring case as Obsidian does, never by guessing. */
-function projectNotes(vault: Vault, project: string, items: VaultItem[], files: string[]): string[] {
+function projectNotes(project: string, routes: Route[], items: VaultItem[], files: string[]): string[] {
   const titles = new Set(files.map(titleKey));
-  const route = readRoutes(vault).find((candidate): candidate is Extract<Route, { title: string }> => "title" in candidate && candidate.key.toLowerCase() === project.toLowerCase());
+  const route = routes.find((candidate): candidate is Extract<Route, { title: string }> => "title" in candidate && candidate.key.toLowerCase() === project.toLowerCase());
   const routed = route !== undefined && titles.has(titleKey(route.title)) ? route.title : undefined;
   const itemCounts = new Map<string, number>();
   for (const { note, state, backlinked, dump } of items) {

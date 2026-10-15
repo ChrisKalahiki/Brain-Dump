@@ -5,7 +5,7 @@ import { INBOX } from "./layout.ts";
 import { noteFiles, titleKey } from "./notes.ts";
 import type { Vault } from "./vault.ts";
 
-// Every Item in the allowlist with its state, source Dump and identity, read in one pass, so Recall, `check`, duplicates and the pointer don't each join Dumps to filed Items.
+// Every Item in the allowlist with its state, source Dump and identity, read in one pass, so no reader joins Dumps to filed Items itself.
 
 /** `open`: still unfiled in an Inbox Dump. `filed`: in a curated note, its `text` keeping any checkbox. */
 export type VaultItem = {

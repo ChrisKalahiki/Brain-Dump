@@ -6,7 +6,7 @@ import type { MalformedDump, StoredDump } from "./inbox.ts";
 import { INBOX, ROUTES_NOTE, WEEKLY_FOLDER } from "./layout.ts";
 import { linkTarget, titleKey } from "./notes.ts";
 import { datePart } from "./clock.ts";
-import { readRoutes, renderRoute } from "./routes.ts";
+import { readRoutes, renderRoute, type Route } from "./routes.ts";
 import { readVaultItems, type VaultItem, type VaultItems } from "./vault-items.ts";
 import type { Vault } from "./vault.ts";
 
@@ -22,13 +22,13 @@ export type FindingKind = (typeof FINDING_KINDS)[number];
 
 export type Finding = { kind: FindingKind; note: string; detail: string; fix: string };
 
-/** Every finding, grouped by kind in `FINDING_KINDS` order, then by note. `read` lets a caller that already read the Vault's Items pass them. */
-export function checkVault(vault: Vault, read: VaultItems = readVaultItems(vault)): Finding[] {
-  const { items, dumps, malformed, notes, files } = read;
+/** Every finding, grouped by kind in `FINDING_KINDS` order, then by note. A caller that already read the Vault's Items and Routes passes them. */
+export function checkVault(vault: Vault, vaultItems: VaultItems = readVaultItems(vault), routes: Route[] = readRoutes(vault)): Finding[] {
+  const { items, dumps, malformed, notes, files } = vaultItems;
   const dumpTitles = new Set([...dumps, ...malformed].map(({ file }) => basename(file, ".md").toLowerCase()));
   const findings = [
     ...notes.flatMap((note) => brokenBacklinks(note, dumpTitles)),
-    ...deadRoutes(vault, files),
+    ...deadRoutes(routes, files),
     ...dumps.flatMap(staleDump),
     ...dumps.flatMap(stuckDump),
     ...notes.filter(({ note }) => !note.startsWith(`${WEEKLY_FOLDER}/`)).flatMap(oversizedNote),
@@ -53,9 +53,9 @@ function brokenBacklinks({ note, lines }: CuratedNote, dumpTitles: Set<string>):
 }
 
 /** Routes to a note whose title no note in the allowlist has; Routes to a Todo Group are created on demand, so never dead. */
-function deadRoutes(vault: Vault, files: string[]): Finding[] {
+function deadRoutes(routes: Route[], files: string[]): Finding[] {
   const titles = new Set(files.map(titleKey));
-  return readRoutes(vault).flatMap((route) =>
+  return routes.flatMap((route) =>
     "title" in route && !titles.has(titleKey(route.title))
       ? [{ kind: "Dead Route" as const, note: ROUTES_NOTE, detail: `${renderRoute(route)} targets no note`, fix: "edit the Routes note" }]
       : [],
@@ -90,9 +90,10 @@ function oversizedNote({ note, lines }: CuratedNote): Finding[] {
 function duplicateItems(filed: VaultItem[]): Finding[] {
   const byNoteAndKey = new Map<string, { note: string; texts: string[] }>();
   for (const { note, key, text } of filed) {
-    const group = byNoteAndKey.get(`${note}\0${key}`) ?? { note, texts: [] };
+    const same = `${note}\0${key}`;
+    const group = byNoteAndKey.get(same) ?? { note, texts: [] };
     group.texts.push(text);
-    byNoteAndKey.set(`${note}\0${key}`, group);
+    byNoteAndKey.set(same, group);
   }
   return [...byNoteAndKey.values()]
     .filter(({ texts }) => texts.length > 1)
