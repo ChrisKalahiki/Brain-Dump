@@ -1,5 +1,6 @@
-import { curatedBullets, curatedNotes, itemKey } from "./curated.ts";
+import { itemKey } from "./curated.ts";
 import { summarize, type DumpSummary, type StoredDump, type StoredItem } from "./inbox.ts";
+import { readVaultItems, type VaultItem } from "./vault-items.ts";
 import type { Vault } from "./vault.ts";
 
 // Near-duplicate Items: word overlap only, with no index, embeddings or agent judgement (ADR 0007). The flag is advisory, so a missed paraphrase costs little.
@@ -26,15 +27,12 @@ export type NearDuplicateFinder = (dump: StoredDump, item: StoredItem) => Simila
 
 type Candidate = Omit<Similar, "score"> & { words: Set<string> };
 
-/** `inbox` is every unfiled Dump; the finder compares an open Item against the allowlist's Items and the other Dumps' open Items. Dropped Items never match. */
-export function nearDuplicateFinder(vault: Vault, inbox: StoredDump[]): NearDuplicateFinder {
-  const curated = curatedNotes(vault).flatMap(({ note, lines }) =>
-    curatedBullets(lines)
-      .filter(({ text }) => !DROPPED.test(text))
-      .map(({ text }) => ({ note, text, done: DONE.test(text), words: wordSet(text) })),
-  );
-  const unfiled = inbox.flatMap((dump) => dump.items.filter(({ state }) => state === "open").map(({ text }) => ({ note: dump.file, text, done: false, words: wordSet(text) })));
-  const candidates: Candidate[] = [...curated, ...unfiled].filter(({ words }) => words.size >= MIN_WORDS);
+/** Compares an open Item against the allowlist's filed Items and the other Inbox Dumps' open Items. Dropped Items never match. */
+export function nearDuplicateFinder(items: VaultItem[]): NearDuplicateFinder {
+  const candidates: Candidate[] = items
+    .filter(({ state, text }) => state === "open" || !DROPPED.test(text))
+    .map(({ note, text, state }) => ({ note, text, done: state === "filed" && DONE.test(text), words: wordSet(text) }))
+    .filter(({ words }) => words.size >= MIN_WORDS);
   return (dump, item) => {
     const words = wordSet(item.text);
     if (item.state !== "open" || words.size < MIN_WORDS) return undefined;
@@ -50,7 +48,7 @@ export function nearDuplicateFinder(vault: Vault, inbox: StoredDump[]): NearDupl
 
 /** list-dumps: every unfiled Dump, each open Item with its nearest duplicate as `similar`, absent when nothing matches. */
 export function listDumps(vault: Vault, inbox: StoredDump[]): ListedDump[] {
-  const nearest = nearDuplicateFinder(vault, inbox);
+  const nearest = nearDuplicateFinder(readVaultItems(vault).items);
   return inbox.map((dump) => ({
     ...summarize(dump),
     items: dump.items.map((item) => {

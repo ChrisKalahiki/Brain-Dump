@@ -92,6 +92,19 @@ describe("brain-dump recall provenance", () => {
     // #then
     expect(result).toEqual({ results: [{ ...GUARD_TODO, dump: null, origin: null }], more: 0 });
   });
+
+  test("follows a backlink to its Dump whatever its case, as Obsidian does", () => {
+    // #given
+    const sandbox = makeSandbox();
+    seedVault(sandbox);
+    writeVaultFile(sandbox, TOPIC, `# Brain-Dump\n- Codex hooks need a trust step.\n${FROM_GUARD.replace("guard|", "GUARD|")}\n`);
+
+    // #when
+    const result = recall(sandbox, ["trust"]);
+
+    // #then
+    expect(result).toEqual({ results: [GUARD_LEARNING], more: 0 });
+  });
 });
 
 describe("brain-dump recall --project", () => {

@@ -1,13 +1,12 @@
 import { basename, dirname } from "node:path";
 import { checkVault, countOf } from "./check.ts";
 import { now } from "./clock.ts";
-import { curatedBullets, curatedNotes } from "./curated.ts";
 import { BrainDumpError, errnoCode } from "./errors.ts";
-import { isStoredDump, readDumpOrProblem, type StoredDump } from "./inbox.ts";
 import { INBOX } from "./layout.ts";
-import { noteFiles, titleKey } from "./notes.ts";
+import { titleKey } from "./notes.ts";
 import { readRoutes, type Route } from "./routes.ts";
 import { lastSweep, type SweepSummary } from "./sweep.ts";
+import { readVaultItems, type VaultItem, type VaultItems } from "./vault-items.ts";
 import { findVault, type Vault } from "./vault.ts";
 
 // The SessionStart pointer: at most a line naming this project's Vault notes, a line on the last Sweep and a line with the `check` count, so a Session knows the Vault has context.
@@ -25,12 +24,13 @@ export function pointerLines(project: string): string[] {
   const vault = quietly(findVault);
   if (vault === undefined) return [];
   const lines: string[] = [];
-  const notesLine = quietly(() => projectLine(vault, project));
+  const read = quietly(() => readVaultItems(vault));
+  const notesLine = read && quietly(() => projectLine(vault, read, project));
   if (notesLine !== undefined && inTime()) lines.push(notesLine);
   const sweptLine = quietly(() => sweepLine(lastSweep(), now()));
   if (sweptLine !== undefined && inTime()) lines.push(sweptLine);
   if (!inTime()) return lines;
-  const findings = quietly(() => checkVault(vault).length);
+  const findings = read && quietly(() => checkVault(vault, read).length);
   if (findings && inTime()) lines.push(`brain-dump: ${countOf(findings, "Vault finding")} (run brain-dump check)`);
   return lines;
 }
@@ -51,10 +51,9 @@ function quietly<T>(read: () => T): T | undefined {
   }
 }
 
-function projectLine(vault: Vault, project: string): string | undefined {
-  const dumps = projectDumps(vault, project);
-  const notes = projectNotes(vault, project, dumps);
-  const unfiled = dumps.filter((dump) => dirname(dump.file) === INBOX).length;
+function projectLine(vault: Vault, { items, dumps, files }: VaultItems, project: string): string | undefined {
+  const notes = projectNotes(vault, project, items, files);
+  const unfiled = dumps.filter((dump) => dump.project === project && dirname(dump.file) === INBOX).length;
   const segments: string[] = [];
   if (notes.length > 0) segments.push(`Vault notes for ${project}: ${notes.join(", ")}`);
   if (unfiled > 0) segments.push(`${countOf(unfiled, "unfiled Dump")}${notes.length === 0 ? ` for ${project}` : ""}`);
@@ -62,27 +61,18 @@ function projectLine(vault: Vault, project: string): string | undefined {
   return `brain-dump: ${[...segments, "use the recall skill for more"].join(" · ")}`;
 }
 
-function projectDumps(vault: Vault, project: string): StoredDump[] {
-  return noteFiles(vault)
-    .filter((path) => isStoredDump(vault, path))
-    .flatMap((path) => {
-      const dump = readDumpOrProblem(vault, path);
-      return "problem" in dump || dump.project !== project ? [] : [dump];
-    });
-}
-
 /** The project's Route target if it exists, then the notes holding the most Items backlinked to its Dumps. Keys and titles match whole, ignoring case as Obsidian does, never by guessing. */
-function projectNotes(vault: Vault, project: string, dumps: StoredDump[]): string[] {
-  const titles = new Set(noteFiles(vault).map(titleKey));
+function projectNotes(vault: Vault, project: string, items: VaultItem[], files: string[]): string[] {
+  const titles = new Set(files.map(titleKey));
   const route = readRoutes(vault).find((candidate): candidate is Extract<Route, { title: string }> => "title" in candidate && candidate.key.toLowerCase() === project.toLowerCase());
   const routed = route !== undefined && titles.has(titleKey(route.title)) ? route.title : undefined;
-  const dumpTitles = new Set(dumps.map((dump) => titleKey(dump.title)));
-  const ranked = curatedNotes(vault)
-    .map(({ note, lines }) => ({
-      title: basename(note, ".md"),
-      itemCount: curatedBullets(lines).filter(({ from }) => from !== undefined && dumpTitles.has(titleKey(from))).length,
-    }))
-    .filter(({ title, itemCount }) => itemCount > 0 && (routed === undefined || titleKey(title) !== titleKey(routed)))
+  const itemCounts = new Map<string, number>();
+  for (const { note, state, backlinked, dump } of items) {
+    if (state === "filed" && backlinked && dump?.project === project) itemCounts.set(note, (itemCounts.get(note) ?? 0) + 1);
+  }
+  const ranked = [...itemCounts]
+    .map(([note, itemCount]) => ({ title: basename(note, ".md"), itemCount }))
+    .filter(({ title }) => routed === undefined || titleKey(title) !== titleKey(routed))
     .sort((a, b) => b.itemCount - a.itemCount || a.title.localeCompare(b.title))
     .map(({ title, itemCount }) => `[[${title}]] (${countOf(itemCount, "Item")})`);
   return [...(routed === undefined ? [] : [`[[${routed}]] (Route)`]), ...ranked].slice(0, NOTE_CAP);
