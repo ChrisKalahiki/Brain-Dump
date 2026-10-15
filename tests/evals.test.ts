@@ -12,7 +12,7 @@ describe("prompt evals", () => {
     const [prompt, fixture] = [join(folder, "prompt.md"), join(folder, "fixture.txt")];
     writeFileSync(prompt, "Draft a Dump.\n");
     writeFileSync(fixture, "User: hi\n");
-    const declared = { inputs: [prompt, fixture], model: "model-a" };
+    const declared = { entries: [], inputs: [prompt, fixture], model: "model-a" };
     const before = inputHash(declared);
 
     // #when
@@ -29,12 +29,41 @@ describe("prompt evals", () => {
     });
   });
 
+  test.each([
+    ["a module the entry imports", "reached.ts", true],
+    ["a module the reached module re-exports", "nested.ts", true],
+    ["a module imported only for its types", "types.ts", false],
+    ["a module nothing imports", "unreached.ts", false],
+    ["declared prose", "skill.md", true],
+  ])("an eval's input hash follows its entries' imports: editing %s changes it: %p", (_, changed, changes) => {
+    // #given
+    const folder = mkdtempSync(join(tmpdir(), "brain-dump-eval-"));
+    const files: Record<string, string> = {
+      "entry.ts": '#!/usr/bin/env bun\nimport { reached } from "./reached.ts";\nimport type { Shape } from "./types.ts";\nimport { readFileSync } from "node:fs";\nexport const run = (shape: Shape) => [reached, shape, readFileSync];\n',
+      "reached.ts": 'export { nested } from "./nested.ts";\nexport const reached = 1;\n',
+      "nested.ts": "export const nested = 2;\n",
+      "types.ts": "export type Shape = { kind: string };\n",
+      "unreached.ts": "export const unreached = 3;\n",
+      "skill.md": "Draft a Dump.\n",
+    };
+    for (const [name, contents] of Object.entries(files)) writeFileSync(join(folder, name), contents);
+    const declared = { entries: [join(folder, "entry.ts")], inputs: [join(folder, "skill.md")], model: "model-a" };
+    const before = inputHash(declared);
+
+    // #when
+    writeFileSync(join(folder, changed), `${files[changed]}// edited\n`);
+    const after = inputHash(declared);
+
+    // #then
+    expect(after !== before).toBe(changes);
+  });
+
   test("an eval whose inputs changed since its recorded pass is stale, naming the command to run", () => {
     // #given
     const folder = mkdtempSync(join(tmpdir(), "brain-dump-eval-"));
     const prompt = join(folder, "prompt.md");
     writeFileSync(prompt, "Draft a Dump.\n");
-    const declared = { name: "toy", inputs: [prompt], model: "model-a" };
+    const declared = { name: "toy", entries: [], inputs: [prompt], model: "model-a" };
     const passed = { toy: { hash: inputHash(declared), date: "2026-10-12", model: "model-a" } };
 
     // #when

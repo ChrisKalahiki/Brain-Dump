@@ -48,8 +48,8 @@ const SESSION = { id: "fixture", through: ORIGIN.at };
 export const SWEEP_EVAL: Eval = {
   name: "sweep",
   model: DRAFTING_MODEL,
-  // The drafting agent, its reply contract and the `write-dump` checks are inputs too: a change to any of them changes what the eval scores.
-  inputs: ["src/prompts.ts", "skills/dump/item-rules.md", "src/drafting.ts", "src/transcript.ts", "src/dump.ts", "src/dump-body.ts", "src/secrets.ts", "evals/sweep.ts", "evals/assertions.ts", ...CASES.map(({ fixture }) => `${FIXTURES}/${fixture}`)],
+  entries: ["src/drafting.ts", "evals/sweep.ts"],
+  inputs: ["skills/dump/item-rules.md", ...CASES.map(({ fixture }) => `${FIXTURES}/${fixture}`)],
   cases: CASES.map((sweepCase) => ({ name: sweepCase.fixture.replace(/\.txt$/, ""), run: () => runCase(sweepCase) })),
 };
 

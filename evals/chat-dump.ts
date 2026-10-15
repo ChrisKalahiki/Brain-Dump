@@ -41,18 +41,8 @@ const CASES: ChatCase[] = [
 export const CHAT_DUMP_EVAL: Eval = {
   name: "chat-dump",
   model: DRAFTING_MODEL,
-  inputs: [
-    "prompts/chat-dump.md",
-    "src/dump.ts",
-    "src/dump-body.ts",
-    "src/secrets.ts",
-    "src/claude-sessions.ts",
-    "src/transcript.ts",
-    "evals/chat-dump.ts",
-    "evals/agent.ts",
-    "evals/assertions.ts",
-    ...CASES.map(({ fixture }) => `${FIXTURES}/${fixture}`),
-  ],
+  entries: ["src/cli.ts", "evals/chat-dump.ts"],
+  inputs: ["prompts/chat-dump.md", ...CASES.map(({ fixture }) => `${FIXTURES}/${fixture}`)],
   cases: CASES.map((chatCase) => ({ name: chatCase.fixture.replace(/\.txt$/, ""), run: () => runCase(chatCase) })),
 };
 
