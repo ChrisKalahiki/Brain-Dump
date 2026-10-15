@@ -7,12 +7,13 @@ import { STATE_MARKS } from "./dump-body.ts";
 import { BrainDumpError, UsageError } from "./errors.ts";
 import { commit, type Write } from "./gateway.ts";
 import { nearDuplicateFinder, type NearDuplicateFinder } from "./duplicates.ts";
-import { listUnfiledDumps, readDump, type StoredDump } from "./inbox.ts";
+import { readDump, type StoredDump } from "./inbox.ts";
 import { FILED_FOLDER, ROUTES_NOTE, WEEKLY_FOLDER, WEEKLY_TEMPLATE_NOTE } from "./layout.ts";
 import { titleKey } from "./notes.ts";
 import { readRoutes, renderRoute, routeIdentity, type Route } from "./routes.ts";
 import { findSection } from "./sections.ts";
 import { formatGroupPath, parseTodoGroups, pathKey, resolveGroupPath, type GroupNode, type GroupPath } from "./todo-groups.ts";
+import { readVaultItems } from "./vault-items.ts";
 import { isMondayWeeklyNote, locateWeeklyNote, readWeeklyTemplate } from "./weekly.ts";
 import type { Vault } from "./vault.ts";
 
@@ -190,7 +191,7 @@ function checkRoutineItems(vault: Vault, dump: StoredDump, items: PlannedItem[])
     if (!keyed.some((route) => routesTo(route, item))) reject(`${claim}, which doesn't point at ${destination}`);
     if (isNewDestination(vault, item)) reject(`${claim}, but ${destination} doesn't exist yet${item.group === undefined ? "" : ` in ${item.note}`}`);
     const stored = dump.items.find(({ index }) => index === item.index);
-    nearest ??= nearDuplicateFinder(vault, listUnfiledDumps(vault));
+    nearest ??= nearDuplicateFinder(readVaultItems(vault).items);
     const similar = stored && nearest(dump, stored);
     if (similar) reject(`${claim}, but it nearly duplicates "${similar.text}" in [[${basename(similar.note, ".md")}]]`);
   }

@@ -12,6 +12,7 @@ const CHRONOS_LINE = "Session: Claude Code · `~/Projects/chronos` · 2026-10-03
 const TOPIC = "Side Projects/Brain-Dump.md";
 const WEEK = "Research/Weekly Meetings/09-28-26 Weekly Update.md";
 const FROM_GUARD = "\t- From [[2026-10-01 0900 Brain-Dump - guard|dump 10-01-26]]";
+const FROM_GUARD_UPPER = "\t- From [[2026-10-01 0900 BRAIN-DUMP - GUARD|dump 10-01-26]]";
 
 /** A filed Dump with its Learning and Decision in a Topic Note and its Todo in a Weekly Note, an unfiled Dump with a dropped Item, another project's Dump, and a note outside the allowlist. */
 function seedVault(sandbox: Sandbox): void {
@@ -91,6 +92,19 @@ describe("brain-dump recall provenance", () => {
 
     // #then
     expect(result).toEqual({ results: [{ ...GUARD_TODO, dump: null, origin: null }], more: 0 });
+  });
+
+  test("follows a backlink to its Dump whatever its case, as Obsidian does", () => {
+    // #given
+    const sandbox = makeSandbox();
+    seedVault(sandbox);
+    writeVaultFile(sandbox, TOPIC, `# Brain-Dump\n- Codex hooks need a trust step.\n${FROM_GUARD_UPPER}\n`);
+
+    // #when
+    const result = recall(sandbox, ["trust"]);
+
+    // #then
+    expect(result).toEqual({ results: [GUARD_LEARNING], more: 0 });
   });
 });
 

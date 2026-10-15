@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
-import { basename, dirname, relative } from "node:path";
-import { curatedBullets, curatedNotes, itemKey, TODO_TAG } from "./curated.ts";
+import { basename, relative } from "node:path";
+import { TODO_TAG } from "./curated.ts";
 import { renderOriginLine } from "./dump.ts";
 import { UsageError } from "./errors.ts";
-import { isStoredDump, readDumpOrProblem, type StoredDump } from "./inbox.ts";
-import { INBOX } from "./layout.ts";
+import type { StoredDump } from "./inbox.ts";
 import { linkTarget, noteFiles } from "./notes.ts";
+import { readVaultItems } from "./vault-items.ts";
 import type { Vault } from "./vault.ts";
 
 // Recall (ADR 0007): agents look up the Items the Vault holds through the helper, never with their own file tools.
@@ -72,49 +72,11 @@ function countHits(text: string, terms: string[]): number {
 
 /** Open Items still in Inbox Dumps, plus filed Items in curated notes. Dropped Items stay behind in their Dumps. */
 function collectItems(vault: Vault): FoundItem[] {
-  const dumps = noteFiles(vault)
-    .filter((path) => isStoredDump(vault, path))
-    .flatMap((path) => {
-      const dump = readDumpOrProblem(vault, path);
-      return "problem" in dump ? [] : [dump];
-    })
-    .map((dump) => ({ dump, info: describeDump(dump) }));
-  const dumpsByTitle = new Map(dumps.map(({ dump, info }) => [dump.title, info]));
-  const filedTodos = filedTodoDumps(dumps);
-  const unfiled = dumps
-    .filter(({ dump }) => dirname(dump.file) === INBOX)
-    .flatMap(({ dump, info }) =>
-      dump.items
-        .filter((item) => item.state === "open")
-        .map((item) => toFoundItem({ note: dump.file, text: item.text, why: item.rationale, unfiled: true, dumpInfo: info, position: item.line })),
-    );
-  const curated = curatedNotes(vault).flatMap(({ note, lines }) =>
-    curatedBullets(lines).map(({ text, why, from, line }) => {
-      const dumpInfo = from === undefined ? (filedTodos.get(itemKey(text)) ?? undefined) : dumpsByTitle.get(from);
-      return toFoundItem({ note, text, why, unfiled: false, dumpInfo, position: line });
-    }),
-  );
-  return [...unfiled, ...curated];
-}
-
-/** A filed Todo has no backlink, so its Dump is the one Dump that filed the same text; `null` when several did. */
-function filedTodoDumps(dumps: { dump: StoredDump; info: DumpInfo }[]): Map<string, DumpInfo | null> {
-  const byText = new Map<string, DumpInfo | null>();
-  for (const { dump, info } of dumps) {
-    for (const item of dump.items) {
-      if (item.kind !== "Todo" || item.state !== "filed") continue;
-      const key = itemKey(item.text);
-      byText.set(key, byText.has(key) && byText.get(key)?.file !== info.file ? null : info);
-    }
-  }
-  return byText;
-}
-
-type ItemSource = { note: string; text: string; why: string | null | undefined; unfiled: boolean; dumpInfo: DumpInfo | undefined; position: number };
-
-function toFoundItem({ note, text, why, unfiled, dumpInfo, position }: ItemSource): FoundItem {
-  const kind = why ? "decision" : TODO_TAG.test(text) ? "todo" : "learning";
-  return { note, kind, text, why: why ?? null, unfiled, dump: dumpInfo?.file ?? null, origin: dumpInfo?.origin ?? null, dumpInfo, position };
+  return readVaultItems(vault).items.map(({ note, text, rationale, state, dump, line }) => {
+    const dumpInfo = dump && describeDump(dump);
+    const kind = rationale ? "decision" : TODO_TAG.test(text) ? "todo" : "learning";
+    return { note, kind, text, why: rationale, unfiled: state === "open", dump: dumpInfo?.file ?? null, origin: dumpInfo?.origin ?? null, dumpInfo, position: line };
+  });
 }
 
 function describeDump(dump: StoredDump): DumpInfo {

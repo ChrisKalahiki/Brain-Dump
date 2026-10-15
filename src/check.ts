@@ -1,12 +1,13 @@
 import { basename, dirname } from "node:path";
 import { now } from "./clock.ts";
-import { BACKLINK_LINE, curatedBullets, curatedNotes, itemKey, type CuratedNote } from "./curated.ts";
+import { BACKLINK_LINE, type CuratedNote } from "./curated.ts";
 import { sinceLatestDigest } from "./digest.ts";
-import { isStoredDump, readDumpOrProblem, type MalformedDump, type StoredDump } from "./inbox.ts";
+import type { MalformedDump, StoredDump } from "./inbox.ts";
 import { INBOX, ROUTES_NOTE, WEEKLY_FOLDER } from "./layout.ts";
-import { linkTarget, noteFiles, titleKey } from "./notes.ts";
+import { linkTarget, titleKey } from "./notes.ts";
 import { datePart } from "./clock.ts";
-import { readRoutes, renderRoute } from "./routes.ts";
+import { readRoutes, renderRoute, type Route } from "./routes.ts";
+import { readVaultItems, type VaultItem, type VaultItems } from "./vault-items.ts";
 import type { Vault } from "./vault.ts";
 
 // check: a read-only report of Vault problems, each with its fix, scoped to the write allowlist. Thresholds are constants so nothing in the Vault can silence a finding.
@@ -21,20 +22,17 @@ export type FindingKind = (typeof FINDING_KINDS)[number];
 
 export type Finding = { kind: FindingKind; note: string; detail: string; fix: string };
 
-/** Every finding, grouped by kind in `FINDING_KINDS` order, then by note. */
-export function checkVault(vault: Vault): Finding[] {
-  const files = noteFiles(vault);
-  const curated = curatedNotes(vault);
-  const dumpFiles = files.filter((path) => isStoredDump(vault, path));
-  const dumpTitles = new Set(dumpFiles.map((path) => basename(path, ".md").toLowerCase()));
-  const { readable, malformed } = readDumps(vault, dumpFiles);
+/** Every finding, grouped by kind in `FINDING_KINDS` order, then by note. A caller that already read the Vault's Items and Routes passes them. */
+export function checkVault(vault: Vault, vaultItems: VaultItems = readVaultItems(vault), routes: Route[] = readRoutes(vault)): Finding[] {
+  const { items, dumps, malformed, notes, files } = vaultItems;
+  const dumpTitles = new Set([...dumps, ...malformed].map(({ file }) => basename(file, ".md").toLowerCase()));
   const findings = [
-    ...curated.flatMap((note) => brokenBacklinks(note, dumpTitles)),
-    ...deadRoutes(vault, files),
-    ...readable.flatMap(staleDump),
-    ...readable.flatMap(stuckDump),
-    ...curated.filter(({ note }) => !note.startsWith(`${WEEKLY_FOLDER}/`)).flatMap(oversizedNote),
-    ...curated.flatMap(duplicateItems),
+    ...notes.flatMap((note) => brokenBacklinks(note, dumpTitles)),
+    ...deadRoutes(routes, files),
+    ...dumps.flatMap(staleDump),
+    ...dumps.flatMap(stuckDump),
+    ...notes.filter(({ note }) => !note.startsWith(`${WEEKLY_FOLDER}/`)).flatMap(oversizedNote),
+    ...duplicateItems(items.filter(({ state }) => state === "filed")),
     ...malformed.map(malformedDump),
   ];
   return findings.sort((a, b) => FINDING_KINDS.indexOf(a.kind) - FINDING_KINDS.indexOf(b.kind) || a.note.localeCompare(b.note));
@@ -55,9 +53,9 @@ function brokenBacklinks({ note, lines }: CuratedNote, dumpTitles: Set<string>):
 }
 
 /** Routes to a note whose title no note in the allowlist has; Routes to a Todo Group are created on demand, so never dead. */
-function deadRoutes(vault: Vault, files: string[]): Finding[] {
+function deadRoutes(routes: Route[], files: string[]): Finding[] {
   const titles = new Set(files.map(titleKey));
-  return readRoutes(vault).flatMap((route) =>
+  return routes.flatMap((route) =>
     "title" in route && !titles.has(titleKey(route.title))
       ? [{ kind: "Dead Route" as const, note: ROUTES_NOTE, detail: `${renderRoute(route)} targets no note`, fix: "edit the Routes note" }]
       : [],
@@ -89,30 +87,21 @@ function oversizedNote({ note, lines }: CuratedNote): Finding[] {
 }
 
 /** Exact matches of the Item's text only, after `itemKey`'s normalising: its Why and backlink are left out, so one Item filed from two Dumps still counts. */
-function duplicateItems({ note, lines }: CuratedNote): Finding[] {
-  const byKey = new Map<string, string[]>();
-  for (const { text } of curatedBullets(lines)) {
-    const key = itemKey(text);
-    byKey.set(key, [...(byKey.get(key) ?? []), text]);
+function duplicateItems(filed: VaultItem[]): Finding[] {
+  const byNoteAndKey = new Map<string, { note: string; texts: string[] }>();
+  for (const { note, key, text } of filed) {
+    const same = `${note}\0${key}`;
+    const group = byNoteAndKey.get(same) ?? { note, texts: [] };
+    group.texts.push(text);
+    byNoteAndKey.set(same, group);
   }
-  return [...byKey.values()]
-    .filter((texts) => texts.length > 1)
-    .map((texts) => ({ kind: "Duplicate Item", note, detail: `"${texts[0]}" appears ${texts.length} times`, fix: "remove by hand, or leave for the next Digest" }));
+  return [...byNoteAndKey.values()]
+    .filter(({ texts }) => texts.length > 1)
+    .map(({ note, texts }) => ({ kind: "Duplicate Item", note, detail: `"${texts[0]}" appears ${texts.length} times`, fix: "remove by hand, or leave for the next Digest" }));
 }
 
 function malformedDump({ file, problem }: MalformedDump): Finding {
   return { kind: "Malformed Dump", note: file, detail: problem, fix: "hand edit" };
-}
-
-function readDumps(vault: Vault, paths: string[]): { readable: StoredDump[]; malformed: MalformedDump[] } {
-  const readable: StoredDump[] = [];
-  const malformed: MalformedDump[] = [];
-  for (const path of paths) {
-    const dump = readDumpOrProblem(vault, path);
-    if ("problem" in dump) malformed.push(dump);
-    else readable.push(dump);
-  }
-  return { readable, malformed };
 }
 
 function openItems(dump: StoredDump): number {
