@@ -26,6 +26,6 @@ Exactly this shape, sections in this order, a section left out entirely when it 
 - [ ] #todo <Todo>
 ```
 
-Every Decision carries its tab-indented `- Why:` line; every Todo carries `#todo`. Nothing else goes in the body: no title, no frontmatter, no origin line, no other text.
+Every Item line starts with `- [ ] `, a Learning that holds a URL too. Every Decision carries its tab-indented `- Why:` line; every Todo carries `#todo`. Nothing else goes in the body: no title, no frontmatter, no origin line, no other text.
 
 Also write a **slug**: a 2–6 word title for the Dump, e.g. `wayfinder charting` or `auth token refresh`.

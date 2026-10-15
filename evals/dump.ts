@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { renderDumpBody } from "../src/dump-body.ts";
 import { parseDump } from "../src/dump.ts";
 import { INBOX } from "../src/layout.ts";
-import { DRAFTING_MODEL } from "../src/sweep.ts";
+import { DRAFTING_MODEL } from "../src/drafting.ts";
 import { makeSkillSandbox, removeSkillSandbox, runClaude, writeSessionLog } from "./agent.ts";
 import { checkDraft, type DraftExpectation } from "./assertions.ts";
 import type { CaseResult, Eval } from "./eval.ts";
@@ -91,7 +91,7 @@ async function runCase({ fixture, focus, expected }: DumpCase): Promise<CaseResu
     const { slug } = dump;
     const body = renderDumpBody(dump.body);
     const graded = focus === undefined ? transcript : `${transcript}\n\n[The user then ran \`/dump ${focus}\`.]`;
-    return { failures: checkDraft(slug, body, expected), grade: grade(DUMP_RUBRIC, graded, body) };
+    return { failures: checkDraft(slug, body, expected), grade: await grade(DUMP_RUBRIC, graded, body) };
   } finally {
     removeSkillSandbox(sandbox);
   }

@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import { datePart, now } from "../src/clock.ts";
-import { AGENT_VARIABLE } from "../src/sweep.ts";
+import { AGENT_VARIABLE } from "../src/drafting.ts";
 import { removeLeftoverSessions } from "./agent.ts";
 import { EVALS, recordPass, type CaseResult, type Eval } from "./eval.ts";
 

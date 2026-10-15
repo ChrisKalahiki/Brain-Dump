@@ -1,36 +1,27 @@
 import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { countOf } from "./check.ts";
 import { claudeSessionFiles, readClaudeSession } from "./claude-sessions.ts";
 import { codexSessionFiles, readCodexSession } from "./codex-sessions.ts";
 import { now } from "./clock.ts";
-import { checkCoverage, prepareDump, SecretRefusedError, writeDumps, type CoveredSession, type PreparedDump } from "./dump.ts";
+import { draft, type Draft } from "./drafting.ts";
+import { writeDumps, type PreparedDump } from "./dump.ts";
 import { BrainDumpError, errnoCode } from "./errors.ts";
 import { canonical, isInside } from "./guard.ts";
 import { coveredSessions } from "./inbox.ts";
 import { INBOX } from "./layout.ts";
 import { detectDevOrigin, type DevOrigin } from "./origin.ts";
-import { NO_ITEMS_REPLY, sweepDraftPrompt } from "./prompts.ts";
 import { stateFolder } from "./runs.ts";
 import { renderSessionText, type SessionMessage, type Transcript } from "./transcript.ts";
 import { expandHome, readSetting, type Vault } from "./vault.ts";
 
-// The Sweep (ADR 0009): drafts one Dump per recent uncaptured Session, each through its own tool-less, unsaved agent run, and writes them all as one Run.
+// The Sweep (ADR 0009): finds the recent uncaptured Sessions, has the drafting agent draft one Dump from each, and writes them all as one Run.
 
 const LOOKBACK_DAYS = 28;
 const ACTIVE_HOURS = 2;
 const MIN_USER_MESSAGES = 3;
 const SESSION_CAP = 25;
-const TEXT_CAP = 150_000;
-const AGENT_TIMEOUT_MS = 10 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
-
-/** The pinned model every Session is drafted with. */
-export const DRAFTING_MODEL = "claude-sonnet-5-5";
-const DRAFTING_COMMAND = ["claude", "-p", "--no-session-persistence", "--model", DRAFTING_MODEL, "--tools", "", "--strict-mcp-config", "--safe-mode"];
-/** A shell command run in place of the drafting agent, so tests substitute a stub. It gets the prompt on stdin like the agent. */
-export const AGENT_VARIABLE = "BRAIN_DUMP_DRAFT_AGENT";
 const OPT_OUT_SETTING = "sweep-opt-out";
 
 /** One per tool: its Session logs, and how to read one; a reader gives `undefined` for a log the Sweep never drafts. */
@@ -72,9 +63,9 @@ export function sweep(vault: Vault): SweepSummary {
     const drafted: { session: string; dump: PreparedDump }[] = [];
     let stopped = false;
     for (const [index, candidate] of candidates.slice(0, SESSION_CAP).entries()) {
-      const outcome = draft(candidate);
+      const outcome = draftCandidate(candidate);
       const { session } = candidate.transcript;
-      if (outcome.kind === "agent-failed") {
+      if (outcome.kind === "agent-failed" || outcome.kind === "off-contract") {
         summary.errors.push({ session, error: outcome.error });
         summary.carriedOver.push(...candidates.slice(index, SESSION_CAP).map(({ transcript }) => ({ session: transcript.session })));
         stopped = true;
@@ -174,80 +165,15 @@ function readIfChanged(file: string, floor: number, read: SessionReader["read"])
   }
 }
 
-export type DraftOutcome =
-  | { kind: "dump"; slug: string; body: string; dump: PreparedDump }
-  | { kind: "no-items" }
-  | { kind: "secret"; line: number; secretKind: string }
-  | { kind: "invalid"; error: string }
-  | { kind: "agent-failed"; error: string };
-
-function draft({ transcript, messages }: Candidate): DraftOutcome {
+function draftCandidate({ transcript, messages }: Candidate): Draft {
   const origin: DevOrigin = { ...sessionOrigin(transcript), notes: transcript.startsAfterCompaction ? ["earlier part missing"] : [] };
-  return draftText(renderSessionText(messages), origin, { id: transcript.session, through: transcript.lastRecord });
-}
-
-/** The drafting step on one Session's extracted text: capped, drafted by one agent run, the reply parsed and checked as `write-dump` checks it. The Sweep eval runs it on fixtures. */
-export function draftText(text: string, origin: DevOrigin, session: CoveredSession): DraftOutcome {
-  try {
-    checkCoverage({ origin, swept: true, session: session.id, through: session.through });
-  } catch (error) {
-    if (error instanceof BrainDumpError) return { kind: "invalid", error: `not drafted: ${error.message}` };
-    throw error;
-  }
-  const { text: capped, truncated } = capText(text);
-  const reply = runAgent(sweepDraftPrompt(capped));
-  if (!reply.ok) return { kind: "agent-failed", error: reply.error };
-  const parsed = parseReply(reply.stdout);
-  if (parsed.kind === "no-items") return parsed;
-  if (parsed.kind === "off-contract") return { kind: "agent-failed", error: `drafting agent replied outside its output contract: ${parsed.firstLine}` };
-  const notes = [...(origin.notes ?? []), ...(truncated ? ["truncated"] : [])];
-  try {
-    return { kind: "dump", slug: parsed.slug, body: parsed.body, dump: prepareDump({ origin: { ...origin, notes }, swept: true, slug: parsed.slug, body: parsed.body, session: session.id, through: session.through }) };
-  } catch (error) {
-    if (error instanceof SecretRefusedError) return { kind: "secret", line: error.line, secretKind: error.kind };
-    if (error instanceof BrainDumpError) return { kind: "invalid", error: `invalid draft: ${error.message}` };
-    throw error;
-  }
+  return draft(renderSessionText(messages), origin, { id: transcript.session, through: transcript.lastRecord });
 }
 
 /** The Session's own place and branch, at its last record; a folder that is gone since is named as it was. */
 function sessionOrigin({ tool, cwd, branch, lastRecord }: Candidate["transcript"]): DevOrigin {
   if (!existsSync(cwd)) return { kind: "dev", tool, project: basename(cwd), location: cwd, branch, at: lastRecord };
   return { ...detectDevOrigin(tool, cwd, lastRecord), branch };
-}
-
-/** Over the cap, the head and the tail are kept. */
-export function capText(text: string): { text: string; truncated: boolean } {
-  if (text.length <= TEXT_CAP) return { text, truncated: false };
-  const half = TEXT_CAP / 2;
-  return { text: `${text.slice(0, half)}\n\n[… ${text.length - TEXT_CAP} characters left out …]\n\n${text.slice(-half)}`, truncated: true };
-}
-
-/** One tool-less, unsaved run of the pinned model, or the stub in `BRAIN_DUMP_DRAFT_AGENT`. */
-export function runAgent(prompt: string): { ok: true; stdout: string } | { ok: false; error: string } {
-  const override = process.env[AGENT_VARIABLE];
-  const command = override === undefined || override === "" ? DRAFTING_COMMAND : ["sh", "-c", override];
-  try {
-    const result = Bun.spawnSync(command, { stdin: Buffer.from(prompt), cwd: homedir(), timeout: AGENT_TIMEOUT_MS });
-    if (result.exitCode === 0) return { ok: true, stdout: result.stdout.toString() };
-    const said = (result.stderr.toString().trim() || result.stdout.toString().trim()).split("\n")[0];
-    return { ok: false, error: `drafting agent failed (${result.exitCode === null ? "timed out" : `exit ${result.exitCode}`})${said ? `: ${said}` : ""}` };
-  } catch (error) {
-    return { ok: false, error: `cannot run the drafting agent: ${error instanceof Error ? error.message : String(error)}` };
-  }
-}
-
-type Reply = { kind: "draft"; slug: string; body: string } | { kind: "no-items" } | { kind: "off-contract"; firstLine: string };
-
-/** A reply that neither starts with a `Slug:` line nor says `No Items` is the agent failing (an error printed with exit 0), not a bad draft. */
-function parseReply(stdout: string): Reply {
-  const reply = stdout.trim();
-  if (reply === NO_ITEMS_REPLY) return { kind: "no-items" };
-  const [first = "", ...rest] = reply.split("\n");
-  const slug = /^Slug:\s*(.+)$/.exec(first.trim())?.[1];
-  if (slug === undefined) return { kind: "off-contract", firstLine: first.trim() };
-  const body = rest.join("\n").trim().replace(/^```(?:markdown)?\n([\s\S]*)\n```$/, "$1");
-  return { kind: "draft", slug, body: `${body}\n` };
 }
 
 function mergeCovered(dumped: Covered, ledger: Record<string, string>): Covered {
