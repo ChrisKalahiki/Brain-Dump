@@ -80,24 +80,8 @@ const CASES: FileCase[] = [
 export const FILE_EVAL: Eval = {
   name: "file",
   model: DRAFTING_MODEL,
-  // The Dumps are built as `write-dump` builds them, and the expectations hinge on the helper's Dump parsing, near-duplicate matching, Routes, Todo
-  // Groups, Weekly Note lookup, and the dry run that renders each Item's lines and the link line.
-  inputs: [
-    "skills/file/SKILL.md",
-    "src/cli.ts",
-    "src/curated.ts",
-    "src/filing.ts",
-    "src/dump.ts",
-    "src/inbox.ts",
-    "src/duplicates.ts",
-    "src/routes.ts",
-    "src/todo-groups.ts",
-    "src/weekly.ts",
-    "evals/file.ts",
-    "evals/plan.ts",
-    "evals/agent.ts",
-    ...files(FIXTURES_PATH).map((path) => join(FIXTURES, relative(FIXTURES_PATH, path))),
-  ],
+  entries: ["src/cli.ts", "evals/file.ts"],
+  inputs: ["skills/file/SKILL.md", ...files(FIXTURES_PATH).map((path) => join(FIXTURES, relative(FIXTURES_PATH, path)))],
   cases: CASES.map((fileCase) => ({ name: fileCase.name, run: () => runCase(fileCase) })),
 };
 

@@ -50,20 +50,9 @@ const CASES: DumpCase[] = [
 export const DUMP_EVAL: Eval = {
   name: "dump",
   model: DRAFTING_MODEL,
-  // The `write-dump` checks are inputs too: the skill has to get its body past them.
-  inputs: [
-    "skills/dump/SKILL.md",
-    "skills/dump/item-rules.md",
-    "src/dump.ts",
-    "src/dump-body.ts",
-    "src/secrets.ts",
-    "src/claude-sessions.ts",
-    "src/transcript.ts",
-    "evals/dump.ts",
-    "evals/agent.ts",
-    "evals/assertions.ts",
-    ...new Set(CASES.map(({ fixture }) => `${FIXTURES}/${fixture}`)),
-  ],
+  // The skill drives `brain-dump`, so the CLI's checks are inputs too: the skill has to get its body past them.
+  entries: ["src/cli.ts", "evals/dump.ts"],
+  inputs: ["skills/dump/SKILL.md", "skills/dump/item-rules.md", ...new Set(CASES.map(({ fixture }) => `${FIXTURES}/${fixture}`))],
   cases: CASES.map((dumpCase) => ({ name: dumpCase.name, run: () => runCase(dumpCase) })),
 };
 

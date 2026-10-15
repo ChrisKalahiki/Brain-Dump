@@ -41,7 +41,7 @@ sweep-opt-out = ~/Projects/client-work, ~/Projects/secret
 
 ## Prompt evals
 
-A change to a prompt is scored before it ships: `bun run eval [name]` runs each eval's committed synthetic fixtures on the pinned model, three runs each (`--runs N` to change), and needs every run to pass its deterministic checks; a pass with fewer than three runs is not recorded. A rubric grade from the same model is printed beside the result but never gates. A passing run records the eval's input hash in `evals/passed.json`; `bun run eval:check` fails while any eval's prompts, shared rules, fixtures, checks or model have changed since. The evals:
+A change to a prompt is scored before it ships: `bun run eval [name]` runs each eval's committed synthetic fixtures on the pinned model, three runs each (`--runs N` to change), and needs every run to pass its deterministic checks; a pass with fewer than three runs is not recorded. A rubric grade from the same model is printed beside the result but never gates. A passing run records the eval's input hash in `evals/passed.json`; `bun run eval:check` fails while any eval's prompts, shared rules, fixtures or model have changed since, or any module its entry points reach through imports: the CLI for `dump`, `chat-dump` and `file`, the drafting module for `sweep`, and each eval's own file. The evals:
 
 - `sweep`: the Sweep's own drafting step on `evals/fixtures/sweep`.
 - `dump`: `/dump` at the end of a synthetic Session (`evals/fixtures/dump`), with and without a focus, writing through the helper into a sandbox Vault.
