@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { inputHash, staleEvals } from "../evals/eval.ts";
+import { EVALS, inputHash, staleEvals } from "../evals/eval.ts";
 import { checkPlan } from "../evals/plan.ts";
 
 describe("prompt evals", () => {
@@ -56,6 +56,18 @@ describe("prompt evals", () => {
 
     // #then
     expect(after !== before).toBe(changes);
+  });
+
+  // Whether a pass is fresh stays with `eval:check`; whether every eval's inputs can be found and hashed at all is checked on every commit.
+  test.each(EVALS.map(({ name, model, entries, inputs }) => [name, { model, entries, inputs }] as const))("the %s eval's inputs all resolve and hash", (_, declared) => {
+    // #given
+    const inputs = declared;
+
+    // #when
+    const hash = () => inputHash(inputs);
+
+    // #then
+    expect(hash).not.toThrow();
   });
 
   test("an eval whose inputs changed since its recorded pass is stale, naming the command to run", () => {

@@ -1,6 +1,6 @@
 ## Checks
 
-See README "Checks". Run `bun run eval:check` before opening a PR; it names the `bun run eval <name>` to rerun for each stale eval.
+See README "Checks". Run `bun run eval:check` before opening a PR; it names the `bun run eval <name>` to rerun for each stale eval. Rerun evals after `/code-review` fixes, since a fix to a hashed file makes them stale again.
 
 ## Agent skills
 
