@@ -35,7 +35,7 @@ describe("prompt evals", () => {
     ["a module imported only for its types", "types.ts", false],
     ["a module nothing imports", "unreached.ts", false],
     ["declared prose", "skill.md", true],
-  ])("an eval's input hash follows its entries' imports: does editing %s change it? %p", (_, changed, changes) => {
+  ])("an eval's input hash follows its entries' imports: editing %s changes it: %p", (_, changed, changes) => {
     // #given
     const folder = mkdtempSync(join(tmpdir(), "brain-dump-eval-"));
     const files: Record<string, string> = {

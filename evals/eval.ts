@@ -16,8 +16,8 @@ const PASSED_PATH = join(import.meta.dir, "passed.json");
 export const EVALS: Eval[] = [SWEEP_EVAL, DUMP_EVAL, CHAT_DUMP_EVAL, FILE_EVAL];
 
 /**
- * Everything that, once changed, needs a fresh pass: the pinned model, every module reached through the `entries`' imports, and the declared
- * `inputs` imports can't reach: skill prose, prompts read at runtime and fixtures. Paths are repo-relative.
+ * Everything that, once changed, needs a fresh pass: the pinned model, every module reached through the `entries`' imports, and, as `inputs`,
+ * what no import reaches: skill prose, prompts read at runtime and fixtures. Paths are repo-relative.
  */
 export type EvalInputs = { model: string; entries: string[]; inputs: string[] };
 
@@ -42,7 +42,7 @@ const transpiler = new Bun.Transpiler({ loader: "ts" });
 
 /**
  * The entries and every module they reach through relative imports, sorted. `scan` drops type-only imports, since they can't change behaviour;
- * unlike `scanImports`, it accepts the CLI's shebang.
+ * unlike `scanImports`, it accepts the CLI's shebang. Relative specifiers name their file, extension included, as everywhere in the repo.
  */
 function reachedModules(entries: string[]): string[] {
   const reached = new Set<string>();
