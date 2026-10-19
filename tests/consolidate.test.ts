@@ -194,16 +194,39 @@ describe("brain-dump consolidate", () => {
     });
   });
 
-  test("rejects stdin that isn't JSON", () => {
+  test("reads a plan written as block YAML, which a Bash command can carry without braces", () => {
+    // #given
+    const sandbox = makeSandbox();
+    writeVaultFile(sandbox, NOTE, `# Agent Skills\n${filed("A.")}`);
+    const plan = [
+      "expect:",
+      `  "${NOTE}": "${vaultFileHash(sandbox, NOTE)}"`,
+      "bullets:",
+      ...BULLETS.map((bullet) => `  - "${bullet}"`),
+      "",
+    ].join("\n");
+
+    // #when
+    const result = run(sandbox, ["consolidate", NOTE], { now: NOW, stdin: plan });
+
+    // #then
+    expect({ exitCode: result.exitCode, stderr: result.stderr, lines: JSON.parse(result.stdout || "{}").lines }).toEqual({
+      exitCode: 0,
+      stderr: "",
+      lines: ["> [!summary] Digest 10-12-26", ...BULLETS.map((bullet) => `> - ${bullet}`), "^digest-101226"],
+    });
+  });
+
+  test("rejects stdin that isn't YAML", () => {
     // #given
     const sandbox = makeSandbox();
     writeVaultFile(sandbox, NOTE, `# Agent Skills\n${filed("A.")}`);
 
     // #when
-    const result = run(sandbox, ["consolidate", NOTE], { now: NOW, stdin: "ok" });
+    const result = run(sandbox, ["consolidate", NOTE], { now: NOW, stdin: "bullets: [" });
 
     // #then
-    expect({ exitCode: result.exitCode, stderr: result.stderr }).toEqual({ exitCode: 2, stderr: "brain-dump: invalid consolidation plan: stdin is not JSON\n" });
+    expect({ exitCode: result.exitCode, stderr: result.stderr }).toEqual({ exitCode: 2, stderr: "brain-dump: invalid consolidation plan: stdin is not YAML\n" });
   });
 
   const badPlans: [string, object][] = [
