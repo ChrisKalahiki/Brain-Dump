@@ -35,9 +35,16 @@ Preview it through the helper, which writes nothing without `--confirm`:
 
 ```bash
 brain-dump consolidate "<note>" <<'PLAN'
-{ "expect": { "<note>": "<hash>" }, "bullets": ["<bullet>", "<bullet>", "<bullet>"] }
+expect:
+  "<note>": "<hash>"
+bullets:
+  - "<bullet>"
+  - "<bullet>"
+  - "<bullet>"
 PLAN
 ```
+
+Write it exactly in this form, as block YAML: every string in double quotes (a `"` or `\` inside one escaped as `\"` or `\\`), one bullet per `- ` line, and no `{` anywhere in the plan, since Claude Code asks before running a command that holds both `{` and `"`. A bullet that needs a literal `{` can't keep that rule; send it anyway, and the user is asked once to approve the command.
 
 It prints `{note, digest, supersedes, items, lines}`: the new Digest's ID, the ID of the Digest it supersedes (`null` for the first), how many filed Items it covers since that one, and `lines`, the full text exactly as it will be appended. Show the user:
 
@@ -61,7 +68,13 @@ Run the same command with `--confirm`, adding the preview's `digest` to the plan
 
 ```bash
 brain-dump consolidate "<note>" --confirm <<'PLAN'
-{ "expect": { "<note>": "<hash>" }, "bullets": ["<bullet>", "<bullet>", "<bullet>"], "digest": "<the preview's digest>" }
+expect:
+  "<note>": "<hash>"
+bullets:
+  - "<bullet>"
+  - "<bullet>"
+  - "<bullet>"
+digest: "<the preview's digest>"
 PLAN
 ```
 

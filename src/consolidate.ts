@@ -22,12 +22,13 @@ export type ConsolidationPlan = { expect: Record<string, string>; bullets: strin
 /** `lines` is the Digest exactly as appended; `run` is set once it is written. */
 export type Consolidation = { note: string; digest: string; supersedes: string | null; items: number; lines: string[]; run?: string };
 
+/** Reads a plan as YAML, as `parseFilingPlan` does, so the consolidate skill can pass it in a Bash command without braces. */
 export function parseConsolidationPlan(text: string): ConsolidationPlan {
   let value: unknown;
   try {
-    value = JSON.parse(text);
+    value = Bun.YAML.parse(text);
   } catch {
-    throw new UsageError("invalid consolidation plan: stdin is not JSON");
+    throw new UsageError("invalid consolidation plan: stdin is not YAML");
   }
   if (!isConsolidationPlan(value)) throw new UsageError(`invalid consolidation plan: ${PLAN_SHAPE}`);
   return value;
