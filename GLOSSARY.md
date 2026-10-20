@@ -28,7 +28,7 @@ The reason a Decision was made.
 _Avoid_: Justification, why
 
 **Todo**:
-An Item recording an action still to be taken.
+An action still to be taken: first an Item in a Dump, then, once filed, a checkbox in a Weekly Note's to-do section.
 _Avoid_: Task, action item
 
 **Session**:
