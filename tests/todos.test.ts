@@ -1,15 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { renderFiledItem } from "../src/curated.ts";
+import type { WeekTodos } from "../src/todo-groups.ts";
 import { makeSandbox, run, writeVaultFile, vaultFileHash } from "./harness.ts";
 
 const WEEKLY = "Research/Weekly Meetings";
 const NOTE = `${WEEKLY}/10-05-26 Weekly Update.md`;
 const DUMP = { title: "2026-10-05 1940 Brain-Dump - filing", date: "2026-10-05" };
 
-function todosOf(contents: string, date = "2026-10-08") {
+function todosOf(contents: string): WeekTodos {
   const sandbox = makeSandbox();
   writeVaultFile(sandbox, NOTE, contents);
-  return JSON.parse(run(sandbox, ["todos", "--date", date]).stdout);
+  return JSON.parse(run(sandbox, ["todos", "--date", "2026-10-08"]).stdout);
 }
 
 describe("brain-dump todos", () => {
@@ -64,7 +65,7 @@ describe("brain-dump todos", () => {
     const output = todosOf("# To-Do:\n- [ ] a\n- [x] b\n- [X] c\n- [-] d\n- [/] e\n- [>] f\n");
 
     // #then
-    expect(output.todos.map(({ text, state }: { text: string; state: string }) => [text, state])).toEqual([
+    expect(output.todos.map(({ text, state }) => [text, state])).toEqual([
       ["a", "open"],
       ["b", "done"],
       ["c", "done"],
@@ -79,7 +80,7 @@ describe("brain-dump todos", () => {
     const output = todosOf("# To-Do:\n- [ ] #todo Read [[Paper]] #reading\n- [ ] Ship #todo [it](https://example.com)\n- [ ] No tag here\n");
 
     // #then
-    expect(output.todos.map(({ text }: { text: string }) => text)).toEqual(["Read [[Paper]] #reading", "Ship [it](https://example.com)", "No tag here"]);
+    expect(output.todos.map(({ text }) => text)).toEqual(["Read [[Paper]] #reading", "Ship [it](https://example.com)", "No tag here"]);
   });
 
   test("leaves out an empty checkbox, such as the Weekly Template's placeholder", () => {
@@ -148,5 +149,16 @@ describe("brain-dump todos", () => {
 
     // #then
     expect([result.exitCode, result.stderr]).toEqual([2, "brain-dump: --date is required\n"]);
+  });
+
+  test("rejects a date that is not YYYY-MM-DD", () => {
+    // #given
+    const sandbox = makeSandbox();
+
+    // #when
+    const result = run(sandbox, ["todos", "--date", "10/08/26"]);
+
+    // #then
+    expect([result.exitCode, result.stderr]).toEqual([2, 'brain-dump: --date "10/08/26" is not a YYYY-MM-DD date\n']);
   });
 });

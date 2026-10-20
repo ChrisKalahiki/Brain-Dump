@@ -28,8 +28,13 @@ export type WeekGroups = {
   lastWeek: { note: string; groups: TodoGroup[] } | null;
 };
 
+export type TodoState = "open" | "done" | "dropped";
+
+/** Marks other than these read as open, so a theme's extra marks never hide a Todo. */
+const TODO_STATES: Record<string, TodoState> = { x: "done", X: "done", "-": "dropped" };
+
 /** A checkbox bullet in a Weekly Note's to-do section; `parentIndex` points into the same list, `line` is 1-based. */
-export type Todo = { text: string; state: "open" | "done" | "dropped"; groupPath: GroupPath; parentIndex: number | null; line: number };
+export type Todo = { text: string; state: TodoState; groupPath: GroupPath; parentIndex: number | null; line: number };
 
 export type WeekTodos = { note: string; exists: boolean; hash: string | null; todos: Todo[] };
 
@@ -58,7 +63,7 @@ function noteGroups(contents: string): TodoGroup[] {
   return walkNote(contents)?.root.children.map(toTree) ?? [];
 }
 
-function walkNote(contents: string): ReturnType<typeof walkSection> | undefined {
+function walkNote(contents: string): TodoSection | undefined {
   const lines = contents.split(/\r?\n/);
   const section = findSection(lines, TODO_SECTION);
   return section && walkSection(lines, section.start, section.end);
@@ -69,14 +74,19 @@ export function parseTodoGroups(lines: string[], start: number, end: number): Gr
   return walkSection(lines, start, end).root;
 }
 
+type TodoSection = { root: GroupNode; todos: Todo[] };
+
+/** An open bullet while walking a section: a Todo Group, or a bullet under `todoOf`, which may itself be the Todo at `todoIndex`. */
+type Frame = { level: number; group?: GroupNode; todoOf?: GroupNode; todoIndex?: number };
+
 /**
  * Walks a to-do section once, finding its Todo Groups and its Todos: a Todo is a checkbox bullet at any depth,
- * parented to the nearest Todo it sits under, through any plain note bullets between them.
+ * parented to the nearest Todo it sits under, through any plain bullets between them.
  */
-function walkSection(lines: string[], start: number, end: number): { root: GroupNode; todos: Todo[] } {
+function walkSection(lines: string[], start: number, end: number): TodoSection {
   const root: GroupNode = { name: "", line: start, level: -1, children: [], todoEnd: start + 1, blockEnd: start + 1 };
   const todos: Todo[] = [];
-  const stack: { level: number; group?: GroupNode; todoOf?: GroupNode; todo?: number }[] = [];
+  const stack: Frame[] = [];
   for (let index = start + 1; index < end; index++) {
     const line = lines[index] ?? "";
     if (line.trim() === "") continue;
@@ -92,9 +102,9 @@ function walkSection(lines: string[], start: number, end: number): { root: Group
         parent.children.push(group);
         stack.push({ level, group });
       } else {
-        const todo = checkbox ? todoAt(stack, checkbox[1] ?? " ", content.slice(checkbox[0].length), index) : undefined;
-        if (todo) todos.push(todo);
-        stack.push({ level, todoOf: parent, todo: todo && todos.length - 1 });
+        const todo = checkbox ? todoFromCheckbox(stack, checkbox[1] ?? " ", content.slice(checkbox[0].length), index) : undefined;
+        const todoIndex = todo === undefined ? undefined : todos.push(todo) - 1;
+        stack.push({ level, todoOf: parent, todoIndex });
       }
     }
     root.blockEnd = index + 1;
@@ -107,14 +117,14 @@ function walkSection(lines: string[], start: number, end: number): { root: Group
 }
 
 /** The Todo a checkbox bullet holds, or none for an empty one such as the Weekly Template's placeholder. */
-function todoAt(stack: { group?: GroupNode; todo?: number }[], mark: string, after: string, index: number): Todo | undefined {
-  const text = withoutTodoTag(after);
+function todoFromCheckbox(stack: Frame[], mark: string, textAfterMark: string, index: number): Todo | undefined {
+  const text = withoutTodoTag(textAfterMark);
   if (text === "") return undefined;
   return {
     text,
-    state: mark === "x" || mark === "X" ? "done" : mark === "-" ? "dropped" : "open",
+    state: TODO_STATES[mark] ?? "open",
     groupPath: stack.flatMap(({ group }) => (group ? [group.name] : [])),
-    parentIndex: stack.findLast(({ todo }) => todo !== undefined)?.todo ?? null,
+    parentIndex: stack.findLast(({ todoIndex }) => todoIndex !== undefined)?.todoIndex ?? null,
     line: index + 1,
   };
 }
