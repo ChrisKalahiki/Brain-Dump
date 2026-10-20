@@ -45,10 +45,15 @@ export function curatedBullets(lines: string[]): CuratedBullet[] {
 
 /** The lines Filing appends for an Item from the Dump `dump`; `text` is the Item's own wording or the user's edit of it. */
 export function renderFiledItem({ kind, text, rationale }: { kind: ItemKind; text: string; rationale: string | null }, dump: { title: string; date: string }): string[] {
-  if (kind === "Todo") return [`- [ ] ${text.replace(EVERY_TODO_TAG, "").trim()} #todo`];
+  if (kind === "Todo") return [`- [ ] ${withoutTodoTag(text)} #todo`];
   const [year = "", month = "", day = ""] = dump.date.split("-");
   const from = `\t- From [[${dump.title}|dump ${month}-${day}-${year.slice(-2)}]]`;
   return kind === "Decision" ? [`- ${text}`, `\t- Why: ${rationale}`, from] : [`- ${text}`, from];
+}
+
+/** A Todo's text with every `#todo` removed wherever it stands, as Filing writes it before adding its own at the end. */
+export function withoutTodoTag(text: string): string {
+  return text.replace(EVERY_TODO_TAG, "").trim();
 }
 
 /** A Weekly Note's link to a Dump Filing finished, aliased by its label and slug. */

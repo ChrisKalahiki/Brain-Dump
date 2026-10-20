@@ -17,7 +17,7 @@ import { readRoutesNote } from "./routes.ts";
 import { listRuns } from "./runs.ts";
 import { showNote } from "./show.ts";
 import { lastSweep, sweep } from "./sweep.ts";
-import { readTodoGroups } from "./todo-groups.ts";
+import { readTodoGroups, readTodos } from "./todo-groups.ts";
 import { findVault, locateVault } from "./vault.ts";
 import { undoRun } from "./undo.ts";
 import { findWeeklyNote } from "./weekly.ts";
@@ -61,6 +61,12 @@ async function main(argv: string[]): Promise<number> {
       const { date } = parseOptions(rest, { date: { type: "string" } });
       if (date === undefined) throw new UsageError("--date is required");
       writeJson(readTodoGroups(locateVault(), date));
+      return 0;
+    }
+    case "todos": {
+      const { date } = parseOptions(rest, { date: { type: "string" } });
+      if (date === undefined) throw new UsageError("--date is required");
+      writeJson(readTodos(locateVault(), date));
       return 0;
     }
     case "apply": {

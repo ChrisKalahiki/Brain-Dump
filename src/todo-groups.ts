@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { readHashed } from "./content-hash.ts";
+import { withoutTodoTag } from "./curated.ts";
 import { findSection } from "./sections.ts";
 import type { Vault } from "./vault.ts";
 import { findPreviousWeeklyNote, locateWeeklyNote } from "./weekly.ts";
@@ -8,7 +9,7 @@ import { findPreviousWeeklyNote, locateWeeklyNote } from "./weekly.ts";
 const TODO_SECTION = "# To-Do:";
 const PATH_SEPARATOR = " › ";
 const BULLET = /^[-*+] (.*)$/;
-const CHECKBOX = /^\[.\]/;
+const CHECKBOX = /^\[(.)\]/;
 
 export type TodoGroup = { name: string; children: TodoGroup[] };
 
@@ -27,6 +28,17 @@ export type WeekGroups = {
   lastWeek: { note: string; groups: TodoGroup[] } | null;
 };
 
+/** A checkbox bullet in a Weekly Note's to-do section; `parentIndex` points into the same list, `line` is 1-based. */
+export type Todo = { text: string; state: "open" | "done" | "dropped"; groupPath: GroupPath; parentIndex: number | null; line: number };
+
+export type WeekTodos = { note: string; exists: boolean; hash: string | null; todos: Todo[] };
+
+export function readTodos(vault: Vault, isoDate: string): WeekTodos {
+  const week = locateWeeklyNote(vault, isoDate);
+  const read = week.exists ? readHashed(join(vault.root, week.note)) : undefined;
+  return { note: week.note, exists: week.exists, hash: read?.hash ?? null, todos: read === undefined ? [] : walkNote(read.contents)?.todos ?? [] };
+}
+
 export function readTodoGroups(vault: Vault, isoDate: string): WeekGroups {
   const thisWeek = locateWeeklyNote(vault, isoDate);
   const previous = findPreviousWeeklyNote(vault, isoDate);
@@ -43,15 +55,28 @@ function readNoteGroups(vault: Vault, note: string): TodoGroup[] {
 }
 
 function noteGroups(contents: string): TodoGroup[] {
+  return walkNote(contents)?.root.children.map(toTree) ?? [];
+}
+
+function walkNote(contents: string): ReturnType<typeof walkSection> | undefined {
   const lines = contents.split(/\r?\n/);
   const section = findSection(lines, TODO_SECTION);
-  return section === undefined ? [] : parseTodoGroups(lines, section.start, section.end).children.map(toTree);
+  return section && walkSection(lines, section.start, section.end);
 }
 
 /** Reads the Todo Groups between a section heading at `start` and the section's `end`: a group is a plain bullet whose parent is the section or another group. */
 export function parseTodoGroups(lines: string[], start: number, end: number): GroupNode {
+  return walkSection(lines, start, end).root;
+}
+
+/**
+ * Walks a to-do section once, finding its Todo Groups and its Todos: a Todo is a checkbox bullet at any depth,
+ * parented to the nearest Todo it sits under, through any plain note bullets between them.
+ */
+function walkSection(lines: string[], start: number, end: number): { root: GroupNode; todos: Todo[] } {
   const root: GroupNode = { name: "", line: start, level: -1, children: [], todoEnd: start + 1, blockEnd: start + 1 };
-  const stack: { level: number; group?: GroupNode; todoOf?: GroupNode }[] = [];
+  const todos: Todo[] = [];
+  const stack: { level: number; group?: GroupNode; todoOf?: GroupNode; todo?: number }[] = [];
   for (let index = start + 1; index < end; index++) {
     const line = lines[index] ?? "";
     if (line.trim() === "") continue;
@@ -61,12 +86,15 @@ export function parseTodoGroups(lines: string[], start: number, end: number): Gr
     if (bullet) {
       const parent = stack.length === 0 ? root : stack.at(-1)?.group;
       const content = (bullet[1] ?? "").trim();
-      if (parent !== undefined && content !== "" && !CHECKBOX.test(content)) {
+      const checkbox = CHECKBOX.exec(content);
+      if (parent !== undefined && content !== "" && !checkbox) {
         const group = { name: content, line: index, level, children: [], todoEnd: index + 1, blockEnd: index + 1 };
         parent.children.push(group);
         stack.push({ level, group });
       } else {
-        stack.push({ level, todoOf: parent });
+        const todo = checkbox ? todoAt(stack, checkbox[1] ?? " ", content.slice(checkbox[0].length), index) : undefined;
+        if (todo) todos.push(todo);
+        stack.push({ level, todoOf: parent, todo: todo && todos.length - 1 });
       }
     }
     root.blockEnd = index + 1;
@@ -75,7 +103,20 @@ export function parseTodoGroups(lines: string[], start: number, end: number): Gr
       if (todoOf) todoOf.todoEnd = index + 1;
     }
   }
-  return root;
+  return { root, todos };
+}
+
+/** The Todo a checkbox bullet holds, or none for an empty one such as the Weekly Template's placeholder. */
+function todoAt(stack: { group?: GroupNode; todo?: number }[], mark: string, after: string, index: number): Todo | undefined {
+  const text = withoutTodoTag(after);
+  if (text === "") return undefined;
+  return {
+    text,
+    state: mark === "x" || mark === "X" ? "done" : mark === "-" ? "dropped" : "open",
+    groupPath: stack.flatMap(({ group }) => (group ? [group.name] : [])),
+    parentIndex: stack.findLast(({ todo }) => todo !== undefined)?.todo ?? null,
+    line: index + 1,
+  };
 }
 
 /** Where a path leads in a parsed section: to a group, to the first `depth` with no match (under `parent`), or to a `depth` that matches several bullets. */
