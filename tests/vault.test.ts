@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { makeSandbox, run, writeConfig } from "./harness.ts";
 
 describe("brain-dump vault", () => {
-  test("finds the Vault at ~/Documents/The Vault by default", () => {
+  test("finds the Vault at ~/The Vault by default", () => {
     // #given
     const sandbox = makeSandbox();
 

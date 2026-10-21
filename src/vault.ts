@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { BrainDumpError, describeFsError } from "./errors.ts";
 import { INBOX } from "./layout.ts";
 
-const DEFAULT_VAULT = join("Documents", "The Vault");
+const DEFAULT_VAULT = "The Vault";
 
 export type Vault = {
   root: string;
