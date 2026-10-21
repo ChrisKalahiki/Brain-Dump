@@ -16,7 +16,7 @@ export type Sandbox = {
 export function makeSandbox(): Sandbox {
   // Resolved, so HOME matches the paths git reports where the temp folder sits behind a symlink, as /var does on macOS.
   const home = realpathSync(mkdtempSync(join(tmpdir(), "brain-dump-test-")));
-  const vault = join(home, "Documents", "The Vault");
+  const vault = join(home, "The Vault");
   mkdirSync(join(vault, ".obsidian"), { recursive: true });
   return { home, vault };
 }

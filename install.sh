@@ -156,7 +156,6 @@ offer_launchd_timer() {
 EOF
   if launchctl bootstrap "$domain" "$plist"; then
     echo "installed the daily Sweep as $plist; its errors go to $state/sweep.log"
-    echo "macOS may ask once to let bun reach the Documents folder when it first runs."
   else
     rm -f "$plist"
     echo "brain-dump install: launchctl could not load $plist; the daily Sweep is not installed" >&2
@@ -227,12 +226,10 @@ cat <<EOF
 
 Manual steps (one-time):
 - Make sure ~/.local/bin is on your PATH.
-- macOS: give your terminal app access to the Documents folder
-  (System Settings > Privacy & Security > Files and Folders).
 - Chat capture: paste $repo/prompts/chat-dump.md into a Claude Project's
   instructions (or into ChatGPT / Gemini when needed), then hand its output
   to "dump --paste".
 - "dump <chat URL>" (Claude Code only) needs the Claude in Chrome extension.
-- The Vault defaults to ~/Documents/The Vault. To use another path, put
+- The Vault defaults to ~/The Vault. To use another path, put
   "vault = <path>" in ~/.config/brain-dump/config.
 EOF
