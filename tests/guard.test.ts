@@ -40,13 +40,13 @@ describe("guard on file tools", () => {
     ["Grep with no path, run from inside the Vault", "Grep", ({ vault }) => ({ input: { pattern: "x" }, cwd: join(vault, "Inbox"), target: join(vault, "Inbox") })],
     ["Glob with no path, run from the Vault root", "Glob", ({ vault }) => ({ input: { pattern: "**/*.md" }, cwd: vault, target: vault })],
     ["Glob with an absolute pattern into the Vault", "Glob", ({ vault }) => ({ input: { pattern: join(vault, "**", "*.md") }, target: vault })],
-    ["Read with a path relative to cwd", "Read", ({ home, vault }) => ({ input: { file_path: "Documents/The Vault/N.md" }, cwd: home, target: join(vault, "N.md") })],
+    ["Read with a path relative to cwd", "Read", ({ home, vault }) => ({ input: { file_path: "The Vault/N.md" }, cwd: home, target: join(vault, "N.md") })],
     ["Read with a ..-path climbing back into the Vault", "Read", ({ vault }) => ({ input: { file_path: join(vault, "..", "The Vault", "N.md") }, target: join(vault, "N.md") })],
     [
       "Read through a symlink to the Vault",
       "Read",
       ({ home }) => {
-        symlinkSync(join(home, "Documents", "The Vault"), join(home, "notes"));
+        symlinkSync(join(home, "The Vault"), join(home, "notes"));
         return { input: { file_path: join(home, "notes", "N.md") }, target: join(home, "notes", "N.md") };
       },
     ],
@@ -70,8 +70,8 @@ describe("guard on file tools", () => {
       "Read in a sibling folder whose name starts with the Vault's",
       "Read",
       ({ home }) => {
-        mkdirSync(join(home, "Documents", "The Vault 2"));
-        return { input: { file_path: join(home, "Documents", "The Vault 2", "N.md") } };
+        mkdirSync(join(home, "The Vault 2"));
+        return { input: { file_path: join(home, "The Vault 2", "N.md") } };
       },
     ],
     ["Grep with no path, run outside the Vault", "Grep", ({ home }) => ({ input: { pattern: "Vault" }, cwd: home })],
@@ -94,11 +94,11 @@ describe("guard on file tools", () => {
 
 describe("guard on shell tools", () => {
   const MENTION = "Vault mention in command";
-  const NOTE = "~/Documents/The\\ Vault/N.md";
+  const NOTE = "~/The\\ Vault/N.md";
 
   const denied: [string, string, string][] = [
     ["a backslash-escaped Vault path", "Bash", `cat ${NOTE}`],
-    ["a double-quoted Vault path", "Bash", 'ls "$HOME/Documents/The Vault"'],
+    ["a double-quoted Vault path", "Bash", 'ls "$HOME/The Vault"'],
     ["a single-quoted Vault folder name", "Bash", "grep -r todo 'The Vault'"],
     ["the Vault name in another case", "Bash", "ls ~/documents/the\\ vault"],
     ["a brain-dump call chained with ;", "Bash", `brain-dump recall x; rm ${NOTE}`],
@@ -111,8 +111,8 @@ describe("guard on shell tools", () => {
     ["a brain-dump call redirected", "Bash", `brain-dump vault > ${NOTE}`],
     ["a brain-dump call reading a redirect", "Bash", `brain-dump apply < ${NOTE}`],
     ["a second command on the next line", "Bash", `brain-dump vault\ncat ${NOTE}`],
-    ["a cd into the Vault before brain-dump", "Bash", "cd ~/Documents/The\\ Vault && brain-dump recall x"],
-    ["an unquoted heredoc", "Bash", "brain-dump write-dump --tool ClaudeCode --slug s <<EOF\n$(cat ~/Documents/The\\ Vault/N.md)\nEOF"],
+    ["a cd into the Vault before brain-dump", "Bash", "cd ~/The\\ Vault && brain-dump recall x"],
+    ["an unquoted heredoc", "Bash", "brain-dump write-dump --tool ClaudeCode --slug s <<EOF\n$(cat ~/The\\ Vault/N.md)\nEOF"],
     ["two heredocs", "Bash", "brain-dump apply <<'A' <<'B'\nThe Vault\nA\nx\nB"],
     ["a command after the heredoc's end", "Bash", `brain-dump apply <<'EOF'\n{}\nEOF\nrm ${NOTE}`],
     ["a heredoc that never ends", "Bash", "brain-dump apply <<'EOF'\nThe Vault"],
@@ -121,7 +121,7 @@ describe("guard on shell tools", () => {
     ["a zsh process substitution", "Bash", `brain-dump show =(cp ${NOTE} /tmp/x)`],
     ["a zsh glob qualifier", "Bash", `brain-dump show ${NOTE}(e:'rm -rf ~':)`],
     ["a zsh evaluating expansion", "Bash", `brain-dump show "\${(e)x}" ${NOTE}`],
-    ["a command that isn't brain-dump", "PowerShell", 'Get-Content "~/Documents/The Vault/N.md"'],
+    ["a command that isn't brain-dump", "PowerShell", 'Get-Content "~/The Vault/N.md"'],
   ];
 
   test.each(denied)("denies %s", (_, tool, command) => {
@@ -182,11 +182,11 @@ describe("guard on Codex apply_patch", () => {
       ({ home, vault }) => ({ command: patch(`*** Update File: ${join(home, "x.md")}`, `*** Move to: ${join(vault, "x.md")}`, "@@", "-a", "+b"), target: join(vault, "x.md") }),
     ],
     ["a marker line with surrounding whitespace", ({ vault }) => ({ command: patch(`  *** Add File: ${join(vault, "N.md")}  `, "+x"), target: join(vault, "N.md") })],
-    ["a path relative to cwd", ({ home, vault }) => ({ command: patch("*** Add File: Documents/The Vault/N.md", "+x"), cwd: home, target: join(vault, "N.md") })],
+    ["a path relative to cwd", ({ home, vault }) => ({ command: patch("*** Add File: The Vault/N.md", "+x"), cwd: home, target: join(vault, "N.md") })],
     [
       "a relative path through a symlink to the Vault",
       ({ home }) => {
-        symlinkSync(join(home, "Documents", "The Vault"), join(home, "notes"));
+        symlinkSync(join(home, "The Vault"), join(home, "notes"));
         return { command: patch("*** Add File: notes/N.md", "+x"), cwd: home, target: join(home, "notes", "N.md") };
       },
     ],
@@ -262,7 +262,7 @@ describe("guard on input it can't read", () => {
     const sandbox = makeSandbox();
 
     // #when
-    const result = guardRaw(sandbox, '{"tool_input": {"file_path": "~/Documents/The Vault/N.md"}}');
+    const result = guardRaw(sandbox, '{"tool_input": {"file_path": "~/The Vault/N.md"}}');
 
     // #then
     expect(result).toEqual(blocked("unknown tool", "Vault mention in hook input (guard error: hook input has no tool_name)"));

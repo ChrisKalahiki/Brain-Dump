@@ -24,7 +24,7 @@ export type SkillSandbox = { home: string; vault: string; project: string; path:
 
 export function makeSkillSandbox(skills: string[], project = "harbor"): SkillSandbox {
   const home = makeEvalFolder();
-  const vault = join(home, "Documents", "The Vault");
+  const vault = join(home, "The Vault");
   mkdirSync(join(vault, ".obsidian"), { recursive: true });
   const projectDir = join(home, "Projects", project);
   mkdirSync(join(projectDir, ".claude", "skills"), { recursive: true });
