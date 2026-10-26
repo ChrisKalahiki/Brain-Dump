@@ -5,17 +5,22 @@
     "model": "claude-sonnet-5-5"
   },
   "dump": {
-    "hash": "76ed8f2edd65942b",
+    "hash": "6d90e178593742d1",
     "date": "2026-10-26",
     "model": "claude-sonnet-5-5"
   },
   "chat-dump": {
-    "hash": "1acc32d60d42bd2d",
+    "hash": "4dd9fbc281b86049",
     "date": "2026-10-26",
     "model": "claude-sonnet-5-5"
   },
   "file": {
     "hash": "28dcd889cdd3af73",
+    "date": "2026-10-26",
+    "model": "claude-sonnet-5-5"
+  },
+  "todo": {
+    "hash": "86c2eedc4dffbe79",
     "date": "2026-10-26",
     "model": "claude-sonnet-5-5"
   }
