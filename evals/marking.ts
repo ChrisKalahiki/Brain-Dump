@@ -1,18 +1,18 @@
+import { STATES } from "../src/mark-todos.ts";
 import type { TodoState } from "../src/todo-groups.ts";
 
 // The `todo` eval's gate: the Todos the skill proposes to mark, offers to mark along with them, or lists as candidates when it must ask, each read
 // from a `<line> · <group path> · <text>` row under the Weekly Note's title.
 
-export type ExpectedTodo = { note: string; line: number; state?: TodoState };
+export type MarkedTodo = { note: string; line: number; state?: TodoState };
 
 /** `proposed` rows start `-` and end `→ <state>`; `offered` ones, a parent's open sub-todos, start `+`; `candidates` have no state. */
-export type ExpectedMarking = { proposed: ExpectedTodo[]; offered: ExpectedTodo[]; candidates: ExpectedTodo[] };
+export type Marking = { proposed: MarkedTodo[]; offered: MarkedTodo[]; candidates: MarkedTodo[] };
 
-type Kind = keyof ExpectedMarking;
+type Kind = keyof Marking;
 
-const ROW = /^\s*([-*+])\s+(\d+)\s*·.*?(?:→\s*(open|done|dropped)\b.*)?$/;
+const ROW = new RegExp(`^\\s*([-*+])\\s+(\\d+)\\s*·.*?(?:→\\s*(${STATES.join("|")})\\b.*)?$`);
 const NOTE = /(\d{2}-\d{2}-\d{2} Weekly Update)/;
-const STATES: TodoState[] = ["open", "done", "dropped"];
 const KINDS: Kind[] = ["proposed", "offered", "candidates"];
 const VERBS: Record<Kind, [string, string]> = {
   proposed: ["proposed", "did not propose"],
@@ -21,7 +21,7 @@ const VERBS: Record<Kind, [string, string]> = {
 };
 
 /** Every way the reply misses `expected`, unexpected rows before missing ones within each kind; empty when it matches. */
-export function checkMarking(reply: string, expected: ExpectedMarking): string[] {
+export function checkMarking(reply: string, expected: Marking): string[] {
   const found = parseRows(reply);
   return KINDS.flatMap((kind) => {
     const want = new Set(expected[kind].map(describe));
@@ -34,8 +34,8 @@ export function checkMarking(reply: string, expected: ExpectedMarking): string[]
   });
 }
 
-function parseRows(reply: string): ExpectedMarking {
-  const rows: ExpectedMarking = { proposed: [], offered: [], candidates: [] };
+function parseRows(reply: string): Marking {
+  const rows: Marking = { proposed: [], offered: [], candidates: [] };
   let note = "";
   for (const raw of reply.split("\n")) {
     // Markup is dropped first: a row sometimes comes wrapped in backticks.
@@ -47,13 +47,12 @@ function parseRows(reply: string): ExpectedMarking {
     }
     const [, bullet, number, mark] = row;
     const state = STATES.find((candidate) => candidate === mark);
-    const todo = { note, line: Number(number), ...(state === undefined ? {} : { state }) };
-    if (state === undefined) rows.candidates.push(todo);
-    else rows[bullet === "+" ? "offered" : "proposed"].push(todo);
+    if (state === undefined) rows.candidates.push({ note, line: Number(number) });
+    else rows[bullet === "+" ? "offered" : "proposed"].push({ note, line: Number(number), state });
   }
   return rows;
 }
 
-function describe({ note, line, state }: ExpectedTodo): string {
+function describe({ note, line, state }: MarkedTodo): string {
   return `${note} line ${line}${state === undefined ? "" : ` → ${state}`}`;
 }

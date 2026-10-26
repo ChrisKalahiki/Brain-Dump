@@ -8,7 +8,7 @@ import { locateWeeklyNote } from "./weekly.ts";
 
 // Marking (ADR 0011): the one change in place a Curated Note allows, a Todo's checkbox mark, as one Run.
 
-const STATES: TodoState[] = ["open", "done", "dropped"];
+export const STATES: TodoState[] = ["open", "done", "dropped"];
 const MARKS: Record<TodoState, string> = { open: " ", done: "x", dropped: "-" };
 const MARK = /^([ \t]*[-*+] \[)./;
 

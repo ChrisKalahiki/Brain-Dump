@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inputHash, staleEvals } from "../evals/eval.ts";
-import { checkMarking, type ExpectedMarking } from "../evals/marking.ts";
+import { checkMarking, type Marking } from "../evals/marking.ts";
 import { checkPlan } from "../evals/plan.ts";
 
 describe("prompt evals", () => {
@@ -99,7 +99,7 @@ Which one did you mean?
 
 Reply: ok · ok all · cancel`;
 
-  const EXPECTED: ExpectedMarking = {
+  const EXPECTED: Marking = {
     proposed: [
       { note: "10-26-26 Weekly Update", line: 9, state: "done" },
       { note: "10-19-26 Weekly Update", line: 6, state: "dropped" },
@@ -115,8 +115,11 @@ Reply: ok · ok all · cancel`;
   };
 
   test("passes a reply whose proposed, offered and candidate Todos are exactly the expected ones, each under its note", () => {
+    // #given
+    const reply = REPLY;
+
     // #when
-    const failures = checkMarking(REPLY, EXPECTED);
+    const failures = checkMarking(reply, EXPECTED);
 
     // #then
     expect(failures).toEqual([]);

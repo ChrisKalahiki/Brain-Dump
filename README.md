@@ -47,7 +47,6 @@ A change to a prompt is scored before it ships: `bun run eval [name]` runs each 
 - `dump`: `/dump` at the end of a synthetic Session (`evals/fixtures/dump`), with and without a focus, writing through the helper into a sandbox Vault.
 - `chat-dump`: `prompts/chat-dump.md` as a chat's instructions, then "dump", on synthetic chats (`evals/fixtures/chat-dump`); the reply is read as `dump --paste` reads it.
 - `file`: `/file` with only `Bash(brain-dump:*)` on a fixture Vault (`evals/fixtures/file`), one Dump per case: a Routine plan, a NEW note, a NEW Todo Group, a `≈` match, and a link line to a NEW Weekly Note. No reply is sent; each Item's destination and marks are read from the plan, and any change to the Vault fails the run.
-
 - `todo`: `/todo` with what the user says, on a fixture Vault with this week's and last week's Weekly Notes (`evals/fixtures/todo`): one matching Todo, two equally matching ones, a parent with open sub-todos, and a Todo open only in last week's note. No reply is sent; the Todos proposed, offered and listed as candidates are read from the reply, and any change to the Vault fails the run.
 
 `dump`, `chat-dump`, `file` and `todo` run Claude Code headless with only the repo's skills (`--setting-sources project`). `dump` and `chat-dump` resume their synthetic Session from a log written to `~/.claude/projects` and removed after the run.

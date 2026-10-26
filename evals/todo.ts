@@ -2,9 +2,10 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DRAFTING_MODEL } from "../src/drafting.ts";
 import { INBOX, WEEKLY_FOLDER } from "../src/layout.ts";
+import type { TodoState } from "../src/todo-groups.ts";
 import { makeSkillSandbox, removeSkillSandbox, runClaude } from "./agent.ts";
 import type { CaseResult, Eval } from "./eval.ts";
-import { checkMarking, type ExpectedMarking } from "./marking.ts";
+import { checkMarking, type Marking } from "./marking.ts";
 import { changedFiles, daysBefore, snapshot, weeklyTitle } from "./sandbox-vault.ts";
 
 // `todo` up to its proposal: `/todo` with what the user says and only the helper's commands, on a Vault holding this week's and last week's Weekly
@@ -18,7 +19,7 @@ const NOTES: Record<Week, string> = { thisWeek: "this-week.md", lastWeek: "last-
 const WEEKS: Week[] = ["thisWeek", "lastWeek"];
 
 /** A Todo by its week and its text in that week's fixture, so the expected line follows the fixture; a text listed twice is its next match. */
-type FixtureTodo = { week: Week; text: string; state?: "done" };
+type FixtureTodo = { week: Week; text: string; state?: TodoState };
 
 type TodoCase = { name: string; says: string; proposed?: FixtureTodo[]; offered?: FixtureTodo[]; candidates?: FixtureTodo[] };
 
@@ -76,7 +77,7 @@ async function runCase(todoCase: TodoCase): Promise<CaseResult> {
   }
 }
 
-function expectedMarking({ proposed = [], offered = [], candidates = [] }: TodoCase, titles: Record<Week, string>): ExpectedMarking {
+function expectedMarking({ proposed = [], offered = [], candidates = [] }: TodoCase, titles: Record<Week, string>): Marking {
   const resolve = (todos: FixtureTodo[]) => {
     const seen = new Map<string, number>();
     return todos.map(({ week, text, state }) => {
