@@ -6,6 +6,7 @@ import { DUMP_EVAL } from "./dump.ts";
 import { FILE_EVAL } from "./file.ts";
 import type { Grade } from "./rubric.ts";
 import { SWEEP_EVAL } from "./sweep.ts";
+import { TODO_EVAL } from "./todo.ts";
 
 // Prompt evals score a prompt against committed synthetic fixtures on the pinned model, by hand with `bun run eval`; `bun run eval:check`
 // checks each one passed against its current inputs.
@@ -13,7 +14,7 @@ import { SWEEP_EVAL } from "./sweep.ts";
 const ROOT = join(import.meta.dir, "..");
 const PASSED_PATH = join(import.meta.dir, "passed.json");
 
-export const EVALS: Eval[] = [SWEEP_EVAL, DUMP_EVAL, CHAT_DUMP_EVAL, FILE_EVAL];
+export const EVALS: Eval[] = [SWEEP_EVAL, DUMP_EVAL, CHAT_DUMP_EVAL, FILE_EVAL, TODO_EVAL];
 
 /**
  * Everything that, once changed, needs a fresh pass: the pinned model, every module reached through the `entries`' imports, and, as `inputs`,
