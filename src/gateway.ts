@@ -1,8 +1,8 @@
 import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, relative, sep } from "node:path";
-import { appendOnlyViolation, checkboxOnlyViolation, type ClosedMark, type Violation } from "./append-only.ts";
+import { appendOnlyViolation, checkboxOnlyViolation, todoMarkViolation, type ClosedMark, type Violation } from "./append-only.ts";
 import { BrainDumpError, describeFsError, errnoCode } from "./errors.ts";
-import { FILED_FOLDER, INBOX, ROUTES_NOTE, WRITE_ALLOWLIST } from "./layout.ts";
+import { FILED_FOLDER, INBOX, ROUTES_NOTE, WEEKLY_FOLDER, WRITE_ALLOWLIST } from "./layout.ts";
 import { discardRun, finishRun, sha256, startRun, type Change, type RunInfo } from "./runs.ts";
 import type { Vault } from "./vault.ts";
 
@@ -10,12 +10,14 @@ import type { Vault } from "./vault.ts";
 
 /**
  * One file in a commit: a new file, an append to an existing note, a Dump whose planned Items (by 0-based line) close and which may move to `Inbox/Filed`,
+ * a Weekly Note whose named Todos (by 0-based line) change their mark (ADR 0011),
  * or a revert of one file a Run touched, from the hash it `left` back to its `before` hash and contents (ADR 0006). A `null` hash or contents means no file.
  */
 export type Write =
   | { mode: "create"; path: string; contents: string }
   | { mode: "append"; path: string; contents: string }
   | { mode: "file-dump"; path: string; contents: string; planned: ReadonlyMap<number, ClosedMark>; moveTo?: string }
+  | { mode: "todo-mark"; path: string; contents: string; lines: ReadonlySet<number> }
   | { mode: "revert"; path: string; left: string | null; before: string | null; contents: string | null };
 
 /** Automation may only create new Dumps in the Inbox; everything else needs a plan the user approved (ADR 0004). */
@@ -86,6 +88,7 @@ function checkRules(vault: Vault, actor: Actor, write: Write): void {
   if (write.mode === "file-dump" ? !isDumpFiling(vault, write) : inTree(name, INBOX) && name !== ROUTES_NOTE) {
     throw new WriteRefusedError(`${name} is in the Inbox, which a plan changes only through its own Dump and the Routes note`);
   }
+  if (write.mode === "todo-mark" && dirname(name) !== WEEKLY_FOLDER) throw new WriteRefusedError(`${name} is not a Weekly Note, so its Todos can't be marked`);
 }
 
 function checkPlanSize(vault: Vault, writes: Write[], confirmLarge: boolean): void {
@@ -123,9 +126,20 @@ function verify(vault: Vault, write: Staged): void {
   }
   write.original = readFileSync(write.path, "utf8");
   const next = readFileSync(write.temporary, "utf8");
-  const violation = write.mode === "append" ? appendOnlyViolation(write.original, next) : checkboxOnlyViolation(write.original, next, write.planned);
+  const violation = violationOf(write.original, next, write);
   if (violation !== undefined) throw new BrainDumpError(`brain-dump bug: ${name} ${describe(violation)}, so nothing was written. Please report this.`);
   if (write.mode === "file-dump" && write.moveTo !== undefined && existsSync(write.moveTo)) throw new NoteExistsError(`${vaultRelative(vault, write.moveTo)} already exists`);
+}
+
+function violationOf(original: string, next: string, write: Extract<Write, { mode: "append" | "file-dump" | "todo-mark" }>): Violation | undefined {
+  switch (write.mode) {
+    case "append":
+      return appendOnlyViolation(original, next);
+    case "file-dump":
+      return checkboxOnlyViolation(original, next, write.planned);
+    case "todo-mark":
+      return todoMarkViolation(original, next, write.lines);
+  }
 }
 
 /** Byte-identical to what the Run left, and the staged file byte-identical to the copy taken before it, or nothing is reverted. */
@@ -148,6 +162,8 @@ function toChange(vault: Vault, write: Staged): Change {
       return { operation: "create", path, after: write.contents };
     case "append":
       return { operation: "append", path, before, after: write.contents };
+    case "todo-mark":
+      return { operation: "checkbox", path, before, after: write.contents };
     case "file-dump":
       if (write.moveTo === undefined) return { operation: "checkbox", path, before, after: write.contents };
       return { operation: "move", from: path, to: vaultRelative(vault, write.moveTo), before, after: write.contents };
@@ -158,7 +174,7 @@ function toChange(vault: Vault, write: Staged): Change {
   }
 }
 
-/** New files first, linked so they never overwrite; then appends and reverted contents; then Dumps; then deletions last. Each step registers how to reverse it, and a failure reverses every step taken. */
+/** New files first, linked so they never overwrite; then appends, marked Todos and reverted contents; then Dumps; then deletions last. Each step registers how to reverse it, and a failure reverses every step taken. */
 function install(vault: Vault, staged: Staged[]): void {
   const undo: (() => void)[] = [];
   const restore = (path: string, original: string | undefined) => () => writeFileSync(path, original ?? "");
@@ -205,7 +221,7 @@ function isNewFile(write: Staged): boolean {
 }
 
 function isReplacement(write: Staged): boolean {
-  return write.mode === "append" || (write.mode === "revert" && write.left !== null && write.contents !== null);
+  return write.mode === "append" || write.mode === "todo-mark" || (write.mode === "revert" && write.left !== null && write.contents !== null);
 }
 
 function isDeletion(write: Staged): boolean {

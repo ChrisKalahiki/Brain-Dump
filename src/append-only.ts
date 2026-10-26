@@ -8,6 +8,9 @@ export type ClosedMark = "x" | "-";
 
 const EMPTY_PLACEHOLDERS = new Set(["- ", "- [ ]", "- [ ] "]);
 const OPEN_CHECKBOX = "- [ ]";
+/** An indented checkbox bullet split around its mark; the tail keeps any `\r`. */
+const CHECKBOX_MARK = /^([ \t]*[-*+] \[)(.)(\].*)$/s;
+const TODO_MARKS = new Set([" ", "x", "-"]);
 
 /**
  * For an existing note: every original line survives byte-for-byte and in order, only an empty placeholder bullet may vanish, and the line endings stay the same.
@@ -41,6 +44,22 @@ export function checkboxOnlyViolation(original: string, next: string, planned: R
     const mark = planned.get(index);
     const closed = mark !== undefined && line.startsWith(OPEN_CHECKBOX) && edited === `- [${mark}]${line.slice(OPEN_CHECKBOX.length)}`;
     if (!closed) return { line: index + 1, text: withoutCr(line) };
+  }
+  if (nextLines.length !== originalLines.length) return { line: originalLines.length, text: withoutCr(originalLines.at(-1) ?? "") };
+  return undefined;
+}
+
+/** For a Weekly Note's Todos being marked (ADR 0011): the same lines, except that each `named` line (0-based) may change the mark inside its checkbox to ` `, `x` or `-`. */
+export function todoMarkViolation(original: string, next: string, named: ReadonlySet<number>): Violation | undefined {
+  const originalLines = original.split("\n");
+  const nextLines = next.split("\n");
+  for (const [index, line] of originalLines.entries()) {
+    const edited = nextLines[index];
+    if (edited === line) continue;
+    const before = CHECKBOX_MARK.exec(line);
+    const after = edited === undefined ? null : CHECKBOX_MARK.exec(edited);
+    const marked = named.has(index) && before !== null && after !== null && before[1] === after[1] && before[3] === after[3] && TODO_MARKS.has(after[2] ?? "");
+    if (!marked) return { line: index + 1, text: withoutCr(line) };
   }
   if (nextLines.length !== originalLines.length) return { line: originalLines.length, text: withoutCr(originalLines.at(-1) ?? "") };
   return undefined;

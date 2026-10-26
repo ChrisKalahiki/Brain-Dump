@@ -2,6 +2,8 @@
 
 Topic Notes and Project Notes only grow, so long notes become stacks of bullets nothing distils. v2 answers this with Consolidation: a Digest added to the note (or as a new note) that links back to the Items it distils. Nothing in a curated note is ever removed or rewritten, by Consolidation or anything else.
 
+ADR 0011 narrows this for one thing: a filed Todo's checkbox mark may change.
+
 Keeping append-only absolute is what makes the safety layer simple and strong: `apply` can verify that every original line survives, in order, and refuse otherwise. A rewrite power would turn that hard check into "the diff matches the approved plan", which is much weaker, and would make snapshots and `undo` the only defence against lost text.
 
 ## Considered Options

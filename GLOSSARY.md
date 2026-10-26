@@ -28,8 +28,8 @@ The reason a Decision was made.
 _Avoid_: Justification, why
 
 **Todo**:
-An action still to be taken: first an Item in a Dump, then, once filed, a checkbox in a Weekly Note's to-do section.
-_Avoid_: Task, action item
+An action still to be taken: first an Item in a Dump, then, once filed, a checkbox in a Weekly Note's to-do section. A filed Todo is open, done or dropped; changing which is marking it.
+_Avoid_: Task, action item, tick, check off
 
 **Session**:
 One interaction with an AI tool that a Dump is drawn from, whether a coding agent run (Claude Code, Codex) or a chat app thread (Claude web, ChatGPT, Gemini).

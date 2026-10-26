@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { appendOnlyViolation, checkboxOnlyViolation, type ClosedMark, type Violation } from "../src/append-only.ts";
+import { appendOnlyViolation, checkboxOnlyViolation, todoMarkViolation, type ClosedMark, type Violation } from "../src/append-only.ts";
 
 const RUNS = 500;
 const PLACEHOLDERS = ["- ", "- [ ]", "- [ ] "];
@@ -185,6 +185,42 @@ describe("the checkbox-only check for a Dump", () => {
 
     // #when
     const violations = cases.map(([name, next]) => [name, checkboxOnlyViolation(DUMP, next, planned)]);
+
+    // #then
+    expect(violations).toEqual(cases.map(([name, , violation]) => [name, violation]));
+  });
+});
+
+describe("the todo-mark check for a Weekly Note", () => {
+  const NOTE = "# To-Do:\n- SaTC\n\t- [ ] Open #todo\n\t- [x] Done\n\t- [-] Dropped\n\t- [/] Started\n";
+
+  test("passes a named Todo's mark changing between open, done and dropped in any direction", () => {
+    // #given
+    const next = NOTE.replace("[ ] Open", "[x] Open").replace("[x] Done", "[ ] Done").replace("[-] Dropped", "[x] Dropped").replace("[/] Started", "[-] Started");
+
+    // #when
+    const violation = todoMarkViolation(NOTE, next, new Set([2, 3, 4, 5]));
+
+    // #then
+    expect(violation).toBeUndefined();
+  });
+
+  test("fails any other change, naming the first changed line", () => {
+    // #given
+    const named = new Set([2, 3]);
+    const cases: [string, string, Violation][] = [
+      ["marks a Todo not named", NOTE.replace("[-] Dropped", "[x] Dropped"), { line: 5, text: "\t- [-] Dropped" }],
+      ["changes a named Todo's text", NOTE.replace("[ ] Open #todo", "[x] Opened #todo"), { line: 3, text: "\t- [ ] Open #todo" }],
+      ["changes a named Todo's indent", NOTE.replace("\t- [ ] Open", "- [x] Open"), { line: 3, text: "\t- [ ] Open #todo" }],
+      ["writes a mark other than ' ', x or -", NOTE.replace("[ ] Open", "[X] Open"), { line: 3, text: "\t- [ ] Open #todo" }],
+      ["turns a named Todo into a plain bullet", NOTE.replace("- [ ] Open", "- Open"), { line: 3, text: "\t- [ ] Open #todo" }],
+      ["adds a line", NOTE.replace("- SaTC\n", "- SaTC\n\t- [ ] New\n"), { line: 3, text: "\t- [ ] Open #todo" }],
+      ["removes the last line", NOTE.replace("\t- [/] Started\n", ""), { line: 6, text: "\t- [/] Started" }],
+      ["changes the line endings", NOTE.replaceAll("\n", "\r\n"), { line: 1, text: "# To-Do:" }],
+    ];
+
+    // #when
+    const violations = cases.map(([name, next]) => [name, todoMarkViolation(NOTE, next, named)]);
 
     // #then
     expect(violations).toEqual(cases.map(([name, , violation]) => [name, violation]));
