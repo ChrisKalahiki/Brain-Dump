@@ -1,17 +1,19 @@
 import { describe, expect, test } from "bun:test";
+import { renderFiledItem } from "../src/curated.ts";
 import type { WeekTodos } from "../src/todo-groups.ts";
 import { makeSandbox, readVaultFile, run, vaultFileHash, writeVaultFile, type Sandbox } from "./harness.ts";
 
 const WEEKLY = "Research/Weekly Meetings";
 const NOTE = `${WEEKLY}/10-05-26 Weekly Update.md`;
 const DATE = "2026-10-08";
+const [FILED] = renderFiledItem({ kind: "Todo", text: "#todo Work on ToA manuscript.", rationale: null }, { title: "2026-10-05 1940 Brain-Dump - filing", date: "2026-10-05" });
 const CONTENTS = [
   "# Updates:",
   "- [ ] Not a Todo, it is in Updates",
   "---",
   "# To-Do:",
   "- SaTC",
-  "\t- [ ] Work on ToA manuscript #todo",
+  `\t${FILED}`,
   "\t\t- [ ] Find CHI papers",
   "\t\t- a note",
   "\t- [x] Data analysis",

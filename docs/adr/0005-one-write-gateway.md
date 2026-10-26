@@ -10,6 +10,7 @@ The gateway enforces every rule about what may be written:
   - **Create-new**: a new file never overwrites an existing one.
   - **Append-only**, for existing notes: every original line appears in the new version byte-for-byte and in order; new lines may land anywhere; only an empty placeholder bullet (`- ` or `- [ ]`) may disappear. Line endings match the original.
   - **Checkbox-only**, for a Dump being filed: same line count, every line identical except the planned Items, whose checkbox may change only from ` ` to `x` or `-`. Moving it to `Inbox/Filed` requires the destination not to exist and the moved contents to be the ones just verified.
+  - **Todo-mark**, for a Weekly Note's Todos being marked: same line count, every line identical except the named Todos, whose checkbox mark may change only to ` `, `x` or `-` (ADR 0011).
 
 The check is a separate pure function over (original, next), deliberately sharing no code with the edit logic, so it can't share its bugs. It runs after all edits are staged and before any file is replaced, comparing against each file re-read from disk at that moment. If any file fails, nothing is written, and the error names the note and first lost line as a `brain-dump` bug. There is no override flag.
 

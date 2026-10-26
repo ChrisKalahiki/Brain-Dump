@@ -196,13 +196,13 @@ describe("the todo-mark check for a Weekly Note", () => {
 
   test("passes a named Todo's mark changing between open, done and dropped in any direction", () => {
     // #given
-    const next = NOTE.replace("[ ] Open", "[x] Open").replace("[x] Done", "[ ] Done").replace("[-] Dropped", "[x] Dropped").replace("[/] Started", "[-] Started");
+    const pairs = [" ", "x", "-", "/"].flatMap((from) => [" ", "x", "-"].map((to) => [from, to]));
 
     // #when
-    const violation = todoMarkViolation(NOTE, next, new Set([2, 3, 4, 5]));
+    const violations = pairs.map(([from, to]) => [from, to, todoMarkViolation(`# To-Do:\r\n\t- [${from}] A\r\n`, `# To-Do:\r\n\t- [${to}] A\r\n`, new Set([1]))]);
 
     // #then
-    expect(violation).toBeUndefined();
+    expect(violations).toEqual(pairs.map(([from, to]) => [from, to, undefined]));
   });
 
   test("fails any other change, naming the first changed line", () => {

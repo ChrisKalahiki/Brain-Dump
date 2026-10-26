@@ -1,15 +1,15 @@
 import { basename, join } from "node:path";
 import { contentHash, readHashed } from "./content-hash.ts";
 import { BrainDumpError, UsageError } from "./errors.ts";
-import { commit } from "./gateway.ts";
+import { commit, type Write } from "./gateway.ts";
 import { parseTodos, type TodoState } from "./todo-groups.ts";
 import type { Vault } from "./vault.ts";
 import { locateWeeklyNote } from "./weekly.ts";
 
 // Marking (ADR 0011): the one change in place a Curated Note allows, a Todo's checkbox mark, as one Run.
 
+const STATES: TodoState[] = ["open", "done", "dropped"];
 const MARKS: Record<TodoState, string> = { open: " ", done: "x", dropped: "-" };
-const STATES = Object.keys(MARKS) as TodoState[];
 const MARK = /^([ \t]*[-*+] \[)./;
 
 /** `run` is `null` when every Todo was already in its state, so nothing was written; `hash` is the note's hash after marking. */
@@ -55,7 +55,7 @@ export function markTodos(vault: Vault, isoDate: string, expected: string, marks
   if (changed.length === 0) return { run: null, note: week.note, hash, changed, unchanged };
 
   const next = lines.join("\n");
-  const write = { mode: "todo-mark" as const, path, contents: next, lines: new Set(changed.map((line) => line - 1)) };
+  const write: Write = { mode: "todo-mark", path, contents: next, lines: new Set(changed.map((line) => line - 1)) };
   const run = commit(vault, "approved-plan", { command: "mark-todos", label: basename(week.note, ".md") }, [write]);
   return { run, note: week.note, hash: contentHash(next), changed, unchanged };
 }
