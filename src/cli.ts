@@ -8,6 +8,7 @@ import { listDumps } from "./duplicates.ts";
 import { BrainDumpError, describeFsError, DumpNotWrittenError, errnoCode, UsageError } from "./errors.ts";
 import { detectDevOrigin, isChatTool, isToolTag, projectOf, TOOL_TAGS, type Origin, type ToolTag } from "./origin.ts";
 import { applyFilingPlan, parseFilingPlan, dryRunFilingPlan } from "./filing.ts";
+import { markTodos, parseMarks } from "./mark-todos.ts";
 import { AGENTS, guard, hookMatcher, isAgent } from "./guard.ts";
 import { listUnfiledDumps } from "./inbox.ts";
 import { listNotes } from "./notes.ts";
@@ -67,6 +68,12 @@ async function main(argv: string[]): Promise<number> {
       const { date } = parseOptions(rest, { date: { type: "string" } });
       if (date === undefined) throw new UsageError("--date is required");
       writeJson(readTodos(locateVault(), date));
+      return 0;
+    }
+    case "mark-todos": {
+      const { date, hash, line } = parseOptions(rest, { date: { type: "string" }, hash: { type: "string" }, line: { type: "string", multiple: true } });
+      if (date === undefined || hash === undefined) throw new UsageError("--date and --hash are required");
+      writeJson(markTodos(locateVault(), date, hash, parseMarks(line ?? [])));
       return 0;
     }
     case "apply": {

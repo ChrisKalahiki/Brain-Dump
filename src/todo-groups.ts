@@ -41,7 +41,12 @@ export type WeekTodos = { note: string; exists: boolean; hash: string | null; to
 export function readTodos(vault: Vault, isoDate: string): WeekTodos {
   const week = locateWeeklyNote(vault, isoDate);
   const read = week.exists ? readHashed(join(vault.root, week.note)) : undefined;
-  return { note: week.note, exists: week.exists, hash: read?.hash ?? null, todos: read === undefined ? [] : walkNote(read.contents)?.todos ?? [] };
+  return { note: week.note, exists: week.exists, hash: read?.hash ?? null, todos: read === undefined ? [] : parseTodos(read.contents) };
+}
+
+/** Every Todo in a Weekly Note's to-do section, in note order. */
+export function parseTodos(contents: string): Todo[] {
+  return walkNote(contents)?.todos ?? [];
 }
 
 export function readTodoGroups(vault: Vault, isoDate: string): WeekGroups {
