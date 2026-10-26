@@ -30,7 +30,7 @@ The state is `done` unless the user said they dropped, abandoned or no longer ne
 
 ## 3. Propose
 
-Show the Todos to mark, grouped under each note's title in bold, one row each:
+Show the Todos to mark, grouped under each note's title in bold (the file name in `note`, without `.md`, as written), one row each:
 
 ```
 **10-05-26 Weekly Update**
