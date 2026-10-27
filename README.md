@@ -47,8 +47,9 @@ A change to a prompt is scored before it ships: `bun run eval [name]` runs each 
 - `dump`: `/dump` at the end of a synthetic Session (`evals/fixtures/dump`), with and without a focus, writing through the helper into a sandbox Vault.
 - `chat-dump`: `prompts/chat-dump.md` as a chat's instructions, then "dump", on synthetic chats (`evals/fixtures/chat-dump`); the reply is read as `dump --paste` reads it.
 - `file`: `/file` with only `Bash(brain-dump:*)` on a fixture Vault (`evals/fixtures/file`), one Dump per case: a Routine plan, a NEW note, a NEW Todo Group, a `≈` match, and a link line to a NEW Weekly Note. No reply is sent; each Item's destination and marks are read from the plan, and any change to the Vault fails the run.
+- `todo`: `/todo` with what the user says, on a fixture Vault with this week's and last week's Weekly Notes (`evals/fixtures/todo`): one matching Todo, two equally matching ones, a parent with open sub-todos, and a Todo open only in last week's note. No reply is sent; the Todos proposed, offered and listed as candidates are read from the reply, and any change to the Vault fails the run.
 
-`dump`, `chat-dump` and `file` run Claude Code headless with only the repo's skills (`--setting-sources project`). `dump` and `chat-dump` resume their synthetic Session from a log written to `~/.claude/projects` and removed after the run.
+`dump`, `chat-dump`, `file` and `todo` run Claude Code headless with only the repo's skills (`--setting-sources project`). `dump` and `chat-dump` resume their synthetic Session from a log written to `~/.claude/projects` and removed after the run.
 
 ### Hand checks
 
@@ -56,4 +57,5 @@ These have no automated eval; check them by hand when their prompts change:
 
 - **`consolidate`**: run `/consolidate [[Note]]` on a long Topic Note. The Digest it proposes should cover the note's Items without inventing any, and nothing is written until you approve its full text.
 - **`recall` triggering**: in a repo whose project the Vault knows, ask "what did we decide about …?" and start a task that touches an earlier Decision. `recall` should run on its own both times, and not for questions the repo itself answers.
+- **`todo` triggering**: with an open Todo in this week's Weekly Note, ask "what's on my plate this week?", then say in passing that you finished that Todo. `todo` should run on its own both times, and the second time propose marking it without marking anything.
 - **`chat-dump` in ChatGPT and Gemini**: paste `prompts/chat-dump.md` into each, hold a short chat, say "dump", and run `/dump --paste` on the reply. It should be a `Slug:` line and one `markdown` block that `write-dump` takes without a fix.

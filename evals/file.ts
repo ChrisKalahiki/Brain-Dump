@@ -1,7 +1,6 @@
 import { cpSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative } from "node:path";
-import { contentHash } from "../src/content-hash.ts";
 import { prepareDump } from "../src/dump.ts";
 import { INBOX, WEEKLY_FOLDER } from "../src/layout.ts";
 import type { Origin } from "../src/origin.ts";
@@ -9,6 +8,7 @@ import { DRAFTING_MODEL } from "../src/drafting.ts";
 import { makeSkillSandbox, removeSkillSandbox, runClaude } from "./agent.ts";
 import type { CaseResult, Eval } from "./eval.ts";
 import { checkPlan, type ExpectedRow } from "./plan.ts";
+import { changedFiles, daysBefore, snapshot, weeklyTitle } from "./sandbox-vault.ts";
 
 // `file` up to its Filing Plan: `/file` with only the helper's commands, on a fixture Vault whose Inbox holds one Dump. No reply is sent, so the run
 // must write nothing to the Vault.
@@ -118,34 +118,6 @@ function setUpVault(vault: string, { name, slug, project, daysAgo }: FileCase): 
   const dump = prepareDump({ origin, slug, body: readFileSync(join(FIXTURES_PATH, "dumps", `${name}.md`), "utf8") });
   writeFileSync(join(vault, INBOX, `${dump.stem}.md`), dump.contents);
   return { thisWeek, sessionWeek: weeklyTitle(at) };
-}
-
-/** The same local time of day `days` calendar days earlier, so a daylight-saving change between can't move it to another date. */
-function daysBefore(date: Date, days: number): Date {
-  const earlier = new Date(date);
-  earlier.setDate(date.getDate() - days);
-  return earlier;
-}
-
-/** `MM-DD-YY Weekly Update`, dated the Monday of the date's local week. */
-function weeklyTitle(date: Date): string {
-  const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate() - ((date.getDay() + 6) % 7));
-  const part = (value: number) => String(value).padStart(2, "0");
-  return `${part(monday.getMonth() + 1)}-${part(monday.getDate())}-${part(monday.getFullYear() % 100)} Weekly Update`;
-}
-
-/** Every file by content hash, and every folder, so a new empty folder counts as a change too. */
-function snapshot(vault: string): Map<string, string> {
-  return new Map(
-    readdirSync(vault, { recursive: true, withFileTypes: true }).map((entry) => {
-      const path = join(entry.parentPath, entry.name);
-      return [relative(vault, path), entry.isDirectory() ? "folder" : contentHash(readFileSync(path))];
-    }),
-  );
-}
-
-function changedFiles(before: Map<string, string>, after: Map<string, string>): string[] {
-  return [...new Set([...before.keys(), ...after.keys()])].filter((path) => before.get(path) !== after.get(path)).sort();
 }
 
 function files(folder: string): string[] {

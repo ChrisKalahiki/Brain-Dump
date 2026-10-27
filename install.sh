@@ -36,6 +36,8 @@ link "$repo/skills/file" "$HOME/.claude/skills/file"
 link "$repo/skills/consolidate" "$HOME/.claude/skills/consolidate"
 link "$repo/skills/recall" "$HOME/.claude/skills/recall"
 link "$repo/skills/recall" "$HOME/.agents/skills/recall"
+link "$repo/skills/todo" "$HOME/.claude/skills/todo"
+link "$repo/skills/todo" "$HOME/.agents/skills/todo"
 
 guard_command="$brain_dump guard"
 claude_guard_matcher="$("$brain_dump" guard --matchers claude)"

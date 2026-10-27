@@ -1,0 +1,5 @@
+interface:
+  display_name: "Todo"
+  short_description: "Mark Todos in your Weekly Notes done, dropped or open again"
+policy:
+  allow_implicit_invocation: true

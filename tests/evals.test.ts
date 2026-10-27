@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inputHash, staleEvals } from "../evals/eval.ts";
+import { checkMarking, type Marking } from "../evals/marking.ts";
 import { checkPlan } from "../evals/plan.ts";
 
 describe("prompt evals", () => {
@@ -78,6 +79,70 @@ describe("prompt evals", () => {
       changed: ["toy: inputs changed since the pass recorded on 2026-10-12; run `bun run eval toy`"],
       neverPassed: ["toy: no pass recorded; run `bun run eval toy`"],
     });
+  });
+});
+
+describe("the todo eval's marking check", () => {
+  const REPLY = `This is the Todo I'd mark:
+
+**10-26-26 Weekly Update**
+- 9 · Harbor · Write the cache section of the README. → done
++ \`10 · Harbor · Add the eviction diagram. → done\`
++ 11 · Harbor · Document the size limit. → done
+
+**[[10-19-26 Weekly Update]]**
+- 6 · Conferences · Renew the registration. → dropped
+
+Which one did you mean?
+- 14 · Dissertation · Draft the introduction.
+* 18 · Workshop paper · Draft the introduction.
+
+Reply: ok · ok all · cancel`;
+
+  const EXPECTED: Marking = {
+    proposed: [
+      { note: "10-26-26 Weekly Update", line: 9, state: "done" },
+      { note: "10-19-26 Weekly Update", line: 6, state: "dropped" },
+    ],
+    offered: [
+      { note: "10-26-26 Weekly Update", line: 10, state: "done" },
+      { note: "10-26-26 Weekly Update", line: 11, state: "done" },
+    ],
+    candidates: [
+      { note: "10-19-26 Weekly Update", line: 14 },
+      { note: "10-19-26 Weekly Update", line: 18 },
+    ],
+  };
+
+  test("passes a reply whose proposed, offered and candidate Todos are exactly the expected ones, each under its note", () => {
+    // #given
+    const reply = REPLY;
+
+    // #when
+    const failures = checkMarking(reply, EXPECTED);
+
+    // #then
+    expect(failures).toEqual([]);
+  });
+
+  test("names each Todo proposed, offered or listed as a candidate that wasn't expected, and each expected one missing", () => {
+    // #given
+    const reply = REPLY.replace("- 9 · Harbor · Write the cache section of the README. → done", "- 9 · Harbor · Write the cache section of the README. → dropped").replace(
+      "+ 11 · Harbor · Document the size limit. → done",
+      "- 11 · Harbor · Document the size limit. → done",
+    );
+
+    // #when
+    const failures = checkMarking(reply, { ...EXPECTED, candidates: [{ note: "10-19-26 Weekly Update", line: 14 }] });
+
+    // #then
+    expect(failures).toEqual([
+      "proposed 10-26-26 Weekly Update line 9 → dropped, which was not expected",
+      "proposed 10-26-26 Weekly Update line 11 → done, which was not expected",
+      "did not propose 10-26-26 Weekly Update line 9 → done",
+      "did not offer 10-26-26 Weekly Update line 11 → done",
+      "listed as a candidate 10-19-26 Weekly Update line 18, which was not expected",
+    ]);
   });
 });
 
