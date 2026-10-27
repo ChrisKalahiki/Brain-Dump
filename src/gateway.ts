@@ -2,8 +2,9 @@ import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, unli
 import { dirname, relative, sep } from "node:path";
 import { appendOnlyViolation, checkboxOnlyViolation, todoMarkViolation, type ClosedMark, type Violation } from "./append-only.ts";
 import { BrainDumpError, describeFsError, errnoCode } from "./errors.ts";
-import { FILED_FOLDER, INBOX, ROUTES_NOTE, WEEKLY_FOLDER, WRITE_ALLOWLIST } from "./layout.ts";
+import { BRIEFING_NOTE, BRIEFINGS_FOLDER, FILED_FOLDER, INBOX, ROUTES_NOTE, WEEKLY_FOLDER, WRITE_ALLOWLIST } from "./layout.ts";
 import { discardRun, finishRun, sha256, startRun, type Change, type RunInfo } from "./runs.ts";
+import { refuseSecret } from "./secrets.ts";
 import type { Vault } from "./vault.ts";
 
 // The one module that writes, renames or deletes Vault files (ADR 0005). Paths are absolute.
@@ -20,8 +21,8 @@ export type Write =
   | { mode: "todo-mark"; path: string; contents: string; lines: ReadonlySet<number> }
   | { mode: "revert"; path: string; left: string | null; before: string | null; contents: string | null };
 
-/** Automation may only create new Dumps in the Inbox; everything else needs a plan the user approved (ADR 0004). */
-export type Actor = "automation" | "approved-plan";
+/** Automation may only create new Dumps in the Inbox, and the Briefing writer only new Briefings (ADR 0012); everything else needs a plan the user approved (ADR 0004). */
+export type Actor = "automation" | "briefing-writer" | "approved-plan";
 
 export class WriteRefusedError extends BrainDumpError {
   constructor(reason: string) {
@@ -40,14 +41,15 @@ export class WriteFailedError extends BrainDumpError {
 
 /** A plan over this many notes needs the user's separate confirmation (ADR 0004). */
 const PLAN_SIZE_LIMIT = 8;
+/** A Briefing over this many bytes is refused (ADR 0012). */
+const BRIEFING_SIZE_LIMIT = 200_000;
 
 /** `original` is the target as re-read from disk at verification, kept to restore it if a later write fails. */
 type Staged = Write & { temporary: string; original?: string };
 
 /** Checks every rule, stages every file, re-reads each target from disk to verify it, journals it as a Run, then writes all of it, or restores everything it touched. `confirmLarge` is set only after the user separately approved a plan over the size limit. Returns the Run's id. */
 export function commit(vault: Vault, actor: Actor, run: RunInfo, writes: Write[], { confirmLarge = false } = {}): string {
-  for (const write of writes) checkRules(vault, actor, write);
-  checkPlanSize(vault, writes, confirmLarge);
+  checkWrites(vault, actor, writes, { confirmLarge });
   const staged: Staged[] = [];
   const newFolders: string[] = [];
   let installed = false;
@@ -71,12 +73,23 @@ export function commit(vault: Vault, actor: Actor, run: RunInfo, writes: Write[]
   }
 }
 
+/** The rules `commit` checks before staging anything (path, actor, Briefing size and secrets, plan size), writing nothing. */
+export function checkWrites(vault: Vault, actor: Actor, writes: Write[], { confirmLarge = false } = {}): void {
+  for (const write of writes) checkRules(vault, actor, write);
+  checkPlanSize(vault, writes, confirmLarge);
+}
+
 function checkRules(vault: Vault, actor: Actor, write: Write): void {
   const targets = write.mode === "file-dump" && write.moveTo !== undefined ? [write.path, write.moveTo] : [write.path];
   for (const target of targets) {
     if (!inAllowlist(vaultRelative(vault, target))) throw new WriteRefusedError(`${vaultRelative(vault, target)} is outside the write allowlist`);
   }
   const name = vaultRelative(vault, write.path);
+  if (actor === "briefing-writer") {
+    if (write.mode !== "create" || !BRIEFING_NOTE.test(name)) throw new WriteRefusedError(`the Briefing writer may only create Daily and Weekly Briefings, not write ${name}`);
+    checkBriefing(name, write.contents);
+    return;
+  }
   if (write.mode === "revert") {
     if (actor === "automation") throw new WriteRefusedError(`automation may not undo a Run, so it may not revert ${name}`);
     return;
@@ -85,10 +98,18 @@ function checkRules(vault: Vault, actor: Actor, write: Write): void {
     if (write.mode !== "create" || dirname(name) !== INBOX || name === ROUTES_NOTE) throw new WriteRefusedError(`automation may only create new Dumps in the Inbox, not write ${name}`);
     return;
   }
+  if (inTree(name, BRIEFINGS_FOLDER)) throw new WriteRefusedError(`${name} is in ${BRIEFINGS_FOLDER}, which only the Briefing writer may write`);
   if (write.mode === "file-dump" ? !isDumpFiling(vault, write) : inTree(name, INBOX) && name !== ROUTES_NOTE) {
     throw new WriteRefusedError(`${name} is in the Inbox, which a plan changes only through its own Dump and the Routes note`);
   }
   if (write.mode === "todo-mark" && dirname(name) !== WEEKLY_FOLDER) throw new WriteRefusedError(`${name} is not a Weekly Note, so its Todos can't be marked`);
+}
+
+/** A Briefing's format is paper-bot's, so only its size and secrets are checked (ADR 0012). */
+function checkBriefing(name: string, contents: string): void {
+  const bytes = Buffer.byteLength(contents);
+  if (bytes > BRIEFING_SIZE_LIMIT) throw new WriteRefusedError(`${name} is ${bytes} bytes, more than the ${BRIEFING_SIZE_LIMIT} a Briefing may hold`);
+  refuseSecret(contents, "Briefing");
 }
 
 function checkPlanSize(vault: Vault, writes: Write[], confirmLarge: boolean): void {

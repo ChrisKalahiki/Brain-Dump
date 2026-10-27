@@ -7,6 +7,7 @@ const DUMP = "Inbox/2026-10-05 1940 Brain-Dump - filing.md";
 const OTHER_DUMP = "Inbox/2026-10-04 1200 Brain-Dump - other.md";
 const WEEK = "Research/Weekly Meetings/10-05-26 Weekly Update.md";
 const JOURNAL = "Journal/2026-10-05.md";
+const BRIEFING = "Research/Briefings/Daily/2026-10-05 Daily Briefing.md";
 
 function apply(sandbox: Sandbox, plan: unknown) {
   return run(sandbox, ["apply"], { stdin: JSON.stringify(pinned(sandbox, plan)) });
@@ -48,6 +49,19 @@ describe("the write gateway refuses the whole plan, writing nothing", () => {
         return leaking("Inbox/Filed/Old.md");
       },
       "Inbox/Filed/Old.md is in the Inbox, which a plan changes only through its own Dump and the Routes note",
+    ],
+    [
+      "an Item filed into a Briefing",
+      (sandbox) => {
+        writeVaultFile(sandbox, BRIEFING, "# Daily Briefing\n");
+        return leaking(BRIEFING);
+      },
+      `${BRIEFING} is in Research/Briefings, which only the Briefing writer may write`,
+    ],
+    [
+      "a new note in Research/Briefings",
+      () => leaking("Research/Briefings/New.md", { creates: [{ note: "Research/Briefings/New.md", tags: [] }] }),
+      "Research/Briefings/New.md is in Research/Briefings, which only the Briefing writer may write",
     ],
   ];
 

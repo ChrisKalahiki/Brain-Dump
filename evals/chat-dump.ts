@@ -1,9 +1,10 @@
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { prepareDump, SecretRefusedError } from "../src/dump.ts";
+import { prepareDump } from "../src/dump.ts";
 import { BrainDumpError } from "../src/errors.ts";
 import type { ChatToolTag } from "../src/origin.ts";
 import { CHAT_DUMP_PATH } from "../src/prompts.ts";
+import { SecretRefusedError } from "../src/secrets.ts";
 import { DRAFTING_MODEL } from "../src/drafting.ts";
 import { makeEvalFolder, runClaude, writeSessionLog } from "./agent.ts";
 import { checkDraft, type DraftExpectation } from "./assertions.ts";

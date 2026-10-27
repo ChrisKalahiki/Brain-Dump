@@ -16,7 +16,7 @@ export const FROM_LINE = /^- From \[\[([^\]|#]+)/;
 /** A filed Item's backlink, or a Weekly Note's `Filed [[…]]` link line, trimmed; captures the link with any alias. */
 export const BACKLINK_LINE = /^- (?:From|Filed) \[\[([^\]]+)\]\]/;
 
-/** A note in the allowlist outside the Inbox: `note` is its Vault-relative path. */
+/** A note in the allowlist outside the Inbox and Briefings: `note` is its Vault-relative path. */
 export type CuratedNote = { note: string; lines: string[] };
 
 export function curatedNotes(vault: Vault): CuratedNote[] {

@@ -1,8 +1,9 @@
 import { homedir } from "node:os";
-import { checkCoverage, prepareDump, SecretRefusedError, type CoveredSession, type PreparedDump } from "./dump.ts";
+import { checkCoverage, prepareDump, type CoveredSession, type PreparedDump } from "./dump.ts";
 import { BrainDumpError } from "./errors.ts";
 import type { DevOrigin } from "./origin.ts";
 import { NO_ITEMS_REPLY, sweepDraftPrompt } from "./prompts.ts";
+import { SecretRefusedError } from "./secrets.ts";
 
 // The drafting agent (ADR 0009): one Session's text, capped, drafted by a tool-less, unsaved run of the pinned model, its reply held to the Sweep's
 // contract and checked as `write-dump` checks a body.

@@ -35,6 +35,28 @@ It leaves out Sessions in the Vault, still active in the last 2 hours, with fewe
 sweep-opt-out = ~/Projects/client-work, ~/Projects/secret
 ```
 
+## Briefings
+
+paper-bot writes its Daily and Weekly Briefings through `brain-dump write-briefing --note <path>`, with the Markdown on stdin (ADR 0012). The path is one of `Research/Briefings/Daily/YYYY-MM-DD Daily Briefing.md` or `Research/Briefings/Weekly/YYYY-Www Weekly Briefing.md`; anything else, `Research/Briefings/Interests.md` included, is refused, and so is a Briefing that already exists. The content is checked for size (at most 200,000 bytes) and secrets, never for format. It is one Run, printed as `{ note, run }`, so `brain-dump undo <run>` removes a Briefing until you edit it.
+
+Briefings stay out of `list-notes`, `recall`, `check` and the Vault pointer. `brain-dump show --full <path>` reads them and the Interests Note.
+
+## Kept Picks from paper-bot
+
+paper-bot writes each Pick ticked Keep in a Briefing as an ordinary Dump in the Inbox, for normal Filing:
+
+```
+brain-dump write-dump --origin briefing --briefing "2026-10-27 Daily Briefing" --paper 2410.01234 --project Interpretability --slug "sparse autoencoders" < body.md
+```
+
+- `--briefing` is the Briefing the Pick was kept from. The origin line links back to it as `Briefing: [[<Briefing>]]`, in place of `Session: …`.
+- `--paper` is paper-bot's id for the Paper, written to the frontmatter as `paper: <id>`.
+- `--project` is the Pick's first Interest, used as the Dump's Project so Routes learn which Topic Note each Interest files into.
+
+The Dump is tagged `dump`, `dump/kept`, `AIGenerated` and `PaperBot`. A missing or malformed flag is refused with an error naming it, and the Session flags (`--tool`, `--chat-url`, `--session`, `--through`, `--swept`) are refused alongside `--origin briefing`. `--origin session` is the default.
+
+`--dry-run`, on either origin, runs every check and prints `{ dump, contents }`: the path the Dump would take and what it would hold. It writes nothing and starts no Run.
+
 ## Checks
 
 `bun run check` runs the typecheck, the Glossary check, then the full test suite. The Glossary check (`bun run glossary`) fails on any `_Avoid_:` term from `GLOSSARY.md` in the skills, prompts, README, current spec, or string literals in `src/`; terms with a common other sense, and the superseded v1 and v2 specs, are listed as unchecked in `scripts/glossary.ts`. `bun install` points git at `.githooks`, whose pre-commit hook runs it on every commit. CI runs `check` and `bun run eval:check` (see below) on every push and PR.
