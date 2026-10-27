@@ -5,10 +5,10 @@ import { datePart, pad } from "./clock.ts";
 import { parseDumpBody, renderDumpBody, type DumpBody } from "./dump-body.ts";
 import { BrainDumpError, DumpNotWrittenError, UsageError } from "./errors.ts";
 import { commit, NoteExistsError, WriteFailedError } from "./gateway.ts";
-import { isChatTool, TOOL_TAGS, toolName, toolNamed, type Origin } from "./origin.ts";
+import { isChatTool, PAPER_BOT, TOOL_TAGS, toolName, toolNamed, type BriefingOrigin, type Origin } from "./origin.ts";
 import type { RunInfo } from "./runs.ts";
 import { findSecret } from "./secrets.ts";
-import { expandHome, locateVault, type Vault } from "./vault.ts";
+import { expandHome, findVault, locateVault, type Vault } from "./vault.ts";
 
 // The Dump document: its filename, frontmatter, origin line and body are written and read back here, and nowhere else.
 
@@ -16,7 +16,13 @@ const OBSIDIAN_FORBIDDEN = /[*"\\/<>:|?#^[\]]+/g;
 const DUMP_FILENAME = /^(\d{4}-\d{2}-\d{2}) \d{4} (.+?) - (.+)\.md$/;
 /** A Session id the frontmatter can hold unquoted: Claude Code's are UUIDs, Codex's thread ids alike. */
 const SESSION_ID = /^[\w.-]+$/;
+/** A Paper id the frontmatter can hold unquoted, e.g. an arXiv id or a DOI. */
+const PAPER_ID = /^\w[\w.:/-]*$/;
+/** Characters that would break a `[[link]]` or the origin line around it. */
+const LINK_BREAKING = /[[\]|#^\r\n]| · /;
 const ORIGIN_PREFIX = "Session: ";
+const BRIEFING_PREFIX = "Briefing: ";
+const BRIEFING_LINE = /^Briefing: \[\[([^\]]+)\]\] · (.+) · \[\[([^\]]+)\]\]$/;
 const DISPLAY_STAMP = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/;
 
 /** The tool's own id for the Session a Dump covers, and the time of the last record it covers. */
@@ -33,7 +39,7 @@ export type PreparedDump = { stem: string; contents: string };
 
 export type ParsedDump = Omit<DumpDocument, "body"> & {
   date: string;
-  /** The filename's segment before the slug: a dev Dump's Project, a chat Dump's tool. */
+  /** The filename's segment before the slug: a dev Dump's Project, a chat or Briefing Dump's tool. */
   label: string;
   body: DumpBody;
   /** Where in `lines` the body starts; the body's own line numbers count from there. */
@@ -63,6 +69,13 @@ export function writeDump(request: DumpRequest): string {
   }
 }
 
+/** What `writeDump` would write and where, after every check it runs, writing nothing and starting no Run. */
+export function dryRunDump(request: DumpRequest): { dump: string; contents: string } {
+  const { stem, contents } = prepareDump(request);
+  const dump = freeNames(findVault(), stem).find((path) => !existsSync(path)) ?? "";
+  return { dump, contents };
+}
+
 /** Refuses a Dump breaking the origin and coverage rules, a body holding a secret or breaking the Dump rules, before anything is written. */
 export function prepareDump({ origin, swept = false, slug, body, session, through }: DumpRequest): PreparedDump {
   const stem = dumpStem(origin, slug);
@@ -77,8 +90,16 @@ export function prepareDump({ origin, swept = false, slug, body, session, throug
 export function checkCoverage({ origin, swept = false, session, through }: Omit<DumpRequest, "slug" | "body">): void {
   if (session !== undefined && !SESSION_ID.test(session)) throw new UsageError(`--session "${session}" may hold only letters, digits, ".", "_" and "-"`);
   if (through !== undefined && session === undefined) throw new UsageError("--through needs --session");
-  if (swept && origin.kind === "chat") throw new UsageError(`--swept is only for ${TOOL_TAGS.filter((tool) => !isChatTool(tool)).join(" and ")}`);
+  if (origin.kind === "briefing") checkBriefingOrigin(origin);
+  if (swept && origin.kind !== "dev") throw new UsageError(`--swept is only for ${TOOL_TAGS.filter((tool) => !isChatTool(tool)).join(" and ")}`);
   if (swept && session === undefined) throw new UsageError("--swept needs --session");
+}
+
+function checkBriefingOrigin({ briefing, paper, project }: BriefingOrigin): void {
+  for (const [flag, name] of Object.entries({ briefing, project })) {
+    if (name.trim() === "" || LINK_BREAKING.test(name)) throw new UsageError(`--${flag} "${name}" must be a note name with no [, ], |, #, ^, line break or " · "`);
+  }
+  if (!PAPER_ID.test(paper)) throw new UsageError(`--paper "${paper}" may hold only letters, digits, ".", ":", "/", "_" and "-", and must start with a letter or digit`);
 }
 
 /** Renders a Dump as it is, unchecked. */
@@ -98,8 +119,16 @@ export function parseDump(filename: string, contents: string): ParsedDump | Dump
   const covered = readCoverage(lines.slice(1, close));
   if ("problem" in covered) return covered;
   const originLine = lines[close + 1] ?? "";
-  if (!originLine.startsWith(ORIGIN_PREFIX)) return { problem: `no ${ORIGIN_PREFIX.trim()} origin line after the frontmatter` };
-  const origin = parseOriginLine(originLine);
+  const paper = frontmatterValue(lines.slice(1, close), "paper");
+  let origin: Pick<DumpDocument, "origin" | "swept"> | undefined;
+  if (originLine.startsWith(BRIEFING_PREFIX)) {
+    if (paper === undefined) return { problem: `a ${BRIEFING_PREFIX.trim()} origin line without paper: in the frontmatter` };
+    origin = parseBriefingLine(originLine, paper);
+  } else if (originLine.startsWith(ORIGIN_PREFIX)) {
+    origin = parseOriginLine(originLine);
+  } else {
+    return { problem: `no ${ORIGIN_PREFIX.trim()} or ${BRIEFING_PREFIX.trim()} origin line after the frontmatter` };
+  }
   if (origin === undefined) return { problem: `unreadable origin line "${originLine}"` };
   const bodyStart = lines.findIndex((line, index) => index > close + 1 && line.startsWith("## "));
   if (bodyStart === -1) return { problem: "invalid Dump body: it has no Items" };
@@ -123,6 +152,7 @@ export function coveredSession(contents: string): CoveredSession | undefined {
 }
 
 export function renderOriginLine(origin: Origin, swept: boolean): string {
+  if (origin.kind === "briefing") return [`${BRIEFING_PREFIX}[[${origin.briefing}]]`, displayStamp(origin.at), `[[${origin.project}]]`].join(" · ");
   const segments = [`${ORIGIN_PREFIX}${toolName(origin.tool)}${swept ? " (swept)" : ""}`];
   if (origin.kind === "dev") {
     const branch = origin.branch === undefined ? "" : ` @ \`${origin.branch}\``;
@@ -188,9 +218,10 @@ function dumpStem(origin: Origin, slug: string): string {
 }
 
 function renderContents({ origin, swept, session, body }: DumpDocument): string {
-  const sweptTag = swept ? ["  - dump/swept"] : [];
+  const subtag = swept ? ["  - dump/swept"] : origin.kind === "briefing" ? ["  - dump/kept"] : [];
   const covered = session === undefined ? [] : [`session: ${session.id}`, `through: ${session.through.toISOString()}`];
-  const frontmatter = ["---", "tags:", "  - dump", ...sweptTag, "  - AIGenerated", `  - ${origin.tool}`, ...covered, "---"];
+  const paper = origin.kind === "briefing" ? [`paper: ${origin.paper}`] : [];
+  const frontmatter = ["---", "tags:", "  - dump", ...subtag, "  - AIGenerated", `  - ${origin.tool}`, ...covered, ...paper, "---"];
   return `${frontmatter.join("\n")}\n${renderOriginLine(origin, swept)}\n\n${body}`;
 }
 
@@ -198,10 +229,13 @@ function frontmatterEnd(lines: string[]): number {
   return lines[0] === "---" ? lines.indexOf("---", 1) : -1;
 }
 
+function frontmatterValue(frontmatter: string[], key: string): string | undefined {
+  return frontmatter.find((line) => line.startsWith(`${key}: `))?.slice(key.length + 2).trim();
+}
+
 function readCoverage(frontmatter: string[]): { session: CoveredSession | undefined } | DumpProblem {
-  const value = (key: string): string | undefined => frontmatter.find((line) => line.startsWith(`${key}: `))?.slice(key.length + 2).trim();
-  const id = value("session");
-  const through = value("through");
+  const id = frontmatterValue(frontmatter, "session");
+  const through = frontmatterValue(frontmatter, "through");
   if (id === undefined) return through === undefined ? { session: undefined } : { problem: "through: without session: in the frontmatter" };
   const at = new Date(through ?? "");
   if (Number.isNaN(at.getTime())) return { problem: `session: ${id} has no valid through: in the frontmatter` };
@@ -228,6 +262,13 @@ function parseOriginLine(line: string): Pick<DumpDocument, "origin" | "swept"> |
   const notes = segments.map((segment) => /^\((.+)\)$/.exec(segment)?.[1]);
   if (!place?.[1] || at === undefined || project === undefined || notes.some((note) => note === undefined)) return undefined;
   return { origin: { kind: "dev", tool, project, location: expandHome(place[1]), branch: place[2], at, notes: notes.filter((note) => note !== undefined) }, swept };
+}
+
+function parseBriefingLine(line: string, paper: string): Pick<DumpDocument, "origin" | "swept"> | undefined {
+  const [, briefing, stamp, project] = BRIEFING_LINE.exec(line) ?? [];
+  const at = parseStamp(stamp);
+  if (briefing === undefined || project === undefined || at === undefined) return undefined;
+  return { origin: { kind: "briefing", tool: PAPER_BOT, briefing, paper, project, at }, swept: false };
 }
 
 function displayStamp(at: Date): string {

@@ -9,7 +9,7 @@ The single Obsidian vault Brain-Dump writes into; the user's second brain.
 _Avoid_: Notebook, knowledge base
 
 **Dump**:
-One raw captured item (a thought, a session excerpt, a link) not yet organised into the Vault's structure.
+One raw captured item (a thought, a session excerpt, a link, or a Kept Pick from a Briefing) not yet organised into the Vault's structure.
 _Avoid_: Capture, entry, snippet
 
 **Item**:

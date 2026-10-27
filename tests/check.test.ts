@@ -194,7 +194,7 @@ describe("brain-dump check findings", () => {
 
   test.each([
     ["no frontmatter", `${DEV_ORIGIN}\n\n${OPEN_BODY}`, "no frontmatter"],
-    ["no origin line", `---\ntags:\n  - dump\n---\n\n${OPEN_BODY}`, "no Session: origin line after the frontmatter"],
+    ["no origin line", `---\ntags:\n  - dump\n---\n\n${OPEN_BODY}`, "no Session: or Briefing: origin line after the frontmatter"],
     ["an unparsable section", dumpFile(DEV_ORIGIN, "## Learnings\nloose text\n"), 'invalid Dump body: line 2 is not an Item: "loose text"'],
   ])("reports a Dump with %s as malformed", (_, contents, detail) => {
     // #given

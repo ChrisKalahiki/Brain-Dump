@@ -29,6 +29,10 @@ describe("the Dump document", () => {
       ],
       ["chat with URL and Project", { ...DEV, origin: { kind: "chat", tool: "ClaudeWeb", chatUrl: "https://claude.ai/chat/123", project: "Brain-Dump", at: AT } }],
       ["chat without Project", { ...DEV, origin: { kind: "chat", tool: "Gemini", chatUrl: undefined, project: undefined, at: AT } }],
+      [
+        "Kept Pick from a Briefing",
+        { ...DEV, origin: { kind: "briefing", tool: "PaperBot", briefing: "2026-10-05 Daily Briefing", paper: "2410.01234", project: "Interpretability", at: AT } },
+      ],
     ];
 
     // #when
@@ -74,6 +78,7 @@ describe("the Dump document", () => {
       ["no origin line", `${stem}.md`, contents.replace(`${origin}\n`, "")],
       ["an origin line it doesn't write", `${stem}.md`, contents.replace(origin, "Session: Claude Code")],
       ["through without session", `${stem}.md`, contents.replace("---\nSession", "through: 2026-10-05T18:00:00.000Z\n---\nSession")],
+      ["a Briefing origin without its Paper", `${stem}.md`, contents.replace(origin, "Briefing: [[2026-10-05 Daily Briefing]] · 2026-10-05 19:40 · [[Interpretability]]")],
       ["a bad body", `${stem}.md`, `${contents}loose text\n`],
     ];
 
@@ -84,9 +89,10 @@ describe("the Dump document", () => {
     expect(problems).toEqual([
       ["not a Dump filename", { problem: "not a Dump filename" }],
       ["no frontmatter", { problem: "no frontmatter" }],
-      ["no origin line", { problem: "no Session: origin line after the frontmatter" }],
+      ["no origin line", { problem: "no Session: or Briefing: origin line after the frontmatter" }],
       ["an origin line it doesn't write", { problem: 'unreadable origin line "Session: Claude Code"' }],
       ["through without session", { problem: "through: without session: in the frontmatter" }],
+      ["a Briefing origin without its Paper", { problem: "a Briefing: origin line without paper: in the frontmatter" }],
       ["a bad body", { problem: 'invalid Dump body: line 10 is not an Item: "loose text"' }],
     ]);
   });

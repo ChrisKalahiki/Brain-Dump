@@ -52,7 +52,20 @@ export type ChatOrigin = {
   at: Date;
 };
 
-export type Origin = DevOrigin | ChatOrigin;
+/** The tool tag of a Dump made from a Kept Pick rather than a Session. */
+export const PAPER_BOT = "PaperBot";
+
+/** A Kept Pick: `briefing` is the Briefing it was kept from, `paper` paper-bot's id for the Paper, `project` the Pick's first Interest. */
+export type BriefingOrigin = {
+  kind: "briefing";
+  tool: typeof PAPER_BOT;
+  briefing: string;
+  paper: string;
+  project: string;
+  at: Date;
+};
+
+export type Origin = DevOrigin | ChatOrigin | BriefingOrigin;
 
 export function detectDevOrigin(tool: DevToolTag, cwd: string, at: Date): DevOrigin {
   const root = git(cwd, "rev-parse", "--show-toplevel") ?? cwd;
