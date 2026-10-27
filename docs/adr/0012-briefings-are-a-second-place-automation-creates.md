@@ -14,4 +14,5 @@ Briefings stay out of Filing destinations (`list-notes`), `recall`, `check` and 
 ## Consequences
 
 - A second Briefing for the same period is refused (create-new). A bad Briefing is fixed with `brain-dump undo <run>` and a re-run, which works only until Chris edits the note, for example by ticking a Keep (ADR 0006).
-- The glossary narrows Curated Note to notes outside the Inbox and `Research/Briefings`, and gains Briefing.
+- `undo` is the one write under `Research/Briefings` not made by the Briefing writer: an approved revert restores exactly what a Run changed, so it cannot widen what a Briefing holds (ADR 0006).
+- The glossary narrows Curated Note to notes outside the Inbox and `Research/Briefings`, and gains Briefing, Pick and Kept Pick.

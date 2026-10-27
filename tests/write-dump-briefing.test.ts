@@ -54,34 +54,52 @@ ${BODY}`,
     );
   });
 
-  test("refuses a malformed Briefing-origin flag, naming it", () => {
+  test.each([
+    ["briefing", "Briefing]] · [[Elsewhere"],
+    ["paper", "2410.01234\ntags: [x]"],
+    ["project", "Interp|retability"],
+  ])("refuses a malformed --%s, naming it", (flag, value) => {
     // #given
     const sandbox = makeSandbox();
-    const cases: [string, string][] = [
-      ["briefing", "Briefing]] · [[Elsewhere"],
-      ["paper", "2410.01234\ntags: [x]"],
-      ["project", "Interp|retability"],
-      ["origin", "chat"],
-    ];
 
     // #when
-    const results = cases.map(([flag, value]) => run(sandbox, briefingArgs({ [flag]: value }), { stdin: BODY }).stderr.split(" ")[1]);
+    const result = run(sandbox, briefingArgs({ [flag]: value }), { stdin: BODY });
 
     // #then
-    expect(results).toEqual(cases.map(([flag]) => `--${flag}`));
+    expect([result.exitCode, result.stderr.startsWith(`brain-dump: --${flag} "${value}" `)]).toEqual([2, true]);
   });
 
-  test("refuses Session-origin flags on the Briefing origin, and Briefing-origin flags on the Session origin", () => {
+  test("refuses an --origin other than session or briefing", () => {
     // #given
     const sandbox = makeSandbox();
-    const sessionFlagOnBriefing = briefingArgs({ tool: "ClaudeCode" });
-    const briefingFlagOnSession = ["write-dump", "--tool", "ClaudeWeb", "--slug", "s", "--paper", "2410.01234"];
 
     // #when
-    const results = [sessionFlagOnBriefing, briefingFlagOnSession].map((args) => run(sandbox, args, { stdin: BODY }).stderr);
+    const result = run(sandbox, briefingArgs({ origin: "chat" }), { stdin: BODY });
 
     // #then
-    expect(results).toEqual(["brain-dump: --tool is only for the session origin\n", "brain-dump: --paper is only for the briefing origin\n"]);
+    expect([result.exitCode, result.stderr]).toEqual([2, "brain-dump: --origin must be session or briefing\n"]);
+  });
+
+  test("refuses a Session-origin flag on the Briefing origin", () => {
+    // #given
+    const sandbox = makeSandbox();
+
+    // #when
+    const result = run(sandbox, briefingArgs({ tool: "ClaudeCode" }), { stdin: BODY });
+
+    // #then
+    expect([result.exitCode, result.stderr]).toEqual([2, "brain-dump: --tool is only for the session origin\n"]);
+  });
+
+  test("refuses a Briefing-origin flag on the Session origin", () => {
+    // #given
+    const sandbox = makeSandbox();
+
+    // #when
+    const result = run(sandbox, ["write-dump", "--tool", "ClaudeWeb", "--slug", "s", "--paper", "2410.01234"], { stdin: BODY });
+
+    // #then
+    expect([result.exitCode, result.stderr]).toEqual([2, "brain-dump: --paper is only for the briefing origin\n"]);
   });
 
   test("--dry-run prints the Dump it would write, under the name it would take", () => {
@@ -110,16 +128,32 @@ ${BODY}`,
 });
 
 describe("brain-dump write-dump --dry-run", () => {
-  test("writes no file and starts no Run, on either origin", () => {
+  test.each([
+    ["Session", ["write-dump", "--tool", "ClaudeWeb", "--slug", "s", "--at", DUMP_AT, "--dry-run"]],
+    ["Briefing", [...briefingArgs(), "--dry-run"]],
+  ])("on the %s origin, succeeds writing no file", (_, args) => {
     // #given
     const sandbox = makeSandbox();
-    const session = ["write-dump", "--tool", "ClaudeWeb", "--slug", "s", "--at", DUMP_AT, "--dry-run"];
 
     // #when
-    const exitCodes = [session, [...briefingArgs(), "--dry-run"]].map((args) => run(sandbox, args, { stdin: BODY }).exitCode);
+    const result = run(sandbox, args, { stdin: BODY });
 
     // #then
-    expect([exitCodes, existsSync(join(sandbox.vault, "Inbox")), JSON.parse(run(sandbox, ["runs"]).stdout)]).toEqual([[0, 0], false, []]);
+    expect([result.exitCode, existsSync(join(sandbox.vault, "Inbox"))]).toEqual([0, false]);
+  });
+
+  test.each([
+    ["Session", ["write-dump", "--tool", "ClaudeWeb", "--slug", "s", "--at", DUMP_AT, "--dry-run"]],
+    ["Briefing", [...briefingArgs(), "--dry-run"]],
+  ])("on the %s origin, starts no Run", (_, args) => {
+    // #given
+    const sandbox = makeSandbox();
+
+    // #when
+    run(sandbox, args, { stdin: BODY });
+
+    // #then
+    expect(JSON.parse(run(sandbox, ["runs"]).stdout)).toEqual([]);
   });
 
   test("still refuses a Dump that breaks the Dump rules", () => {

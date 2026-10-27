@@ -37,7 +37,7 @@ sweep-opt-out = ~/Projects/client-work, ~/Projects/secret
 
 ## Briefings
 
-paper-bot writes its Daily and Weekly Briefings through `brain-dump write-briefing --note <path>`, with the Markdown on stdin (ADR 0012). The path is one of `Research/Briefings/Daily/YYYY-MM-DD Daily Briefing.md` or `Research/Briefings/Weekly/YYYY-Www Weekly Briefing.md`; anything else, `Research/Briefings/Interests.md` included, is refused, and so is a Briefing that already exists. The content is checked for size and secrets, never for format. It is one Run, printed as `{ note, run }`, so `brain-dump undo <run>` removes a Briefing until you edit it.
+paper-bot writes its Daily and Weekly Briefings through `brain-dump write-briefing --note <path>`, with the Markdown on stdin (ADR 0012). The path is one of `Research/Briefings/Daily/YYYY-MM-DD Daily Briefing.md` or `Research/Briefings/Weekly/YYYY-Www Weekly Briefing.md`; anything else, `Research/Briefings/Interests.md` included, is refused, and so is a Briefing that already exists. The content is checked for size (at most 200,000 bytes) and secrets, never for format. It is one Run, printed as `{ note, run }`, so `brain-dump undo <run>` removes a Briefing until you edit it.
 
 Briefings stay out of `list-notes`, `recall`, `check` and the Vault pointer. `brain-dump show --full <path>` reads them and the Interests Note.
 

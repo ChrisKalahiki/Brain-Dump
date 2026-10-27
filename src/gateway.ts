@@ -4,7 +4,7 @@ import { appendOnlyViolation, checkboxOnlyViolation, todoMarkViolation, type Clo
 import { BrainDumpError, describeFsError, errnoCode } from "./errors.ts";
 import { BRIEFING_NOTE, BRIEFINGS_FOLDER, FILED_FOLDER, INBOX, ROUTES_NOTE, WEEKLY_FOLDER, WRITE_ALLOWLIST } from "./layout.ts";
 import { discardRun, finishRun, sha256, startRun, type Change, type RunInfo } from "./runs.ts";
-import { findSecret } from "./secrets.ts";
+import { refuseSecret } from "./secrets.ts";
 import type { Vault } from "./vault.ts";
 
 // The one module that writes, renames or deletes Vault files (ADR 0005). Paths are absolute.
@@ -41,6 +41,7 @@ export class WriteFailedError extends BrainDumpError {
 
 /** A plan over this many notes needs the user's separate confirmation (ADR 0004). */
 const PLAN_SIZE_LIMIT = 8;
+/** A Briefing over this many bytes is refused (ADR 0012). */
 const BRIEFING_SIZE_LIMIT = 200_000;
 
 /** `original` is the target as re-read from disk at verification, kept to restore it if a later write fails. */
@@ -48,8 +49,7 @@ type Staged = Write & { temporary: string; original?: string };
 
 /** Checks every rule, stages every file, re-reads each target from disk to verify it, journals it as a Run, then writes all of it, or restores everything it touched. `confirmLarge` is set only after the user separately approved a plan over the size limit. Returns the Run's id. */
 export function commit(vault: Vault, actor: Actor, run: RunInfo, writes: Write[], { confirmLarge = false } = {}): string {
-  for (const write of writes) checkRules(vault, actor, write);
-  checkPlanSize(vault, writes, confirmLarge);
+  checkWrites(vault, actor, writes, { confirmLarge });
   const staged: Staged[] = [];
   const newFolders: string[] = [];
   let installed = false;
@@ -71,6 +71,12 @@ export function commit(vault: Vault, actor: Actor, run: RunInfo, writes: Write[]
     for (const { temporary } of staged) if (existsSync(temporary)) unlinkSync(temporary);
     if (!installed) for (const folder of newFolders.reverse()) rmSync(folder, { recursive: true, force: true });
   }
+}
+
+/** The rules `commit` checks before staging anything (path, actor, Briefing size and secrets, plan size), writing nothing. */
+export function checkWrites(vault: Vault, actor: Actor, writes: Write[], { confirmLarge = false } = {}): void {
+  for (const write of writes) checkRules(vault, actor, write);
+  checkPlanSize(vault, writes, confirmLarge);
 }
 
 function checkRules(vault: Vault, actor: Actor, write: Write): void {
@@ -103,8 +109,7 @@ function checkRules(vault: Vault, actor: Actor, write: Write): void {
 function checkBriefing(name: string, contents: string): void {
   const bytes = Buffer.byteLength(contents);
   if (bytes > BRIEFING_SIZE_LIMIT) throw new WriteRefusedError(`${name} is ${bytes} bytes, more than the ${BRIEFING_SIZE_LIMIT} a Briefing may hold`);
-  const secret = findSecret(contents);
-  if (secret !== undefined) throw new WriteRefusedError(`line ${secret.line} of ${name} looks like it holds ${secret.kind}`);
+  refuseSecret(contents, "Briefing");
 }
 
 function checkPlanSize(vault: Vault, writes: Write[], confirmLarge: boolean): void {

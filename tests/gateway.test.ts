@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { commit, WriteRefusedError, type Write } from "../src/gateway.ts";
 import { DEV_ORIGIN as ORIGIN, dumpFile, makeSandbox, readVaultFile, run, WEEKLY_TEMPLATE, writeVaultFile, type Sandbox, pinned } from "./harness.ts";
 
 const DUMP = "Inbox/2026-10-05 1940 Brain-Dump - filing.md";
@@ -198,28 +197,3 @@ describe("the write gateway limits a plan to 8 notes unless it carries confirmLa
     expect({ exitCode: result.exitCode, stderr: result.stderr.startsWith("brain-dump: invalid Filing Plan:") }).toEqual({ exitCode: 2, stderr: true });
   });
 });
-
-describe("the write gateway keeps automation out of Research/Briefings", () => {
-  test("refuses automation creating a Briefing, writing nothing", () => {
-    // #given
-    const sandbox = makeSandbox();
-    const vault = { root: sandbox.vault, inbox: join(sandbox.vault, "Inbox") };
-    const write: Write = { mode: "create", path: join(sandbox.vault, BRIEFING), contents: "# Daily Briefing\n" };
-
-    // #when
-    const refusal = refusalOf(() => commit(vault, "automation", { command: "write-dump", label: "briefing" }, [write]));
-
-    // #then
-    expect([refusal, existsSync(write.path)]).toEqual([`write refused: automation may only create new Dumps in the Inbox, not write ${BRIEFING}`, false]);
-  });
-});
-
-function refusalOf(attempt: () => unknown): string | undefined {
-  try {
-    attempt();
-  } catch (error) {
-    if (error instanceof WriteRefusedError) return error.message;
-    throw error;
-  }
-  return undefined;
-}

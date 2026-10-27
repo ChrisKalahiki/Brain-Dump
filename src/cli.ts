@@ -4,7 +4,7 @@ import { writeBriefing } from "./briefing.ts";
 import { checkVault, renderFinding, type Finding } from "./check.ts";
 import { now } from "./clock.ts";
 import { consolidate, parseConsolidationPlan } from "./consolidate.ts";
-import { dryRunDump, writeDump, type DumpRequest } from "./dump.ts";
+import { dryRunDump, writeDump, type DumpSource } from "./dump.ts";
 import { listDumps } from "./duplicates.ts";
 import { BrainDumpError, describeFsError, DumpNotWrittenError, errnoCode, UsageError } from "./errors.ts";
 import { detectDevOrigin, isChatTool, isToolTag, PAPER_BOT, projectOf, TOOL_TAGS, type Origin, type ToolTag } from "./origin.ts";
@@ -142,8 +142,11 @@ function sessionFromEnvironment(tool: ToolTag): string | undefined {
   return undefined;
 }
 
-const SESSION_FLAGS = ["tool", "chat-url", "session", "through", "swept"] as const;
-const BRIEFING_FLAGS = ["briefing", "paper"] as const;
+/** For each `--origin`, the other origin and the flags only that one takes. */
+const OTHER_ORIGIN = {
+  session: { origin: "briefing", flags: ["briefing", "paper"] },
+  briefing: { origin: "session", flags: ["tool", "chat-url", "session", "through", "swept"] },
+} as const;
 
 async function runWriteDump(args: string[]): Promise<string> {
   const values = parseOptions(args, {
@@ -162,8 +165,9 @@ async function runWriteDump(args: string[]): Promise<string> {
   });
   const kind = values.origin ?? "session";
   if (kind !== "session" && kind !== "briefing") throw new UsageError("--origin must be session or briefing");
-  const misplaced = (kind === "session" ? BRIEFING_FLAGS : SESSION_FLAGS).find((flag) => values[flag] !== undefined);
-  if (misplaced !== undefined) throw new UsageError(`--${misplaced} is only for the ${kind === "session" ? "briefing" : "session"} origin`);
+  const other = OTHER_ORIGIN[kind];
+  const misplaced = other.flags.find((flag) => values[flag] !== undefined);
+  if (misplaced !== undefined) throw new UsageError(`--${misplaced} is only for the ${other.origin} origin`);
   if (values.slug === undefined) throw new UsageError("--slug is required");
   const at = values.at === undefined ? now() : new Date(values.at);
   if (Number.isNaN(at.getTime())) throw new UsageError(`--at "${values.at}" is not a date and time`);
@@ -174,7 +178,7 @@ async function runWriteDump(args: string[]): Promise<string> {
 
 type WriteDumpFlags = { tool?: string; "chat-url"?: string; project?: string; session?: string; through?: string; swept?: boolean; briefing?: string; paper?: string };
 
-function sessionRequest(values: WriteDumpFlags, at: Date): Omit<DumpRequest, "slug" | "body"> {
+function sessionRequest(values: WriteDumpFlags, at: Date): DumpSource {
   const tool = values.tool !== undefined && isToolTag(values.tool) ? values.tool : undefined;
   if (tool === undefined) throw new UsageError(`--tool must be one of ${TOOL_TAGS.join(", ")}`);
   const hasChatOptions = values["chat-url"] !== undefined || values.project !== undefined;
@@ -188,7 +192,7 @@ function sessionRequest(values: WriteDumpFlags, at: Date): Omit<DumpRequest, "sl
   return { origin, swept: values.swept, session, through };
 }
 
-function briefingRequest({ briefing, paper, project }: WriteDumpFlags, at: Date): Omit<DumpRequest, "slug" | "body"> {
+function briefingRequest({ briefing, paper, project }: WriteDumpFlags, at: Date): DumpSource {
   if (briefing === undefined) throw new UsageError("--briefing is required for the briefing origin");
   if (paper === undefined) throw new UsageError("--paper is required for the briefing origin");
   if (project === undefined) throw new UsageError("--project is required for the briefing origin");

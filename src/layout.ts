@@ -17,4 +17,4 @@ export const WEEKLY_TEMPLATE_NOTE = join("Research", "Other", "Templates", "XX-X
 export const WRITE_ALLOWLIST: readonly string[] = [INBOX, join("Research", "Main Notes"), WEEKLY_FOLDER, "Side Projects", "Resources", BRIEFINGS_FOLDER];
 
 /** The allowlist less Briefings, which Filing, recall, check and the Vault pointer never read (ADR 0012). */
-export const FILING_TREES: readonly string[] = WRITE_ALLOWLIST.filter((tree) => tree !== BRIEFINGS_FOLDER);
+export const KNOWLEDGE_TREES: readonly string[] = WRITE_ALLOWLIST.filter((tree) => tree !== BRIEFINGS_FOLDER);

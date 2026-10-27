@@ -104,17 +104,6 @@ describe("brain-dump write-briefing refuses, naming the note and writing nothing
     expect([result.exitCode, result.stderr, readVaultFile(sandbox, DAILY)]).toEqual([1, `brain-dump: write refused: ${DAILY} already exists\n`, "# Read and ticked\n"]);
   });
 
-  test("a Briefing holding a secret, naming its line but never the secret", () => {
-    // #given
-    const sandbox = makeSandbox();
-
-    // #when
-    const result = writeBriefing(sandbox, DAILY, "# Daily Briefing\npassword=hunter2\n");
-
-    // #then
-    expect([result.exitCode, result.stderr, existsSync(join(sandbox.vault, DAILY))]).toEqual([1, `brain-dump: write refused: line 2 of ${DAILY} looks like it holds a password\n`, false]);
-  });
-
   test("a Briefing over the size limit", () => {
     // #given
     const sandbox = makeSandbox();
@@ -124,5 +113,18 @@ describe("brain-dump write-briefing refuses, naming the note and writing nothing
 
     // #then
     expect([result.exitCode, result.stderr, existsSync(join(sandbox.vault, DAILY))]).toEqual([1, `brain-dump: write refused: ${DAILY} is 200001 bytes, more than the 200000 a Briefing may hold\n`, false]);
+  });
+});
+
+describe("brain-dump write-briefing refuses a Briefing holding a secret, as write-dump refuses a Dump", () => {
+  test("naming its line but never the secret, and writing nothing", () => {
+    // #given
+    const sandbox = makeSandbox();
+
+    // #when
+    const result = writeBriefing(sandbox, DAILY, "# Daily Briefing\npassword=hunter2\n");
+
+    // #then
+    expect([result.exitCode, result.stderr, existsSync(join(sandbox.vault, DAILY))]).toEqual([1, "brain-dump: Briefing refused: line 2 looks like it holds a password; remove it and write the Briefing again\n", false]);
   });
 });

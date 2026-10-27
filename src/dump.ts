@@ -4,10 +4,10 @@ import { basename, join } from "node:path";
 import { datePart, pad } from "./clock.ts";
 import { parseDumpBody, renderDumpBody, type DumpBody } from "./dump-body.ts";
 import { BrainDumpError, DumpNotWrittenError, UsageError } from "./errors.ts";
-import { commit, NoteExistsError, WriteFailedError } from "./gateway.ts";
+import { checkWrites, commit, NoteExistsError, WriteFailedError, type Write } from "./gateway.ts";
 import { isChatTool, PAPER_BOT, TOOL_TAGS, toolName, toolNamed, type BriefingOrigin, type Origin } from "./origin.ts";
 import type { RunInfo } from "./runs.ts";
-import { findSecret } from "./secrets.ts";
+import { refuseSecret } from "./secrets.ts";
 import { expandHome, findVault, locateVault, type Vault } from "./vault.ts";
 
 // The Dump document: its filename, frontmatter, origin line and body are written and read back here, and nowhere else.
@@ -31,8 +31,11 @@ export type CoveredSession = { id: string; through: Date };
 /** A Dump as written: `swept` when the Sweep drafted it rather than the user's own `dump`; `body` is written as given. */
 export type DumpDocument = { origin: Origin; swept: boolean; session: CoveredSession | undefined; slug: string; body: string };
 
-/** What `write-dump` and the Sweep ask for; `through` defaults to the origin's time. */
-export type DumpRequest = { origin: Origin; swept?: boolean; slug: string; body: string; session?: string; through?: Date };
+/** Where a Dump comes from: its origin and the Session it covers; `through` defaults to the origin's time. */
+export type DumpSource = { origin: Origin; swept?: boolean; session?: string; through?: Date };
+
+/** What `write-dump` and the Sweep ask for. */
+export type DumpRequest = DumpSource & { slug: string; body: string };
 
 /** A Dump checked and rendered, not yet written: `stem` is its filename before any `-2` suffix. */
 export type PreparedDump = { stem: string; contents: string };
@@ -50,15 +53,6 @@ export type ParsedDump = Omit<DumpDocument, "body"> & {
 
 export type DumpProblem = { problem: string };
 
-export class SecretRefusedError extends BrainDumpError {
-  constructor(
-    readonly line: number,
-    readonly kind: string,
-  ) {
-    super(`Dump refused: line ${line} looks like it holds ${kind}; remove it and write the Dump again`);
-  }
-}
-
 export function writeDump(request: DumpRequest): string {
   const { stem, contents } = prepareDump(request);
   try {
@@ -72,7 +66,9 @@ export function writeDump(request: DumpRequest): string {
 /** What `writeDump` would write and where, after every check it runs, writing nothing and starting no Run. */
 export function dryRunDump(request: DumpRequest): { dump: string; contents: string } {
   const { stem, contents } = prepareDump(request);
-  const dump = freeNames(findVault(), stem).find((path) => !existsSync(path)) ?? "";
+  const vault = findVault();
+  const dump = firstFreeName(vault, stem);
+  checkWrites(vault, "automation", [{ mode: "create", path: dump, contents }]);
   return { dump, contents };
 }
 
@@ -80,14 +76,13 @@ export function dryRunDump(request: DumpRequest): { dump: string; contents: stri
 export function prepareDump({ origin, swept = false, slug, body, session, through }: DumpRequest): PreparedDump {
   const stem = dumpStem(origin, slug);
   checkCoverage({ origin, swept, session, through });
-  const secret = findSecret(body);
-  if (secret !== undefined) throw new SecretRefusedError(secret.line, secret.kind);
+  refuseSecret(body, "Dump");
   const covered = session === undefined ? undefined : { id: session, through: through ?? origin.at };
   return { stem, contents: renderContents({ origin, swept, session: covered, slug, body: renderDumpBody(parseDumpBody(body)) }) };
 }
 
 /** The origin and coverage rules alone, so the Sweep can refuse a Session before paying for its draft. */
-export function checkCoverage({ origin, swept = false, session, through }: Omit<DumpRequest, "slug" | "body">): void {
+export function checkCoverage({ origin, swept = false, session, through }: DumpSource): void {
   if (session !== undefined && !SESSION_ID.test(session)) throw new UsageError(`--session "${session}" may hold only letters, digits, ".", "_" and "-"`);
   if (through !== undefined && session === undefined) throw new UsageError("--through needs --session");
   if (origin.kind === "briefing") checkBriefingOrigin(origin);
@@ -173,18 +168,12 @@ export function isDumpFile(path: string): boolean {
 /** Creates every Dump in the Inbox as one Run, each under a free name. Returns the Run's id and the Dumps' paths. */
 export function writeDumps(vault: Vault, run: RunInfo, dumps: PreparedDump[]): { run: string; paths: string[] } {
   const taken = new Set<string>();
-  const paths = dumps.map(({ stem }) => {
-    const path = freeNames(vault, stem).find((candidate) => !taken.has(candidate) && !existsSync(candidate)) ?? "";
+  const writes: Write[] = dumps.map(({ stem, contents }) => {
+    const path = firstFreeName(vault, stem, taken);
     taken.add(path);
-    return path;
+    return { mode: "create", path, contents };
   });
-  const id = commit(
-    vault,
-    "automation",
-    run,
-    dumps.map(({ contents }, index) => ({ mode: "create", path: paths[index] ?? "", contents })),
-  );
-  return { run: id, paths };
+  return { run: commit(vault, "automation", run, writes), paths: writes.map(({ path }) => path) };
 }
 
 export function toFilenameSafe(slug: string): string {
@@ -196,6 +185,11 @@ export function toFilenameSafe(slug: string): string {
 /** `stem.md`, then `stem-2.md`, `stem-3.md` and so on. */
 function* freeNames(vault: Vault, stem: string): Generator<string> {
   for (let copy = 1; ; copy++) yield join(vault.inbox, `${stem}${copy === 1 ? "" : `-${copy}`}.md`);
+}
+
+function firstFreeName(vault: Vault, stem: string, taken: ReadonlySet<string> = new Set()): string {
+  for (const path of freeNames(vault, stem)) if (!taken.has(path) && !existsSync(path)) return path;
+  throw new Error("unreachable: freeNames never ends");
 }
 
 function createWithFreeName(vault: Vault, stem: string, contents: string): string {
@@ -218,10 +212,10 @@ function dumpStem(origin: Origin, slug: string): string {
 }
 
 function renderContents({ origin, swept, session, body }: DumpDocument): string {
-  const subtag = swept ? ["  - dump/swept"] : origin.kind === "briefing" ? ["  - dump/kept"] : [];
+  const sourceTag = swept ? ["  - dump/swept"] : origin.kind === "briefing" ? ["  - dump/kept"] : [];
   const covered = session === undefined ? [] : [`session: ${session.id}`, `through: ${session.through.toISOString()}`];
   const paper = origin.kind === "briefing" ? [`paper: ${origin.paper}`] : [];
-  const frontmatter = ["---", "tags:", "  - dump", ...subtag, "  - AIGenerated", `  - ${origin.tool}`, ...covered, ...paper, "---"];
+  const frontmatter = ["---", "tags:", "  - dump", ...sourceTag, "  - AIGenerated", `  - ${origin.tool}`, ...covered, ...paper, "---"];
   return `${frontmatter.join("\n")}\n${renderOriginLine(origin, swept)}\n\n${body}`;
 }
 

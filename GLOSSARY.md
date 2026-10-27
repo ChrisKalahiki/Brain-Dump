@@ -55,12 +55,20 @@ The proposed destination for every Item in one Dump, approved or adjusted by the
 _Avoid_: Proposal, preview
 
 **Curated Note**:
-Any note in the Vault outside the Inbox and `Research/Briefings`; it changes only through an approved Filing Plan or other approved plan.
+Any note in the Vault outside the Inbox and the Briefings; it changes only through an approved Filing Plan or other approved plan.
 _Avoid_: Curated zone, permanent note
 
 **Briefing**:
-A Daily or Weekly note paper-bot writes into `Research/Briefings`, listing new papers matched to Chris's interests; written once and never Filed, recalled or checked, it is not a Curated Note.
+A Daily or Weekly note of Picks, written by automation on a schedule; written once and never Filed, recalled or checked, it is not a Curated Note.
 _Avoid_: Newsletter, digest note
+
+**Pick**:
+One new paper a Briefing lists as matching the user's interests.
+_Avoid_: Recommendation
+
+**Kept Pick**:
+A Pick the user marked Keep in a Briefing; it reaches a Topic Note only as a Dump, through normal Filing.
+_Avoid_: Bookmark, saved paper
 
 **Weekly Note**:
 The per-week note holding that week's updates, to-dos, blockers, notes and key takeaways.
