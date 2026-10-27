@@ -2,6 +2,8 @@
 
 The Vault splits in two. The Inbox is where automation may act without asking, but only by creating new Dump files: it never edits or overwrites an existing file, and never touches `Inbox/Filed` or the Routes note. Every Curated Note (anything outside the Inbox), plus `Inbox/Filed` and the Routes note, changes only through an approved plan applied by the `brain-dump` helper.
 
+ADR 0012 narrows this for one place: `Research/Briefings`, where only the Briefing writer may create new Briefings, and no plan writes.
+
 The helper itself writes only under an allowlist of folder trees, defined in code in the Vault layout module: `Inbox`, `Research/Main Notes`, `Research/Weekly Meetings`, `Side Projects`, `Resources`. A plan may create new notes and subfolders inside those trees. A plan writing more than 8 notes (excluding its Dump and the Routes note) is refused unless the user separately confirms it.
 
 This is "automate where there's a test, gate where there isn't" as architecture: creating a new Dump can't destroy anything, so it needs no gate; everything else does.

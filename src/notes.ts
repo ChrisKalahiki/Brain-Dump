@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import { readHashed } from "./content-hash.ts";
-import { INBOX, WRITE_ALLOWLIST } from "./layout.ts";
+import { FILING_TREES, INBOX } from "./layout.ts";
 import type { Vault } from "./vault.ts";
 
 export type NoteSummary = {
@@ -12,9 +12,9 @@ export type NoteSummary = {
   hash: string;
 };
 
-/** Every note in the write allowlist outside the Inbox, so Filing never proposes a private note or a Dump. */
+/** Every note in the write allowlist outside the Inbox and Briefings, so Filing never proposes a private note, a Dump or a Briefing. */
 export function listNotes(vault: Vault): NoteSummary[] {
-  return noteFiles(vault, WRITE_ALLOWLIST.filter((tree) => tree !== INBOX)).map((path) => {
+  return noteFiles(vault, FILING_TREES.filter((tree) => tree !== INBOX)).map((path) => {
     const note = relative(vault.root, path);
     const { contents, hash } = readHashed(path);
     return { note, title: basename(note, ".md"), folder: dirname(note), tags: frontmatterTags(contents), hash };
@@ -22,7 +22,7 @@ export function listNotes(vault: Vault): NoteSummary[] {
 }
 
 /** The absolute paths of the Markdown notes in `trees`, sorted. */
-export function noteFiles(vault: Vault, trees: readonly string[] = WRITE_ALLOWLIST): string[] {
+export function noteFiles(vault: Vault, trees: readonly string[] = FILING_TREES): string[] {
   return trees
     .map((tree) => join(vault.root, tree))
     .filter((tree) => existsSync(tree))

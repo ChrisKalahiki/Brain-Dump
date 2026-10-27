@@ -2,6 +2,7 @@ import { basename, isAbsolute, join, normalize, relative } from "node:path";
 import { readHashed } from "./content-hash.ts";
 import { latestDigest } from "./digest.ts";
 import { BrainDumpError } from "./errors.ts";
+import { WRITE_ALLOWLIST } from "./layout.ts";
 import { linkTarget, noteFiles } from "./notes.ts";
 import type { Vault } from "./vault.ts";
 
@@ -25,10 +26,10 @@ function digestOffset(contents: string): number {
   return lines.slice(0, header).reduce((offset, line) => offset + line.length + 1, 0);
 }
 
-/** `name` is a Vault-relative path, a title, or a `[[wikilink]]`; only notes in the write allowlist can be shown (ADR 0007). */
+/** `name` is a Vault-relative path, a title, or a `[[wikilink]]`; only notes in the write allowlist, Briefings included, can be shown (ADR 0007, ADR 0012). */
 export function findNote(vault: Vault, name: string): string {
   const link = linkTarget(name);
-  const notes = noteFiles(vault);
+  const notes = noteFiles(vault, WRITE_ALLOWLIST);
   const byPath = link.includes("/") || link.endsWith(".md");
   const matches = byPath
     ? notes.filter((path) => !isAbsolute(link) && path === normalize(join(vault.root, link.endsWith(".md") ? link : `${link}.md`)))

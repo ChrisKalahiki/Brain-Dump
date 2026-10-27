@@ -35,6 +35,12 @@ It leaves out Sessions in the Vault, still active in the last 2 hours, with fewe
 sweep-opt-out = ~/Projects/client-work, ~/Projects/secret
 ```
 
+## Briefings
+
+paper-bot writes its Daily and Weekly Briefings through `brain-dump write-briefing --note <path>`, with the Markdown on stdin (ADR 0012). The path is one of `Research/Briefings/Daily/YYYY-MM-DD Daily Briefing.md` or `Research/Briefings/Weekly/YYYY-Www Weekly Briefing.md`; anything else, `Research/Briefings/Interests.md` included, is refused, and so is a Briefing that already exists. The content is checked for size and secrets, never for format. It is one Run, printed as `{ note, run }`, so `brain-dump undo <run>` removes a Briefing until you edit it.
+
+Briefings stay out of `list-notes`, `recall`, `check` and the Vault pointer. `brain-dump show --full <path>` reads them and the Interests Note.
+
 ## Checks
 
 `bun run check` runs the typecheck, the Glossary check, then the full test suite. The Glossary check (`bun run glossary`) fails on any `_Avoid_:` term from `GLOSSARY.md` in the skills, prompts, README, current spec, or string literals in `src/`; terms with a common other sense, and the superseded v1 and v2 specs, are listed as unchecked in `scripts/glossary.ts`. `bun install` points git at `.githooks`, whose pre-commit hook runs it on every commit. CI runs `check` and `bun run eval:check` (see below) on every push and PR.
