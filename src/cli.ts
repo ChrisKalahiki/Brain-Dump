@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { parseArgs, type ParseArgsConfig } from "node:util";
+import { writeBriefing } from "./briefing.ts";
 import { checkVault, renderFinding, type Finding } from "./check.ts";
 import { now } from "./clock.ts";
 import { consolidate, parseConsolidationPlan } from "./consolidate.ts";
@@ -32,6 +33,12 @@ async function main(argv: string[]): Promise<number> {
     case "write-dump":
       process.stdout.write(`${await runWriteDump(rest)}\n`);
       return 0;
+    case "write-briefing": {
+      const { note } = parseOptions(rest, { note: { type: "string" } });
+      if (note === undefined) throw new UsageError("--note is required");
+      writeJson(writeBriefing(locateVault(), note, await Bun.stdin.text()));
+      return 0;
+    }
     case "list-dumps": {
       const vault = locateVault();
       writeJson(listDumps(vault, listUnfiledDumps(vault)));

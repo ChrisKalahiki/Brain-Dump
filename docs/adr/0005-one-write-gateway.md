@@ -4,7 +4,7 @@ Append-only used to hold only because the Filing code was written that way; a bu
 
 The gateway enforces every rule about what may be written:
 
-- **Path**: only inside the allowlisted folder trees (ADR 0004).
+- **Path**: only inside the allowlisted folder trees (ADR 0004). Under `Research/Briefings`, only the Briefing writer may write, and only new Daily and Weekly Briefings, checked for size and secrets but not format (ADR 0012).
 - **Size**: a plan writing more than 8 notes needs a separate confirmation (ADR 0004).
 - **Mode**, one per file:
   - **Create-new**: a new file never overwrites an existing one.

@@ -35,6 +35,12 @@ It leaves out Sessions in the Vault, still active in the last 2 hours, with fewe
 sweep-opt-out = ~/Projects/client-work, ~/Projects/secret
 ```
 
+## Briefings
+
+paper-bot writes its Daily and Weekly Briefings through `brain-dump write-briefing --note <path>`, with the Markdown on stdin (ADR 0012). The path is one of `Research/Briefings/Daily/YYYY-MM-DD Daily Briefing.md` or `Research/Briefings/Weekly/YYYY-Www Weekly Briefing.md`; anything else, `Research/Briefings/Interests.md` included, is refused, and so is a Briefing that already exists. The content is checked for size and secrets, never for format. It is one Run, printed as `{ note, run }`, so `brain-dump undo <run>` removes a Briefing until you edit it.
+
+Briefings stay out of `list-notes`, `recall`, `check` and the Vault pointer. `brain-dump show --full <path>` reads them and the Interests Note.
+
 ## Kept Picks from paper-bot
 
 paper-bot writes each Pick ticked Keep in a Briefing as an ordinary Dump in the Inbox, for normal Filing:
