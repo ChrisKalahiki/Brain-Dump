@@ -90,6 +90,14 @@ _Avoid_: Index, main note
 Looking up what the Vault already holds from inside a Session.
 _Avoid_: Search, query, lookup
 
+**Section**:
+A part of a note that a heading opens, running until the next heading of the same or a higher level; Sections nest inside Sections.
+_Avoid_: Chunk, leaf, heading
+
+**Outline**:
+The titles of a set of Curated Notes with the names of their Sections, nested as the notes nest them, worked out from the notes each time it is asked for.
+_Avoid_: Table of contents, ToC, index
+
 **Route**:
 A remembered mapping from a project or subject to the note or Todo Group Filing should target, learned from the user's redirects.
 _Avoid_: Rule, mapping, alias
