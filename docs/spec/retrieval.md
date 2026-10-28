@@ -1,6 +1,6 @@
 # Brain-Dump retrieval spec
 
-Terms are defined in [`GLOSSARY.md`](../../GLOSSARY.md). Each ticket links to its heading under Implementation Decisions.
+Terms are defined in [`GLOSSARY.md`](../../GLOSSARY.md). Tracked as [#129](https://github.com/ChrisKalahiki/Brain-Dump/issues/129), with tickets [#130](https://github.com/ChrisKalahiki/Brain-Dump/issues/130) to [#135](https://github.com/ChrisKalahiki/Brain-Dump/issues/135). Each ticket links to its heading under Implementation Decisions.
 
 ## Problem Statement
 
