@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { datePart, now, pad } from "../src/clock.ts";
 import { curatedBullets } from "../src/curated.ts";
-import { agentCommand, AGENT_VARIABLE, DRAFTING_MODEL } from "../src/drafting.ts";
+import { AGENT_VARIABLE, DRAFTING_MODEL } from "../src/drafting.ts";
 import { descendants, headingPath, ownText, readSections } from "../src/note-sections.ts";
 import { renderOutline, type OutlinedNote, type OutlineSection } from "../src/outline.ts";
 import type { RecalledSection } from "../src/recall.ts";
@@ -278,8 +278,12 @@ function brainDump(args: string[]): Promise<Reply> {
   return spawn(["bun", CLI, ...args], "", "brain-dump");
 }
 
+/**
+ * ADR 0009's spawn, flag for flag as `src/drafting.ts` runs it but for either model. It isn't imported from there: any edit to that file makes every eval
+ * reaching it, through the CLI too, stale.
+ */
 function ask(model: string, prompt: string): Promise<Reply> {
-  return spawn(agentCommand(model), prompt, model);
+  return spawn(["claude", "-p", "--no-session-persistence", "--model", model, "--tools", "", "--strict-mcp-config", "--safe-mode"], prompt, model);
 }
 
 function spawn(command: string[], stdin: string, name: string): Promise<Reply> {

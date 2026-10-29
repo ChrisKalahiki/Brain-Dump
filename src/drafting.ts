@@ -13,7 +13,7 @@ const AGENT_TIMEOUT_MS = 10 * 60 * 1000;
 
 /** The pinned model every Session is drafted with. */
 export const DRAFTING_MODEL = "claude-sonnet-5-5";
-const DRAFTING_COMMAND = agentCommand(DRAFTING_MODEL);
+const DRAFTING_COMMAND = ["claude", "-p", "--no-session-persistence", "--model", DRAFTING_MODEL, "--tools", "", "--strict-mcp-config", "--safe-mode"];
 /** A shell command run in place of the drafting agent, so tests substitute a stub. It gets the prompt on stdin like the agent. */
 export const AGENT_VARIABLE = "BRAIN_DUMP_DRAFT_AGENT";
 
@@ -53,11 +53,6 @@ export function capText(text: string): { text: string; truncated: boolean } {
   if (text.length <= TEXT_CAP) return { text, truncated: false };
   const half = TEXT_CAP / 2;
   return { text: `${text.slice(0, half)}\n\n[… ${text.length - TEXT_CAP} characters left out …]\n\n${text.slice(-half)}`, truncated: true };
-}
-
-/** A tool-less, unsaved run of `model` that reads its prompt on stdin. */
-export function agentCommand(model: string): string[] {
-  return ["claude", "-p", "--no-session-persistence", "--model", model, "--tools", "", "--strict-mcp-config", "--safe-mode"];
 }
 
 /** One tool-less, unsaved run of the pinned model, or the stub in `BRAIN_DUMP_DRAFT_AGENT`. */
