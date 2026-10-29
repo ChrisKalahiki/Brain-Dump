@@ -77,6 +77,14 @@ A change to a prompt is scored before it ships: `bun run eval [name]` runs each 
 
 `dump`, `chat-dump`, `file` and `todo` run Claude Code headless with only the repo's skills (`--setting-sources project`). `dump` and `chat-dump` resume their synthetic Session from a log written to `~/.claude/projects` and removed after the run.
 
+### Retrieval benchmark
+
+`bun run bench` scores four ways of finding a Section on your real Vault (spec 04 in `docs/spec/retrieval.md`): A, `recall`'s top 3 Sections; B, the whole Outline in one model call; C, a call over note lines then one over the chosen notes' Outlines; D, B with `recall`'s top 10 beside the Outline. B to D run once with the pinned drafting model and once with a stronger one. It reads the Vault only through `brain-dump` commands, keeps everything in `~/.local/state/brain-dump/bench/`, and is not part of `check`, `eval:check` or CI.
+
+1. `bun run bench --generate` (re)writes `items.txt` (a paraphrased question per backlinked Item; gold is its note) and `sections.txt` (2 per Section with at least 3 bullets of its own; gold is that Section).
+2. Write `questions.txt` there by hand, one `<question> → [[Note#Section]]` per line; `[[Note]]` is scored at note level.
+3. `bun run bench` prints Recall@1, Recall@3, the share of answers naming a Section `show` refuses, and the Outline characters sent, per question set, candidate and model, and writes the same to `result-<date>-<time>.json`.
+
 ### Hand checks
 
 These have no automated eval; check them by hand when their prompts change:
