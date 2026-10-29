@@ -12,12 +12,13 @@ import { applyFilingPlan, parseFilingPlan, dryRunFilingPlan } from "./filing.ts"
 import { markTodos, parseMarks } from "./mark-todos.ts";
 import { AGENTS, guard, hookMatcher, isAgent } from "./guard.ts";
 import { listUnfiledDumps } from "./inbox.ts";
+import { headingPath } from "./note-sections.ts";
 import { listNotes } from "./notes.ts";
 import { pointerLines } from "./pointer.ts";
 import { parseRecallQuery, recall } from "./recall.ts";
 import { readRoutesNote } from "./routes.ts";
 import { listRuns } from "./runs.ts";
-import { showNote } from "./show.ts";
+import { showFiled, showNote, showSection } from "./show.ts";
 import { lastSweep, sweep } from "./sweep.ts";
 import { readTodoGroups, readTodos } from "./todo-groups.ts";
 import { findVault, locateVault } from "./vault.ts";
@@ -51,9 +52,15 @@ async function main(argv: string[]): Promise<number> {
       writeJson(recall(locateVault(), parseRecallQuery(rest, () => projectOf(process.cwd()))));
       return 0;
     case "show": {
-      const notes = rest.filter((arg) => arg !== "--full");
-      if (notes.length !== 1 || notes[0]?.startsWith("--")) throw new UsageError("show takes one note and optionally --full");
-      writeJson(showNote(locateVault(), notes[0] ?? "", { full: rest.includes("--full") }));
+      const notes = rest.filter((arg) => arg !== "--full" && arg !== "--filed");
+      const [name = ""] = notes;
+      if (notes.length !== 1 || name.startsWith("--")) throw new UsageError("show takes one note and optionally --full or --filed");
+      const options = { full: rest.includes("--full") };
+      const inSection = headingPath(name).length > 0;
+      if (rest.includes("--filed")) {
+        if (inSection) throw new UsageError("--filed can't be combined with a Section name");
+        writeJson(showFiled(locateVault(), name, options));
+      } else writeJson(inSection ? showSection(locateVault(), name, options) : showNote(locateVault(), name, options));
       return 0;
     }
     case "routes":

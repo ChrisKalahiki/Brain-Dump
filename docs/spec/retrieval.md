@@ -65,7 +65,7 @@ From the user's side, Filing writes exactly as today: Items still go at the end 
 - Lines before a note's first heading form a Section named for the note (`[[Note]]`). A note with no headings is that one Section.
 - A note's **filed lines** (each backlinked Item bullet with its `Why:` and `From` lines, and each Digest callout with its `^digest-…` line) belong to no Section. Filed lines are found with the curated-note module's existing parsers, so the two can't disagree.
 - A Section's **own text** is its heading line and the lines up to its first nested Section, less filed lines. Its **size** is its own bullets and lines plus those of its nested Sections.
-- A Section's name is its heading path: `[[Note#Parent#Child]]`. Names match ignoring case, surrounding whitespace, and the characters Obsidian drops from heading links (`#`, `|`, `^`, `:`, `[`, `]`).
+- A Section's name is its heading path: `[[Note#Parent#Child]]`. Names are written as Obsidian writes heading links, and match as Obsidian matches them: ignoring case, surrounding whitespace, and punctuation (see "Verify during the build").
 - A name may give only the deepest heading (`[[Note#Child]]`) when that is unique in the note. When it matches more than one Section, it is refused: `[[Note#Notes]] matches lines 12 and 40 of Note; pass its full path, e.g. [[Note#Week 1#Notes]]`.
 - An unknown name is refused with up to 5 nearest Section names in that note, or up to 5 nearest note titles when the note itself doesn't resolve. Nearness is word overlap, then edit distance.
 - `show "[[Note#Section]]"` returns `{note, section, hash, text, truncated}`: the Section's lines with its nested Sections, without filed lines. `hash` covers the whole note, as today, for a plan's `expect`. The 60k cap applies; `--full` lifts it.
@@ -165,7 +165,7 @@ From the user's side, Filing writes exactly as today: Items still go at the end 
 - **Filed Items under Sections:** placing each Item under the Section it fits would give it a meaningful name, but Digests are positional (ADR 0008): a Digest covers what follows the previous one, and `check` counts Items after it. Placement needs Digest coverage and `check` to move from position to Dump date first.
 
 **Verify during the build:**
-- [ ] The characters Obsidian drops from heading links, and whether Obsidian matches heading links ignoring case, so names written here resolve when clicked.
+- [x] The characters Obsidian drops from heading links, and whether Obsidian matches heading links ignoring case, so names written here resolve when clicked. Checked in Obsidian 1.14.5's bundled app (its `stripHeadingForLink`, `stripHeading` and `resolveSubpath`; the first two are documented in the `obsidian` API's `obsidian.d.ts`): a link Obsidian writes turns `:`, `#`, `|`, `^`, `\`, line breaks, `%%`, `[[` and `]]` into spaces and collapses them. To resolve a link it turns every ASCII punctuation character but `'`, `-` and `_` into a space on both sides, collapses whitespace, trims, and compares ignoring case. Each `#` part must match a heading deeper than the last, and the first match wins. Names here are written the first way and matched the second way. Where Obsidian would quietly take the first of several matches, `show` refuses instead.
 - [ ] The real Vault's Outline with sizes fits the 48,000-character cap without a cut, or by how much it misses (names alone measured about 42k characters outside Weekly Notes).
 - [ ] The eval runner's `PATH` override reaches the `brain-dump` the skill calls, so the shim can count `show` calls.
 
