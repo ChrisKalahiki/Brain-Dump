@@ -1,16 +1,21 @@
 import { readFileSync } from "node:fs";
 import { basename, relative } from "node:path";
-import { TODO_TAG } from "./curated.ts";
+import { bm25 } from "./bm25.ts";
+import { TODO_TAG, type CuratedNote } from "./curated.ts";
 import { renderOriginLine } from "./dump.ts";
+import { words } from "./duplicates.ts";
 import { UsageError } from "./errors.ts";
 import type { StoredDump } from "./inbox.ts";
+import { descendants, ownText, readSections } from "./note-sections.ts";
 import { linkTarget, noteFiles } from "./notes.ts";
 import { readVaultItems } from "./vault-items.ts";
 import type { Vault } from "./vault.ts";
 
 // Recall (ADR 0007): agents look up the Items the Vault holds through the helper, never with their own file tools.
+// Term Recall also ranks Sections of curated notes by BM25, worked out on each call (ADR 0013).
 
 const RESULT_CAP = 20;
+const SECTION_CAP = 10;
 
 export type RecallQuery = { mode: "terms"; terms: string[] } | { mode: "project"; name: string } | { mode: "links"; note: string };
 
@@ -24,7 +29,12 @@ export type RecalledItem = {
   origin: string | null;
 };
 
-export type Recall = { results: RecalledItem[]; more: number } | { links: { note: string; line: string }[] };
+/** `section` is its full heading link; `score` is rounded to 3 places. */
+export type RecalledSection = { note: string; section: string; score: number; bullets: number; lines: number };
+
+export type ItemRecall = { results: RecalledItem[]; more: number };
+
+export type Recall = (ItemRecall & { sections: RecalledSection[]; moreSections: number }) | ItemRecall | { links: { note: string; line: string }[] };
 
 /** `currentProject` is asked for only when `--project` names none. */
 export function parseRecallQuery(args: string[], currentProject: () => string): RecallQuery {
@@ -38,14 +48,37 @@ export function parseRecallQuery(args: string[], currentProject: () => string): 
 
 export function recall(vault: Vault, query: RecallQuery): Recall {
   if (query.mode === "links") return { links: findLinks(vault, query.note) };
-  const items = collectItems(vault);
+  const { items, notes } = collectItems(vault);
   if (query.mode === "project") return capped(items.filter((item) => item.dumpInfo?.project === query.name).sort(byRecency));
   const terms = query.terms.map((term) => term.toLowerCase());
   const scored = items
     .map((item) => ({ item, hits: countHits(`${item.text}\n${item.why ?? ""}`, terms) }))
     .filter(({ hits }) => hits > 0)
     .sort((a, b) => b.hits - a.hits || byRecency(a.item, b.item));
-  return capped(scored.map(({ item }) => item));
+  const sections = rankSections(notes, query.terms);
+  return { ...capped(scored.map(({ item }) => item)), sections: sections.slice(0, SECTION_CAP), moreSections: Math.max(0, sections.length - SECTION_CAP) };
+}
+
+/**
+ * Every Section scoring above 0, best first, then by note path and line.
+ * A Section's text is its ancestors' heading names and its own text, less filed lines; one with no words, like a note's empty lead, is not in the corpus.
+ */
+export function rankSections(notes: CuratedNote[], terms: string[]): RecalledSection[] {
+  const sections = notes.flatMap(({ note, lines }) => {
+    const sectioned = readSections(basename(note, ".md"), lines.join("\n"));
+    return [sectioned.root, ...descendants(sectioned.root)]
+      .map((section) => ({ note, section, words: words([...section.path.slice(0, -1), ownText(sectioned, section)].join("\n")) }))
+      .filter((scored) => scored.words.length > 0);
+  });
+  const scores = bm25(
+    sections.map((section) => section.words),
+    words(terms.join(" ")),
+  );
+  return sections
+    .map(({ note, section }, index) => ({ note, section, score: scores[index] ?? 0 }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score || a.note.localeCompare(b.note) || a.section.line - b.section.line)
+    .map(({ note, section, score }) => ({ note, section: section.name, score: Math.round(score * 1000) / 1000, bullets: section.bullets, lines: section.lines }));
 }
 
 type DumpInfo = { file: string; stamp: string; origin: string; project: string | null };
@@ -71,12 +104,14 @@ function countHits(text: string, terms: string[]): number {
 }
 
 /** Open Items still in Inbox Dumps, plus filed Items in curated notes. Dropped Items stay behind in their Dumps. */
-function collectItems(vault: Vault): FoundItem[] {
-  return readVaultItems(vault).items.map(({ note, text, rationale, state, dump, line }) => {
+function collectItems(vault: Vault): { items: FoundItem[]; notes: CuratedNote[] } {
+  const { items, notes } = readVaultItems(vault);
+  const found = items.map(({ note, text, rationale, state, dump, line }): FoundItem => {
     const dumpInfo = dump && describeDump(dump);
     const kind = rationale ? "decision" : TODO_TAG.test(text) ? "todo" : "learning";
     return { note, kind, text, why: rationale, unfiled: state === "open", dump: dumpInfo?.file ?? null, origin: dumpInfo?.origin ?? null, dumpInfo, position: line };
   });
+  return { items: found, notes };
 }
 
 function describeDump(dump: StoredDump): DumpInfo {

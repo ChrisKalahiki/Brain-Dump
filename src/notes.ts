@@ -48,7 +48,7 @@ function markdownFiles(folder: string): string[] {
   });
 }
 
-function frontmatterTags(contents: string): string[] {
+export function frontmatterTags(contents: string): string[] {
   const lines = contents.split(/\r?\n/);
   if (lines[0] !== "---") return [];
   const end = lines.indexOf("---", 1);

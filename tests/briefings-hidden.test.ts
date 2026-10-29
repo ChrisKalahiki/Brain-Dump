@@ -37,6 +37,18 @@ describe("Briefings are hidden from Filing, recall, check and the Vault pointer"
     expect(notes.map(({ note }) => note)).toEqual([CURATED]);
   });
 
+  test("the Outline leaves out Briefings and the Interests Note", () => {
+    // #given
+    const sandbox = makeSandbox();
+    seedVault(sandbox);
+
+    // #when
+    const notes: { note: string }[] = json(sandbox, ["outline", "--json"]);
+
+    // #then
+    expect(notes.map(({ note }) => note)).toEqual([CURATED]);
+  });
+
   test("recall by terms finds only the Curated Note's Items", () => {
     // #given
     const sandbox = makeSandbox();
@@ -47,6 +59,19 @@ describe("Briefings are hidden from Filing, recall, check and the Vault pointer"
 
     // #then
     expect(results.map(({ note }) => note)).toEqual([CURATED]);
+  });
+
+  test("recall by terms finds only the Curated Note's Sections", () => {
+    // #given
+    const sandbox = makeSandbox();
+    seedVault(sandbox);
+    writeVaultFile(sandbox, CURATED, `# Chronos\n- Learning schedulers by hand.\n- A filed Learning.\n${FROM_FILED}\n`);
+
+    // #when
+    const { sections }: { sections: { note: string }[] } = json(sandbox, ["recall", "Learning"]);
+
+    // #then
+    expect(sections.map(({ note }) => note)).toEqual([CURATED]);
   });
 
   test("recall by project finds only the Curated Note's Items", () => {
