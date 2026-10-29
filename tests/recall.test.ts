@@ -40,6 +40,12 @@ function recall(sandbox: Sandbox, args: string[], cwd?: string) {
   return result.exitCode === 0 ? JSON.parse(result.stdout) : result;
 }
 
+/** A term Recall's Items, without its Sections. */
+function recallItems(sandbox: Sandbox, terms: string[]) {
+  const { results, more } = recall(sandbox, terms);
+  return { results, more };
+}
+
 describe("brain-dump recall <terms…>", () => {
   test("ranks matching Items in the allowlist by hits, then newest Dump, then note path, leaving out dropped Items", () => {
     // #given
@@ -47,7 +53,7 @@ describe("brain-dump recall <terms…>", () => {
     seedVault(sandbox);
 
     // #when
-    const result = recall(sandbox, ["GUARD"]);
+    const result = recallItems(sandbox, ["GUARD"]);
 
     // #then
     expect(result).toEqual({ results: [RECALL_LEARNING, CHRONOS_LEARNING, GUARD_TODO, GUARD_DECISION, HAND_DECISION], more: 0 });
@@ -60,7 +66,7 @@ describe("brain-dump recall <terms…>", () => {
     writeVaultFile(sandbox, RECALL_DUMP, dumpFile(DEV_ORIGIN, "## Learnings\n- [ ] A hook, a hook, a hook.\n"));
 
     // #when
-    const result = recall(sandbox, ["hook", "trust"]);
+    const result = recallItems(sandbox, ["hook", "trust"]);
 
     // #then
     expect(result).toEqual({ results: [GUARD_LEARNING, { ...RECALL_LEARNING, text: "A hook, a hook, a hook." }, GUARD_DECISION], more: 0 });
@@ -80,6 +86,94 @@ describe("brain-dump recall <terms…>", () => {
   });
 });
 
+const CHRONOS = "Side Projects/Chronos.md";
+const QUEUES = "Research/Main Notes/Queues.md";
+
+/** "queue" in three of four Sections, "backoff" in one. */
+function seedSections(sandbox: Sandbox): void {
+  writeVaultFile(sandbox, CHRONOS, "# Chronos\n- The queue runs jobs.\n## Retries\n- Retries wait with backoff.\n## Workers\n- Each worker takes from the queue.\n");
+  writeVaultFile(sandbox, QUEUES, "# Queues\n- A queue holds jobs in order.\n");
+}
+
+function recallSections(sandbox: Sandbox, terms: string[]) {
+  const { sections, moreSections } = recall(sandbox, terms);
+  return { sections, moreSections };
+}
+
+describe("brain-dump recall <terms…> Sections", () => {
+  test("ranks Sections by BM25, so a rare term outranks a common one, then by note path and line", () => {
+    // #given
+    const sandbox = makeSandbox();
+    seedSections(sandbox);
+
+    // #when
+    const result = recallSections(sandbox, ["queue", "backoff"]);
+
+    // #then
+    expect(result).toEqual({
+      sections: [
+        { note: CHRONOS, section: "[[Chronos#Chronos#Retries]]", score: 1.179, bullets: 1, lines: 1 },
+        { note: CHRONOS, section: "[[Chronos#Chronos]]", score: 0.381, bullets: 3, lines: 3 },
+        { note: QUEUES, section: "[[Queues#Queues]]", score: 0.349, bullets: 1, lines: 1 },
+        { note: CHRONOS, section: "[[Chronos#Chronos#Workers]]", score: 0.349, bullets: 1, lines: 1 },
+      ],
+      moreSections: 0,
+    });
+  });
+
+  test("matches a Section by its ancestors' heading names", () => {
+    // #given
+    const sandbox = makeSandbox();
+    seedSections(sandbox);
+
+    // #when
+    const { sections }: { sections: { section: string }[] } = recall(sandbox, ["Chronos"]);
+
+    // #then
+    expect(sections.map(({ section }) => section)).toEqual(["[[Chronos#Chronos]]", "[[Chronos#Chronos#Retries]]", "[[Chronos#Chronos#Workers]]"]);
+  });
+
+  test("finds Weekly Note Sections but not Dumps, Briefings or notes outside the allowlist", () => {
+    // #given
+    const sandbox = makeSandbox();
+    writeVaultFile(sandbox, WEEK, "# Notes\n- Talked about the scheduler.\n");
+    writeVaultFile(sandbox, RECALL_DUMP, dumpFile(DEV_ORIGIN, "## Learnings\n- [ ] The scheduler drifts.\n"));
+    writeVaultFile(sandbox, "Research/Briefings/Daily/2026-10-26 Daily Briefing.md", "# Daily Briefing\n- Scheduler news.\n");
+    writeVaultFile(sandbox, "Private/Journal.md", "# Journal\n- Scheduler thoughts.\n");
+
+    // #when
+    const { sections }: { sections: { note: string }[] } = recall(sandbox, ["scheduler"]);
+
+    // #then
+    expect(sections.map(({ note }) => note)).toEqual([WEEK]);
+  });
+
+  test("leaves filed lines out of a Section's text", () => {
+    // #given
+    const sandbox = makeSandbox();
+    seedVault(sandbox);
+
+    // #when
+    const result = recallSections(sandbox, ["trust"]);
+
+    // #then
+    expect(result).toEqual({ sections: [], moreSections: 0 });
+  });
+
+  test("caps Sections at 10 and counts the rest in moreSections", () => {
+    // #given
+    const sandbox = makeSandbox();
+    const headings = Array.from({ length: 13 }, (_, n) => `## Part ${n}\n- Notes on caching.`).join("\n");
+    writeVaultFile(sandbox, CHRONOS, `# Chronos\n${headings}\n`);
+
+    // #when
+    const { sections, moreSections } = recall(sandbox, ["caching"]);
+
+    // #then
+    expect([sections.length, moreSections]).toEqual([10, 3]);
+  });
+});
+
 describe("brain-dump recall provenance", () => {
   test("leaves a filed Todo's Dump out when two Dumps filed the same text", () => {
     // #given
@@ -88,7 +182,7 @@ describe("brain-dump recall provenance", () => {
     writeVaultFile(sandbox, "Inbox/Filed/2026-10-02 0900 Brain-Dump - again.md", dumpFile(GUARD_ORIGIN, "## Todos\n- [x] #todo Ship the Codex guard.\n"));
 
     // #when
-    const result = recall(sandbox, ["Ship"]);
+    const result = recallItems(sandbox, ["Ship"]);
 
     // #then
     expect(result).toEqual({ results: [{ ...GUARD_TODO, dump: null, origin: null }], more: 0 });
@@ -101,7 +195,7 @@ describe("brain-dump recall provenance", () => {
     writeVaultFile(sandbox, TOPIC, `# Brain-Dump\n- Codex hooks need a trust step.\n${FROM_GUARD_UPPER}\n`);
 
     // #when
-    const result = recall(sandbox, ["trust"]);
+    const result = recallItems(sandbox, ["trust"]);
 
     // #then
     expect(result).toEqual({ results: [GUARD_LEARNING], more: 0 });
