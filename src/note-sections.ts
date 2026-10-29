@@ -99,7 +99,8 @@ export function filedText(note: SectionedNote): string {
   return joined(note.filed.map((line) => note.lines[line] ?? ""));
 }
 
-function descendants(section: Section): Section[] {
+/** Every Section nested in `section`, at any depth, in note order. */
+export function descendants(section: Section): Section[] {
   return section.sections.flatMap((nested) => [nested, ...descendants(nested)]);
 }
 
