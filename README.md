@@ -35,11 +35,15 @@ It leaves out Sessions in the Vault, still active in the last 2 hours, with fewe
 sweep-opt-out = ~/Projects/client-work, ~/Projects/secret
 ```
 
+## Outline
+
+`brain-dump outline [scope]` prints the Outline: one line per Curated Note (path, tags, `digest` when it has one, filed-Item count, `hash`), sorted by path, then one indented line per Section with its heading and `[bullets/lines]`. `scope` narrows it to a folder in the knowledge trees (`Research/Main Notes`) or one note (`"[[SQLite]]"`). Weekly Notes, Inbox Dumps and Briefings are never in it; for Weekly Notes use `recall <terms…>`. Past 48,000 characters it drops Sections below `##`, then lists notes only, and ends with a line saying how to narrow it. `brain-dump outline --json` gives the whole tree, never cut.
+
 ## Briefings
 
 paper-bot writes its Daily and Weekly Briefings through `brain-dump write-briefing --note <path>`, with the Markdown on stdin (ADR 0012). The path is one of `Research/Briefings/Daily/YYYY-MM-DD Daily Briefing.md` or `Research/Briefings/Weekly/YYYY-Www Weekly Briefing.md`; anything else, `Research/Briefings/Interests.md` included, is refused, and so is a Briefing that already exists. The content is checked for size (at most 200,000 bytes) and secrets, never for format. It is one Run, printed as `{ note, run }`, so `brain-dump undo <run>` removes a Briefing until you edit it.
 
-Briefings stay out of `list-notes`, `recall`, `check` and the Vault pointer. `brain-dump show --full <path>` reads them and the Interests Note.
+Briefings stay out of `list-notes`, `recall`, `outline`, `check` and the Vault pointer. `brain-dump show --full <path>` reads them and the Interests Note.
 
 ## Kept Picks from paper-bot
 

@@ -14,6 +14,7 @@ import { AGENTS, guard, hookMatcher, isAgent } from "./guard.ts";
 import { listUnfiledDumps } from "./inbox.ts";
 import { headingPath } from "./note-sections.ts";
 import { listNotes } from "./notes.ts";
+import { outline, renderOutline } from "./outline.ts";
 import { pointerLines } from "./pointer.ts";
 import { parseRecallQuery, recall } from "./recall.ts";
 import { readRoutesNote } from "./routes.ts";
@@ -48,6 +49,14 @@ async function main(argv: string[]): Promise<number> {
     case "list-notes":
       writeJson(listNotes(locateVault()));
       return 0;
+    case "outline": {
+      const scopes = rest.filter((arg) => arg !== "--json");
+      if (scopes.length > 1 || scopes[0]?.startsWith("--")) throw new UsageError("outline takes at most one folder or note and optionally --json");
+      const notes = outline(locateVault(), scopes[0]);
+      if (rest.includes("--json")) writeJson(notes);
+      else process.stdout.write(renderOutline(notes));
+      return 0;
+    }
     case "recall":
       writeJson(recall(locateVault(), parseRecallQuery(rest, () => projectOf(process.cwd()))));
       return 0;

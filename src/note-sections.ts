@@ -142,15 +142,19 @@ function countSize(note: SectionedNote, section: Section): void {
   const filed = new Set(note.filed);
   const own = ownLines(section)
     .filter((line) => !filed.has(line) && (section.heading === undefined || line !== section.line))
-    .map((line) => note.lines[line] ?? "")
-    .filter((text) => text.trim() !== "");
-  section.bullets = own.filter((text) => BULLET.test(text)).length;
-  section.lines = own.length;
+    .map((line) => note.lines[line] ?? "");
+  Object.assign(section, sizeOf(own));
   for (const nested of section.sections) {
     countSize(note, nested);
     section.bullets += nested.bullets;
     section.lines += nested.lines;
   }
+}
+
+/** How many of `lines` are bullets, and how many are not blank. */
+export function sizeOf(lines: string[]): { bullets: number; lines: number } {
+  const counted = lines.filter((text) => text.trim() !== "");
+  return { bullets: counted.filter((text) => BULLET.test(text)).length, lines: counted.length };
 }
 
 function ownLines(section: Section): number[] {

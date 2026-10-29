@@ -37,6 +37,18 @@ describe("Briefings are hidden from Filing, recall, check and the Vault pointer"
     expect(notes.map(({ note }) => note)).toEqual([CURATED]);
   });
 
+  test("the Outline leaves out Briefings and the Interests Note", () => {
+    // #given
+    const sandbox = makeSandbox();
+    seedVault(sandbox);
+
+    // #when
+    const notes: { note: string }[] = json(sandbox, ["outline", "--json"]);
+
+    // #then
+    expect(notes.map(({ note }) => note)).toEqual([CURATED]);
+  });
+
   test("recall by terms finds only the Curated Note's Items", () => {
     // #given
     const sandbox = makeSandbox();
