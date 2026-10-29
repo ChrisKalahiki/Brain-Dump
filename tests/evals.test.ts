@@ -261,6 +261,22 @@ Reply: ok · skip N · drop N · cancel`;
     expect({ annotated: plan !== PLAN, failures }).toEqual({ annotated: true, failures: [] });
   });
 
+  test.each([
+    ["names it", "`LLM Evaluation` (matched `## Promptfoo`) · end", []],
+    ["names another", "`LLM Evaluation` (matched `## Datasets`) · end", ['Item 6 → "LLM Evaluation (matched ## Datasets) · end" names no matched ## Promptfoo']],
+    ["names none", "`LLM Evaluation` · end", ['Item 6 → "LLM Evaluation · end" names no matched ## Promptfoo']],
+  ])("checks an Item expected to match by Section when its destination %s", (_, destination, want) => {
+    // #given
+    const plan = PLAN.replace("| + |", `| 6 | Learning: Promptfoo's --repeat… | ${destination} | bullet + backlink |\n| + |`);
+    const expected = { ...EXPECTED, "6": { note: "LLM Evaluation", section: "## Promptfoo", marks: [] } };
+
+    // #when
+    const failures = checkPlan(plan, expected);
+
+    // #then
+    expect(failures).toEqual(want);
+  });
+
   test("fails an Item listed twice", () => {
     // #given
     const plan = PLAN.replace("Routine (2)", "Routine (3)\n2 · Learning: Typst… → \`Typst\` (via Route \"Typst\")");
