@@ -8,9 +8,10 @@ export type Mark = "routine" | "new" | "new-group" | "similar";
 
 /**
  * The destination note's title, the last level of a Todo's group, and exactly the marks the row carries. The link line's place, table or Routine
- * list, isn't gated: beside a table the skill as often puts it in the table, so only its NEW mark counts.
+ * list, isn't gated: beside a table the skill as often puts it in the table, so only its NEW mark counts. `section` is the heading, e.g.
+ * `## Performance`, the destination must name as the Section that made the match.
  */
-export type ExpectedRow = { note: string; group?: string; marks: Mark[] };
+export type ExpectedRow = { note: string; group?: string; section?: string; marks: Mark[] };
 
 /** `id` is the Item's index, or `+` for the link line. */
 type PlanRow = { id: string; destination: string; marks: Mark[] };
@@ -36,6 +37,7 @@ export function checkPlan(reply: string, expected: Record<string, ExpectedRow>):
     if (row === undefined) return [`${label} is not in the plan`];
     if (listed.length > 1) return [`${label} is in the plan ${listed.length} times`];
     if (!goesTo(row.destination, want)) return [`${label} → "${row.destination}", expected ${want.group === undefined ? want.note : `${want.note} › ${want.group}`}`];
+    if (want.section !== undefined && !row.destination.includes(`matched ${want.section}`)) return [`${label} → "${row.destination}" names no matched ${want.section}`];
     const marks = id === "+" ? row.marks.filter((mark) => mark !== "routine") : row.marks;
     if (describeMarks(marks) !== describeMarks(want.marks)) return [`${label} → "${row.destination}" marked ${describeMarks(marks)}, expected ${describeMarks(want.marks)}`];
     return [];
