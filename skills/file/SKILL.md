@@ -11,7 +11,7 @@ Otherwise, work through every unfiled **Dump** in the Vault's Inbox, oldest firs
 
 Run each `brain-dump` command as its own Bash call, exactly as this skill writes it: nothing chained before or after it (no `echo`, `;`, `&&` or `|`), since its exit status and output already say how it went. A plan goes in only on stdin through the quoted `<<'PLAN'` heredoc shown in step 6, never through `echo` or a pipe.
 
-## 1. Load the Inbox and the Vault's map
+## 1. Load the Inbox and the Outline
 
 First run `brain-dump sweep --last`, which prints this machine's last **Sweep** summary as JSON: `time`, and lists `written`, `skipped`, `unreadable`, `secretRefused`, `carriedOver` and `errors`. Show one line: `Last Sweep <its time, local>: <count> Dumps written, …`, naming only the non-empty lists (as Dumps written, skipped, unreadable logs, refused for a secret, carried over, errors), or `Last Sweep <time>: nothing new` when all are empty; add `; run brain-dump sweep --last for details` when any of `unreadable`, `secretRefused` or `errors` is non-empty. Swept Dumps sit in the Inbox like any other and are filed in this run. If it exits 1 saying no Sweep has run on this machine, show nothing; any other failure, say `Last Sweep: unreadable (<its error>)` and go on.
 
@@ -20,10 +20,10 @@ Then run `brain-dump check --json`, which reports Vault problems and writes noth
 Then run these once per run:
 
 - `brain-dump list-dumps`: each unfiled Dump's `file`, `title`, `date`, `project`, `label`, `hash`, and `items` (`index`, `kind`, `text`, `rationale`, `state`). Only `open` Items are filed. An open Item that nearly duplicates one already in the Vault or in another unfiled Dump also has `similar`: `{note, text, score, done}`, its best match, where `note` is the path of the note or Dump holding it (a Dump when it starts with `Inbox/`), `text` the existing Item's text, and `done` true when that Item is a ticked Todo. `project` is the **Project** the Dump's Session was about, `null` for a chat Dump that names none; `label` is the name in its title before the slug: its Project for a dev Dump, its tool (e.g. `ClaudeWeb`) for a chat Dump.
-- `brain-dump list-notes`: every note's `note` (path), `title`, `folder`, `tags` and `hash`.
+- `brain-dump outline`: the **Outline**, one line per Curated Note (Weekly Notes aside), `path · tags · digest · N filed · hash`, with the note's Sections indented under it as `## Heading [bullets/lines]`. A note's title is its file name. When the Outline ends with `(cut: …)`, it was too long to print whole: then also run `brain-dump outline "<folder>"` for each folder the Dump's Items point at (a Route's note's folder, the Project's folder in `Side Projects`, `Research/Main Notes` for a Topic Note), and match against those.
 - `brain-dump routes`: `{hash, routes}`, the Routes note's `hash` (`null` when it doesn't exist yet) and the user's **Routes**, mapping a project or subject to where it belongs: `{key, title}` for a note's title, `{key, group}` for a Todo Group path.
 
-Every `hash` is the file's content as you read it. Keep them: each plan hands back the hashes of the files it writes (step 6), so the helper can refuse a plan built on a note that changed since.
+Every `hash`, a note's from the Outline and the others from their own reads, is the file's content as you read it. Keep them: each plan hands back the hashes of the files it writes (step 6), so the helper can refuse a plan built on a note that changed since.
 
 If there are no Dumps, tell the user the Inbox is clear. Done.
 
@@ -42,13 +42,13 @@ Then `brain-dump todo-groups --date <today, YYYY-MM-DD>`: the **Todo Groups** of
 - **Learning** → the **Topic Note** it best belongs in.
 - **Decision** → a Topic Note when it is really about a general subject (a tool, a technique); otherwise the **Project Note** for the Dump's Project. When unsure, the Project Note.
 
-To find a note: check the Routes first (a Route whose key matches the Dump's `project`, or its `label` when `project` is `null` or matches none, or the Item's subject), then match titles, folders and tags from `list-notes`. Project Note titles vary ("Context Bridge MCP Main Note", "Virtual Assistant Project"), so look inside the project's folder.
+To find a note: check the Routes first (a Route whose key matches the Dump's `project`, or its `label` when `project` is `null` or matches none, or the Item's subject), then match the Outline: titles, folders, tags, and the Section headings inside each note. A Section heading that names the Item's subject places it in that note even when the title doesn't, e.g. a Learning about query planning in `SQLite` by its `## Performance` Section. Project Note titles vary ("Context Bridge MCP Main Note", "Virtual Assistant Project"), so look inside the project's folder.
 
 When no existing note fits, propose a **NEW** note:
 
 - **Project Note** → `Side Projects/<Project>/<Project>.md`.
 - **Topic Note** for a research subject → `Research/Main Notes/<Subject>.md`.
-- **Tags**: pick from tags already in `list-notes` (CamelCase topics like `LLMs`, plus `SideProject` / `project` for projects). A tag that doesn't exist yet is only a proposal: list it separately; it is used only if the user accepts.
+- **Tags**: pick from tags already in the Outline (CamelCase topics like `LLMs`, plus `SideProject` / `project` for projects). A tag that doesn't exist yet is only a proposal: list it separately; it is used only if the user accepts.
 
 To pick a Todo's group, decide per Todo, not per Dump: one chat Dump can hold Todos for several projects, and the Dump's `project` (or `label`) is only a hint. Check group Routes first (`{key, group}` whose key matches the Todo's project or subject), then the names in `thisWeek`, then `lastWeek`. A group is named by its path, written `Dissertation › IRB`; names match ignoring case and a trailing colon.
 
@@ -56,7 +56,7 @@ To pick a Todo's group, decide per Todo, not per Dump: one chat Dump can hold To
 - When no group fits, propose a **NEW** group or subgroup, at any depth, e.g. **NEW** `IRB` inside an existing `Dissertation`.
 - A Todo goes ungrouped (top level of `# To-Do:`) only when the user says so.
 
-An Item is a **Routine Item** when its destination came from a Route (a note Route, or for a Todo a group Route into this week's Weekly Note) and that destination already exists: the note, and for a Todo every level of its group path. Remember the Route's `key` for each Routine Item. An Item whose destination is NEW, that you placed by matching titles, folders, tags or group names, or that has `similar`, is not routine.
+An Item is a **Routine Item** when its destination came from a Route (a note Route, or for a Todo a group Route into this week's Weekly Note) and that destination already exists: the note, and for a Todo every level of its group path. Remember the Route's `key` for each Routine Item. An Item whose destination is NEW, that you placed by matching titles, folders, tags, Section headings or group names, or that has `similar`, is not routine.
 
 Done when every open Item has a destination note, existing or NEW, every Todo a group, existing, NEW or ungrouped, and you know which are Routine Items.
 
@@ -78,10 +78,11 @@ Then show one numbered table per Dump, one row per open Item that isn't a Routin
 |---|---|---|---|
 | 1 | Learning: Codex reads ~/.agents/skills | `Agent Skills` · end | `- Codex reads ~/.agents/skills.` + backlink |
 | 2 | Decision: Filing is append-only | `Brain-Dump` · end | `- Filing is append-only.` + Why + backlink |
+| 3 | Learning: ANALYZE refreshes the query planner's statistics | `SQLite` (matched `## Performance`) · end | `- ANALYZE refreshes the query planner's statistics.` + backlink |
 | 4 | Todo: Ship the file skill | `10-05-26 Weekly Update` · `# To-Do:` › `Brain Dump` | `- [ ] Ship the file skill. #todo` |
 | 5 | Todo: Finish the IRB application | `10-05-26 Weekly Update` · `# To-Do:` › `Dissertation` › **NEW** `IRB` | `- [ ] Finish the IRB application. #todo` |
 
-A Todo goes in its Todo Group under `# To-Do:`, after the group's last direct Todo; a NEW group goes at the end of its parent. A Learning or Decision goes at the end of its note. When `link.due` is true, show the link line as a row marked `+`, going to `link.note` · `# Notes:`.
+A Todo goes in its Todo Group under `# To-Do:`, after the group's last direct Todo; a NEW group goes at the end of its parent. A Learning or Decision goes at the end of its note, also when a Section heading made the match; name that Section after the note, as in row 3. When `link.due` is true, show the link line as a row marked `+`, going to `link.note` · `# Notes:`.
 
 Mark every destination that doesn't exist yet with **NEW**, including each new level of a group path. Anything NEW always goes in the table, never in the Routine list.
 

@@ -43,6 +43,18 @@ export function curatedBullets(lines: string[]): CuratedBullet[] {
   });
 }
 
+/** The 0-based lines of every backlinked Item: its bullet and the indented lines under it, its `Why:` and `From` among them. */
+export function filedItemLines(lines: string[]): number[] {
+  return curatedBullets(lines)
+    .filter(({ why, from }) => why !== undefined || from !== undefined)
+    .flatMap(({ line }) => {
+      const indent = indentOf(lines[line] ?? "");
+      let end = line + 1;
+      while (end < lines.length && lines[end]?.trim() !== "" && indentOf(lines[end] ?? "") > indent) end++;
+      return Array.from({ length: end - line }, (_, offset) => line + offset);
+    });
+}
+
 /** The lines Filing appends for an Item from the Dump `dump`; `text` is the Item's own wording or the user's edit of it. */
 export function renderFiledItem({ kind, text, rationale }: { kind: ItemKind; text: string; rationale: string | null }, dump: { title: string; date: string }): string[] {
   if (kind === "Todo") return [`- [ ] ${withoutTodoTag(text)} #todo`];
@@ -71,10 +83,14 @@ function childLines(lines: string[], index: number, indent: number): string[] {
   const children: string[] = [];
   let depth: number | undefined;
   for (const line of lines.slice(index + 1)) {
-    const lineIndent = /^\s*/.exec(line)?.[0].length ?? 0;
+    const lineIndent = indentOf(line);
     if (line.trim() === "" || lineIndent <= indent) break;
     depth ??= lineIndent;
     if (lineIndent === depth) children.push(line.trim());
   }
   return children;
+}
+
+function indentOf(line: string): number {
+  return /^\s*/.exec(line)?.[0].length ?? 0;
 }

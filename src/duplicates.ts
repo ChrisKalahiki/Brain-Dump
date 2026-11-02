@@ -59,9 +59,14 @@ export function listDumps(vault: Vault, inbox: StoredDump[]): ListedDump[] {
   }));
 }
 
+/** Lower-cased words in order, repeats kept and stopwords dropped. */
+export function words(text: string): string[] {
+  return (text.toLowerCase().match(WORD) ?? []).filter((word) => !STOPWORDS.has(word));
+}
+
 /** Normalised as `check` does, then split into words without stopwords. */
 function wordSet(text: string): Set<string> {
-  return new Set((itemKey(text).match(WORD) ?? []).filter((word) => !STOPWORDS.has(word)));
+  return new Set(words(itemKey(text)));
 }
 
 function jaccard(a: Set<string>, b: Set<string>): number {

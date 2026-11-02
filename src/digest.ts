@@ -11,14 +11,24 @@ export type DigestBounds = { header: number; end: number; id: string };
 /** The last Digest whose ID line closes a callout opened by a Digest header, so a stray ID or an unclosed header doesn't count. */
 export function latestDigest(lines: string[]): DigestBounds | undefined {
   for (let end = lines.length - 1; end >= 0; end--) {
-    const id = lines[end]?.trim() ?? "";
-    if (!DIGEST_ID.test(id)) continue;
-    let header = end - 1;
-    while (header >= 0 && lines[header]?.trim() === "") header--;
-    while (header > 0 && lines[header]?.startsWith(">") && !DIGEST_HEADER.test(lines[header] ?? "")) header--;
-    if (DIGEST_HEADER.test(lines[header] ?? "")) return { header, end, id };
+    const digest = digestEndingAt(lines, end);
+    if (digest) return digest;
   }
   return undefined;
+}
+
+/** Every Digest in the note, first to last, by the same rule as `latestDigest`. */
+export function digests(lines: string[]): DigestBounds[] {
+  return lines.flatMap((_, end) => digestEndingAt(lines, end) ?? []);
+}
+
+function digestEndingAt(lines: string[], end: number): DigestBounds | undefined {
+  const id = lines[end]?.trim() ?? "";
+  if (!DIGEST_ID.test(id)) return undefined;
+  let header = end - 1;
+  while (header >= 0 && lines[header]?.trim() === "") header--;
+  while (header > 0 && lines[header]?.startsWith(">") && !DIGEST_HEADER.test(lines[header] ?? "")) header--;
+  return DIGEST_HEADER.test(lines[header] ?? "") ? { header, end, id } : undefined;
 }
 
 /** The note's latest Digest ID and the filed Items after its ID line, or in the whole note when it has none. */

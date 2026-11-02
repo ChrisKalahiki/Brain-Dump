@@ -31,7 +31,7 @@ type FileCase = {
 };
 
 // The fixture Vault has Routes `harbor → [[Harbor]]`, `SQLite → [[SQLite]]` and `harbor → To-Do › Harbor`, a `Harbor` group in this week's and last
-// week's notes, and a SQLite bullet the `similar` Dump nearly repeats.
+// week's notes, and a SQLite bullet the `similar` Dump nearly repeats. Its notes are split into Sections, among them `## Promptfoo` in LLM Evaluation.
 const CASES: FileCase[] = [
   {
     name: "routine",
@@ -66,6 +66,13 @@ const CASES: FileCase[] = [
     project: "harbor",
     daysAgo: 0,
     expected: ({ thisWeek }) => ({ "1": { note: "SQLite", marks: ["similar"] }, "+": { note: thisWeek, marks: [] } }),
+  },
+  {
+    // No Route, title or tag names Promptfoo; only the Outline's `## Promptfoo` Section places it.
+    name: "section",
+    slug: "promptfoo repeat",
+    daysAgo: 0,
+    expected: ({ thisWeek }) => ({ "1": { note: "LLM Evaluation", section: "## Promptfoo", marks: [] }, "+": { note: thisWeek, marks: [] } }),
   },
   {
     // From two weeks ago, a week with no Weekly Note: the Todo goes to this week, the link line to a NEW note for the Session's week.

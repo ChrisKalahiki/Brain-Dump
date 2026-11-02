@@ -35,11 +35,15 @@ It leaves out Sessions in the Vault, still active in the last 2 hours, with fewe
 sweep-opt-out = ~/Projects/client-work, ~/Projects/secret
 ```
 
+## Outline
+
+`brain-dump outline [scope]` prints the Outline: one line per Curated Note (path, tags, `digest` when it has one, filed-Item count, `hash`), sorted by path, then one indented line per Section with its heading and `[bullets/lines]`. `scope` narrows it to a folder in the knowledge trees (`Research/Main Notes`) or one note (`"[[SQLite]]"`). Weekly Notes, Inbox Dumps and Briefings are never in it; for Weekly Notes use `recall <terms…>`. Past 48,000 characters it drops Sections below `##`, then lists notes only, and ends with a line saying how to narrow it. `brain-dump outline --json` gives the whole tree, never cut.
+
 ## Briefings
 
 paper-bot writes its Daily and Weekly Briefings through `brain-dump write-briefing --note <path>`, with the Markdown on stdin (ADR 0012). The path is one of `Research/Briefings/Daily/YYYY-MM-DD Daily Briefing.md` or `Research/Briefings/Weekly/YYYY-Www Weekly Briefing.md`; anything else, `Research/Briefings/Interests.md` included, is refused, and so is a Briefing that already exists. The content is checked for size (at most 200,000 bytes) and secrets, never for format. It is one Run, printed as `{ note, run }`, so `brain-dump undo <run>` removes a Briefing until you edit it.
 
-Briefings stay out of `list-notes`, `recall`, `check` and the Vault pointer. `brain-dump show --full <path>` reads them and the Interests Note.
+Briefings stay out of `list-notes`, `recall`, `outline`, `check` and the Vault pointer. `brain-dump show --full <path>` reads them and the Interests Note.
 
 ## Kept Picks from paper-bot
 
@@ -72,6 +76,14 @@ A change to a prompt is scored before it ships: `bun run eval [name]` runs each 
 - `todo`: `/todo` with what the user says, on a fixture Vault with this week's and last week's Weekly Notes (`evals/fixtures/todo`): one matching Todo, two equally matching ones, a parent with open sub-todos, and a Todo open only in last week's note. No reply is sent; the Todos proposed, offered and listed as candidates are read from the reply, and any change to the Vault fails the run.
 
 `dump`, `chat-dump`, `file` and `todo` run Claude Code headless with only the repo's skills (`--setting-sources project`). `dump` and `chat-dump` resume their synthetic Session from a log written to `~/.claude/projects` and removed after the run.
+
+### Retrieval benchmark
+
+`bun run bench` scores four ways of finding a Section on your real Vault (spec 04 in `docs/spec/retrieval.md`): A, `recall`'s top 3 Sections; B, the whole Outline in one model call; C, a call over note lines then one over the chosen notes' Outlines; D, B with `recall`'s top 10 beside the Outline. B to D run once with the pinned drafting model and once with a stronger one. It reads the Vault only through `brain-dump` commands, keeps everything in `~/.local/state/brain-dump/bench/`, and is not part of `check`, `eval:check` or CI.
+
+1. `bun run bench --generate` (re)writes `items.txt` (a paraphrased question per backlinked Item; gold is its note) and `sections.txt` (2 per Section with at least 3 bullets of its own; gold is that Section).
+2. Write `questions.txt` there by hand, one `<question> → [[Note#Section]]` per line; `[[Note]]` is scored at note level.
+3. `bun run bench` prints Recall@1, Recall@3, the share of answers naming a Section `show` refuses, and the Outline characters sent, per question set, candidate and model, and writes the same to `result-<date>-<time>.json`.
 
 ### Hand checks
 
