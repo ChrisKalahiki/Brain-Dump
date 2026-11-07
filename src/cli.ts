@@ -25,10 +25,20 @@ import { readTodoGroups, readTodos } from "./todo-groups.ts";
 import { findVault, locateVault } from "./vault.ts";
 import { undoRun } from "./undo.ts";
 import { findWeeklyNote } from "./weekly.ts";
+import { readAssignedTodoistTasks } from "./todoist-api.ts";
+import { isTodoistId } from "./todoist-origin.ts";
+import { importTodoistTasks } from "./todoist.ts";
 
 async function main(argv: string[]): Promise<number> {
   const [command, ...rest] = argv;
   switch (command) {
+    case "todoist":
+      if (rest.length === 1 && rest[0] === "--help") {
+        process.stdout.write("brain-dump todoist list\nbrain-dump todoist import --task <id> [--task <id> ...] [--dry-run]\n");
+      } else {
+        writeJson(await runTodoist(rest));
+      }
+      return 0;
     case "vault":
       process.stdout.write(`${locateVault().root}\n`);
       return 0;
@@ -149,6 +159,19 @@ async function main(argv: string[]): Promise<number> {
     default:
       throw new UsageError(`unknown command ${command ?? "(none)"}`);
   }
+}
+
+async function runTodoist(args: string[]): Promise<unknown> {
+  const [action, ...flags] = args;
+  if (action === "list") {
+    parseOptions(flags, {});
+    return { tasks: await readAssignedTodoistTasks(process.env.TODOIST_API_TOKEN ?? "") };
+  }
+  if (action !== "import") throw new UsageError("todoist needs list or import (see todoist --help)");
+  const { task, "dry-run": dryRun } = parseOptions(flags, { task: { type: "string", multiple: true }, "dry-run": { type: "boolean" } });
+  if (task === undefined || task.length === 0 || task.some((id) => !isTodoistId(id))) throw new UsageError("todoist import needs at least one valid --task <id>");
+  const tasks = await readAssignedTodoistTasks(process.env.TODOIST_API_TOKEN ?? "");
+  return importTodoistTasks(findVault(), tasks, task, { at: now(), dryRun });
 }
 
 /** The running tool's id for this Session, so a manual dump needs no shell expansion; a chat isn't this Session. */

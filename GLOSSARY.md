@@ -9,7 +9,7 @@ The single Obsidian vault Brain-Dump writes into; the user's second brain.
 _Avoid_: Notebook, knowledge base
 
 **Dump**:
-One raw captured item (a thought, a session excerpt, a link, or a Kept Pick from a Briefing) not yet organised into the Vault's structure.
+One raw captured item (a thought, a session excerpt, a link, a Kept Pick from a Briefing, or a selected Todoist task) not yet organised into the Vault's structure.
 _Avoid_: Capture, entry, snippet
 
 **Item**:
@@ -30,6 +30,9 @@ _Avoid_: Justification, why
 **Todo**:
 An action still to be taken: first an Item in a Dump, then, once filed, a checkbox in a Weekly Note's to-do section. A filed Todo is open, done or dropped; changing which is marking it.
 _Avoid_: Task, action item, tick, check off
+
+**Todoist task**:
+A team-managed action assigned to the user in Todoist. Importing it creates a snapshot for personal Filing; the resulting Todo and its mark belong to the user's planning, while Todoist retains the team's current details and completion.
 
 **Session**:
 One interaction with an AI tool that a Dump is drawn from, whether a coding agent run (Claude Code, Codex) or a chat app thread (Claude web, ChatGPT, Gemini).
