@@ -6,7 +6,7 @@ import type { TodoistImportResult } from "../src/todoist.ts";
 
 function todoist(args: readonly string[], home: string, token?: string) {
   const result = Bun.spawnSync(["bun", "--preload", join(import.meta.dir, "fixtures", "todoist-fetch.ts"), join(import.meta.dir, "..", "src", "cli.ts"), "todoist", ...args], {
-    env: { PATH: process.env.PATH, HOME: home, TZ: "UTC", BRAIN_DUMP_NOW: "2026-11-06T10:30:00Z", ...(token === undefined ? {} : { TODOIST_API_TOKEN: token }) },
+    env: { PATH: process.env.PATH, HOME: home, TZ: "UTC", BUN_RUNTIME_TRANSPILER_CACHE_PATH: "0", BRAIN_DUMP_NOW: "2026-11-06T10:30:00Z", ...(token === undefined ? {} : { TODOIST_API_TOKEN: token }) },
   });
   return { exitCode: result.exitCode, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
 }
