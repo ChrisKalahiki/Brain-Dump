@@ -61,6 +61,28 @@ The Dump is tagged `dump`, `dump/kept`, `AIGenerated` and `PaperBot`. A missing 
 
 `--dry-run`, on either origin, runs every check and prints `{ dump, contents }`: the path the Dump would take and what it would hold. It writes nothing and starts no Run.
 
+## Todoist
+
+Bring selected Todoist tasks assigned to you into the Inbox, then use `/file` to choose their Weekly Note and Todo Group. The import is a snapshot: Todoist keeps the team's current details and completion; marking a filed Todo changes only your Weekly Note.
+
+Set `TODOIST_API_TOKEN` in your environment using the personal API token from Todoist's Settings → Integrations → Developer. Keep it outside the Vault and repo. The helper makes only read requests, although a personal token itself also permits writes. No SDK or separate Todoist CLI is needed. See [Todoist's developer documentation](https://developer.todoist.com/).
+
+```
+brain-dump todoist list
+brain-dump todoist import --task <id> --task <another-id> --dry-run
+brain-dump todoist import --task <id> --task <another-id>
+```
+
+`list` returns `{ tasks: [{ id, content, projectId, due, url }] }` for active tasks assigned to you, across all accessible projects; `due` is null or `{ date, recurring }`. It needs no Vault. Choose IDs from that list; importing an ID that is no longer assigned to you refuses the whole selection before writing.
+
+`import` creates one Dump per selected ID as one undoable Run and returns `{ run, imported, skipped }`. Each imported or skipped result has `id` and a Vault-relative `dump`. The source ID and remote project ID stay with the Dump when Filing moves it into `Inbox/Filed`. The remote project is not inferred to be one of your Vault Projects. Repeating an import skips the ID even if the team changed its wording or you filed or dropped it; distinct IDs with identical wording remain separate.
+
+`--dry-run` writes nothing and starts no Run: it returns `preview` with each prospective Dump's ID, path and contents, and an empty `imported` list. It checks the same gateway rules as an actual import. Import at most eight new tasks per invocation, in keeping with the existing note limit, and run one import at a time. Use `brain-dump undo <run>` to inspect the whole import's undo, then `brain-dump undo <run> --confirm` to apply it while its Dumps are unchanged.
+
+After importing, use `/file` as usual. Filing keeps an ordinary Todoist link on each checkbox even when you edit its wording. No general Todo format changes are needed, so `brain-dump todos` and Homeros already see the filed Todos.
+
+The import has no scheduler, automatic refresh, completion synchronization or weekly carryover. A recurring task imports once per Todoist ID; its next occurrence does not create another Dump. Open its Todoist link to see its current state. `brain-dump todoist --help` lists the commands.
+
 ## Checks
 
 `bun run check` runs the typecheck, the Glossary check, then the full test suite. The Glossary check (`bun run glossary`) fails on any `_Avoid_:` term from `GLOSSARY.md` in the skills, prompts, README, current spec, or string literals in `src/`; terms with a common other sense, and the superseded v1 and v2 specs, are listed as unchecked in `scripts/glossary.ts`. `bun install` points git at `.githooks`, whose pre-commit hook runs it on every commit. CI runs `check` and `bun run eval:check` (see below) on every push and PR.

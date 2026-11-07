@@ -5,7 +5,8 @@ import { datePart, pad } from "./clock.ts";
 import { parseDumpBody, renderDumpBody, type DumpBody } from "./dump-body.ts";
 import { BrainDumpError, DumpNotWrittenError, UsageError } from "./errors.ts";
 import { checkWrites, commit, NoteExistsError, WriteFailedError, type Write } from "./gateway.ts";
-import { isChatTool, PAPER_BOT, TOOL_TAGS, toolName, toolNamed, type BriefingOrigin, type Origin } from "./origin.ts";
+import { isChatTool, PAPER_BOT, TODOIST, TOOL_TAGS, toolName, toolNamed, type BriefingOrigin, type Origin } from "./origin.ts";
+import { isTodoistId, todoistTaskUrl } from "./todoist-origin.ts";
 import type { RunInfo } from "./runs.ts";
 import { refuseSecret } from "./secrets.ts";
 import { expandHome, findVault, locateVault, type Vault } from "./vault.ts";
@@ -86,6 +87,11 @@ export function checkCoverage({ origin, swept = false, session, through }: DumpS
   if (session !== undefined && !SESSION_ID.test(session)) throw new UsageError(`--session "${session}" may hold only letters, digits, ".", "_" and "-"`);
   if (through !== undefined && session === undefined) throw new UsageError("--through needs --session");
   if (origin.kind === "briefing") checkBriefingOrigin(origin);
+  if (origin.kind === "todoist") {
+    if (!isTodoistId(origin.task)) throw new UsageError("invalid Todoist task ID");
+    if (!isTodoistId(origin.remoteProject)) throw new UsageError("invalid Todoist project ID");
+    if (session !== undefined) throw new UsageError("a Todoist origin cannot cover a Session");
+  }
   if (swept && origin.kind !== "dev") throw new UsageError(`--swept is only for ${TOOL_TAGS.filter((tool) => !isChatTool(tool)).join(" and ")}`);
   if (swept && session === undefined) throw new UsageError("--swept needs --session");
 }
@@ -116,7 +122,11 @@ export function parseDump(filename: string, contents: string): ParsedDump | Dump
   const originLine = lines[close + 1] ?? "";
   const paper = frontmatterValue(lines.slice(1, close), "paper");
   let origin: Pick<DumpDocument, "origin" | "swept"> | undefined;
-  if (originLine.startsWith(BRIEFING_PREFIX)) {
+  if (originLine.startsWith("Todoist: ")) {
+    if (covered.session !== undefined) return { problem: "a Todoist origin cannot cover a Session" };
+    origin = parseTodoistLine(originLine, lines.slice(1, close));
+    if (origin === undefined) return { problem: "invalid Todoist identity or origin line" };
+  } else if (originLine.startsWith(BRIEFING_PREFIX)) {
     if (paper === undefined) return { problem: `a ${BRIEFING_PREFIX.trim()} origin line without paper: in the frontmatter` };
     origin = parseBriefingLine(originLine, paper);
   } else if (originLine.startsWith(ORIGIN_PREFIX)) {
@@ -147,6 +157,7 @@ export function coveredSession(contents: string): CoveredSession | undefined {
 }
 
 export function renderOriginLine(origin: Origin, swept: boolean): string {
+  if (origin.kind === "todoist") return `Todoist: ${todoistTaskUrl(origin.task)} · ${displayStamp(origin.at)}`;
   if (origin.kind === "briefing") return [`${BRIEFING_PREFIX}[[${origin.briefing}]]`, displayStamp(origin.at), `[[${origin.project}]]`].join(" · ");
   const segments = [`${ORIGIN_PREFIX}${toolName(origin.tool)}${swept ? " (swept)" : ""}`];
   if (origin.kind === "dev") {
@@ -167,13 +178,24 @@ export function isDumpFile(path: string): boolean {
 
 /** Creates every Dump in the Inbox as one Run, each under a free name. Returns the Run's id and the Dumps' paths. */
 export function writeDumps(vault: Vault, run: RunInfo, dumps: PreparedDump[]): { run: string; paths: string[] } {
+  const writes = dumpWrites(vault, dumps);
+  return { run: commit(vault, "automation", run, writes), paths: writes.map(({ path }) => path) };
+}
+
+/** Batch preview using the same names and gateway rules as `writeDumps`, without a Run. */
+export function dryRunDumps(vault: Vault, dumps: PreparedDump[]): { path: string; contents: string }[] {
+  const writes = dumpWrites(vault, dumps);
+  checkWrites(vault, "automation", writes);
+  return writes.map(({ path, contents }) => ({ path, contents }));
+}
+
+function dumpWrites(vault: Vault, dumps: PreparedDump[]): Extract<Write, { mode: "create" }>[] {
   const taken = new Set<string>();
-  const writes: Write[] = dumps.map(({ stem, contents }) => {
+  return dumps.map(({ stem, contents }) => {
     const path = firstFreeName(vault, stem, taken);
     taken.add(path);
     return { mode: "create", path, contents };
   });
-  return { run: commit(vault, "automation", run, writes), paths: writes.map(({ path }) => path) };
 }
 
 export function toFilenameSafe(slug: string): string {
@@ -215,7 +237,8 @@ function renderContents({ origin, swept, session, body }: DumpDocument): string 
   const sourceTag = swept ? ["  - dump/swept"] : origin.kind === "briefing" ? ["  - dump/kept"] : [];
   const covered = session === undefined ? [] : [`session: ${session.id}`, `through: ${session.through.toISOString()}`];
   const paper = origin.kind === "briefing" ? [`paper: ${origin.paper}`] : [];
-  const frontmatter = ["---", "tags:", "  - dump", ...sourceTag, "  - AIGenerated", `  - ${origin.tool}`, ...covered, ...paper, "---"];
+  const task = origin.kind === "todoist" ? [`todoist-task: ${JSON.stringify(origin.task)}`, `todoist-project: ${JSON.stringify(origin.remoteProject)}`] : [];
+  const frontmatter = ["---", "tags:", "  - dump", ...sourceTag, "  - AIGenerated", `  - ${origin.tool}`, ...covered, ...paper, ...task, "---"];
   return `${frontmatter.join("\n")}\n${renderOriginLine(origin, swept)}\n\n${body}`;
 }
 
@@ -263,6 +286,25 @@ function parseBriefingLine(line: string, paper: string): Pick<DumpDocument, "ori
   const at = parseStamp(stamp);
   if (briefing === undefined || project === undefined || at === undefined) return undefined;
   return { origin: { kind: "briefing", tool: PAPER_BOT, briefing, paper, project, at }, swept: false };
+}
+
+function parseTodoistLine(line: string, frontmatter: string[]): Pick<DumpDocument, "origin" | "swept"> | undefined {
+  const fields = ["todoist-task", "todoist-project"].map((key) => {
+    const values = frontmatter.filter((entry) => entry.startsWith(`${key}: `));
+    if (values.length !== 1) return undefined;
+    try {
+      const value: unknown = JSON.parse(values[0]?.slice(key.length + 2) ?? "");
+      return isTodoistId(value) ? value : undefined;
+    } catch {
+      return undefined;
+    }
+  });
+  const [task, remoteProject] = fields;
+  if (task === undefined || remoteProject === undefined) return undefined;
+  const [url, stamp, ...extra] = line.slice("Todoist: ".length).split(" · ");
+  const at = parseStamp(stamp);
+  if (url !== todoistTaskUrl(task) || at === undefined || extra.length !== 0) return undefined;
+  return { origin: { kind: "todoist", tool: TODOIST, task, remoteProject, project: undefined, at }, swept: false };
 }
 
 function displayStamp(at: Date): string {

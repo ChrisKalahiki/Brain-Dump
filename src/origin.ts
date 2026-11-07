@@ -65,7 +65,19 @@ export type BriefingOrigin = {
   at: Date;
 };
 
-export type Origin = DevOrigin | ChatOrigin | BriefingOrigin;
+export const TODOIST = "Todoist";
+
+/** A selected team task, captured as a snapshot without inferring a Vault Project. */
+export type TodoistOrigin = {
+  kind: "todoist";
+  tool: typeof TODOIST;
+  task: string;
+  remoteProject: string;
+  project: undefined;
+  at: Date;
+};
+
+export type Origin = DevOrigin | ChatOrigin | BriefingOrigin | TodoistOrigin;
 
 export function detectDevOrigin(tool: DevToolTag, cwd: string, at: Date): DevOrigin {
   const root = git(cwd, "rev-parse", "--show-toplevel") ?? cwd;

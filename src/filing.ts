@@ -16,6 +16,7 @@ import { formatGroupPath, parseTodoGroups, pathKey, resolveGroupPath, type Group
 import { readVaultItems } from "./vault-items.ts";
 import { isMondayWeeklyNote, locateWeeklyNote, readWeeklyTemplate } from "./weekly.ts";
 import type { Vault } from "./vault.ts";
+import { todoistTaskUrl } from "./todoist-origin.ts";
 
 /** Where lines go: a note's section, or the end of the note when `section` is absent. */
 type Placement = { note: string; section?: string };
@@ -155,7 +156,12 @@ function linkLine(vault: Vault, dump: StoredDump, plan: FilingPlan, finished: bo
 function renderItem(dump: StoredDump, { index, text }: Extract<PlannedItem, { outcome: "filed" }>): string[] {
   const stored = dump.items.find((item) => item.index === index);
   if (stored === undefined) reject(`${dump.title} has no Item ${index}`);
-  return renderFiledItem({ ...stored, text: text ?? stored.text }, dump);
+  let wording = text ?? stored.text;
+  if (stored.kind === "Todo" && dump.origin.kind === "todoist") {
+    const link = `[Todoist](${todoistTaskUrl(dump.origin.task)})`;
+    wording = `${wording.split(link).join("").trim()} ${link}`;
+  }
+  return renderFiledItem({ ...stored, text: wording }, dump);
 }
 
 /** Every existing file the plan writes needs the hash it had when the agent read it; if any changed since, the whole plan is refused before anything is staged. */
