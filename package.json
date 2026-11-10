@@ -1,6 +1,7 @@
 {
   "name": "brain-dump",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "bin": {
     "brain-dump": "src/cli.ts"
