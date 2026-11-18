@@ -45,6 +45,8 @@ paper-bot writes its Daily and Weekly Briefings through `brain-dump write-briefi
 
 Briefings stay out of `list-notes`, `recall`, `outline`, `check` and the Vault pointer. `brain-dump show --full <path>` reads them and the Interests Note.
 
+With the user's explicit approval, `show` can also read exactly `Research/Learning to Vibe Code/Literature Review.md` (including its Sections). This show-only exception does not include neighboring files, expand Recall or Filing, or grant any write access. Symlink substitutions are refused. It is a narrow exception to ADR 0007's shared read/write allowlist; the write boundary in ADR 0004 is unchanged.
+
 ## Kept Picks from paper-bot
 
 paper-bot writes each Pick ticked Keep in a Briefing as an ordinary Dump in the Inbox, for normal Filing:
