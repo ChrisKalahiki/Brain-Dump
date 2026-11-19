@@ -16,5 +16,8 @@ export const WEEKLY_TEMPLATE_NOTE = join("Research", "Other", "Templates", "XX-X
 /** The folder trees, subfolders included, Brain-Dump may write. Defined in code only so nothing inside the Vault can widen it (ADR 0004). */
 export const WRITE_ALLOWLIST: readonly string[] = [INBOX, join("Research", "Main Notes"), WEEKLY_FOLDER, "Side Projects", "Resources", BRIEFINGS_FOLDER];
 
+/** Explicitly approved files that show may read, without widening Recall or any write permission. */
+export const SHOW_READ_ONLY_NOTES: readonly string[] = [join("Research", "Learning to Vibe Code", "Literature Review.md")];
+
 /** The allowlist less Briefings, which Filing, recall, check and the Vault pointer never read (ADR 0012). */
 export const KNOWLEDGE_TREES: readonly string[] = WRITE_ALLOWLIST.filter((tree) => tree !== BRIEFINGS_FOLDER);
